@@ -181,26 +181,35 @@ export const projects: Project[] = [
   },
 ];
 
+/** Titles/issuers from the résumé; `description` written by Akshat. */
 export const certifications: Certification[] = [
   {
     title: 'AI Professional Skills',
     detail: 'AI for real-world projects',
     issuer: 'OpenAI',
+    description:
+      'I applied OpenAI frameworks to solve complex challenges by building and evaluating scalable, intelligent AI solutions.',
   },
   {
     title: 'Data Analysis',
     detail: 'Excel-based recommendations',
     issuer: 'GRAMMY Awards',
+    description:
+      'I performed quantitative analysis on GRAMMY Awards media datasets using advanced Excel modeling to deliver strategic recommendations.',
   },
   {
     title: 'Data Visualization',
     detail: 'Tableau dashboards',
     issuer: 'Intel',
+    description:
+      'I designed interactive Tableau dashboards using Intel corporate datasets to transform multi-variable data into executive-ready visual insights.',
   },
   {
     title: 'Intercultural Skills',
     detail: 'Global team collaboration',
     issuer: 'UNESCO',
+    description:
+      'I developed cross-cultural communication strategies and emotional intelligence frameworks to collaborate effectively across international teams.',
   },
 ];
 

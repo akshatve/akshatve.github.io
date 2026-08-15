@@ -50,8 +50,11 @@ export interface Project {
 
 export interface Certification {
   title: string;
+  /** Short qualifier from the résumé line, e.g. "Tableau dashboards". */
   detail: string;
   issuer: string;
+  /** Fuller description of the work, written by Akshat. */
+  description: string;
 }
 
 export interface SkillGroup {

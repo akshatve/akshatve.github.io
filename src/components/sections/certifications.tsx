@@ -30,19 +30,23 @@ export function Certifications() {
                   {String(i + 1).padStart(2, '0')}
                 </span>
 
-                <div className="sm:col-span-6">
+                <div className="sm:col-span-7">
                   <h3 className="font-serif text-[clamp(1.4rem,2.8vw,2.1rem)] leading-tight tracking-[-0.015em] text-beige-100 transition-transform duration-700 ease-editorial sm:group-hover:translate-x-2">
                     {cert.title}
                   </h3>
 
-                  {/* Always visible — the detail is the description, and hiding
-                      it behind hover left every row but the hovered one blank. */}
-                  <p className="mt-3 text-[14px] leading-relaxed text-beige-300 text-pretty">
+                  <p className="mt-2.5 text-[11px] uppercase tracking-metadata text-beige-400">
                     {cert.detail}
+                  </p>
+
+                  {/* All copy stays visible — hiding it behind hover left every
+                      row but the hovered one looking empty. */}
+                  <p className="mt-4 max-w-xl text-[14px] leading-[1.75] text-beige-300 text-pretty">
+                    {cert.description}
                   </p>
                 </div>
 
-                <div className="flex items-center gap-4 sm:col-span-5 sm:justify-end">
+                <div className="flex items-center gap-4 sm:col-span-4 sm:justify-end">
                   <span
                     aria-hidden
                     className="hidden h-px w-8 bg-beige-200/20 transition-all duration-700 ease-editorial group-hover:w-14 group-hover:bg-gold sm:block"
