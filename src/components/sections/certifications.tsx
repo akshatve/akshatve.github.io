@@ -25,21 +25,28 @@ export function Certifications() {
               transition={{ duration: 0.85, delay: i * 0.07, ease: EASE_EDITORIAL }}
               className="group relative border-t border-beige-200/12 last:border-b"
             >
-              <div className="relative flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:gap-10 sm:py-10">
-                <span className="font-mono text-[10px] text-beige-500 sm:w-10">
+              <div className="relative grid gap-4 py-9 sm:grid-cols-12 sm:items-baseline sm:gap-8 sm:py-11">
+                <span className="font-mono text-[10px] text-beige-500 sm:col-span-1">
                   {String(i + 1).padStart(2, '0')}
                 </span>
 
-                <h3 className="font-serif text-[clamp(1.4rem,2.8vw,2.1rem)] leading-tight tracking-[-0.015em] text-beige-100 transition-transform duration-700 ease-editorial sm:flex-1 sm:group-hover:translate-x-2">
-                  {cert.title}
-                </h3>
+                <div className="sm:col-span-6">
+                  <h3 className="font-serif text-[clamp(1.4rem,2.8vw,2.1rem)] leading-tight tracking-[-0.015em] text-beige-100 transition-transform duration-700 ease-editorial sm:group-hover:translate-x-2">
+                    {cert.title}
+                  </h3>
 
-                <div className="flex items-center gap-4 sm:justify-end">
-                  {/* Detail wipes in on hover; always visible on touch */}
-                  <span className="text-[13px] text-beige-400 opacity-100 transition-opacity duration-700 ease-editorial sm:opacity-0 sm:group-hover:opacity-100">
+                  {/* Always visible — the detail is the description, and hiding
+                      it behind hover left every row but the hovered one blank. */}
+                  <p className="mt-3 text-[14px] leading-relaxed text-beige-300 text-pretty">
                     {cert.detail}
-                  </span>
-                  <span aria-hidden className="hidden h-px w-8 bg-beige-200/20 sm:block" />
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-4 sm:col-span-5 sm:justify-end">
+                  <span
+                    aria-hidden
+                    className="hidden h-px w-8 bg-beige-200/20 transition-all duration-700 ease-editorial group-hover:w-14 group-hover:bg-gold sm:block"
+                  />
                   <span className="text-[11px] uppercase tracking-metadata text-gold">
                     {cert.issuer}
                   </span>
