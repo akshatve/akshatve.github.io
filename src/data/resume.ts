@@ -82,9 +82,8 @@ export const experiences: Experience[] = [
     company: 'Wealth Clinic',
     role: 'Research and Financial Data Analyst Intern',
     period: '03/2023 – 07/2023',
+    // Supplied directly by Akshat (not present in the PDF résumé).
     points: [
-      'Conducted quantitative analysis on financial statements using Tally ERP 9, Python, and SQL to identify auditing anomalies and key structural trends.',
-      // Supplied directly by Akshat (not present in the PDF résumé).
       'Engineered data extraction and cleaning workflows using Python and SQL to query Tally ERP 9 ledgers, transforming raw financial data into structured datasets for analysis.',
       'Designed statistical scripts to detect transaction anomalies and discrepancies across balance sheets, improving auditing accuracy and data integrity.',
     ],
