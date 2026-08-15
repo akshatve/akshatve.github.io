@@ -17,7 +17,9 @@
       "Bash(curl -s -o /dev/null -w \"/ HTTP %{http_code}\\\\n\" http://localhost:3000)",
       "Bash(curl -s http://localhost:3000/_next/static/chunks/app/page.js)",
       "Bash(curl -s -o /dev/null -w \"server: HTTP %{http_code}\\\\n\" http://localhost:3000)",
-      "Bash(open -a Safari \"http://localhost:3000\")"
+      "Bash(open -a Safari \"http://localhost:3000\")",
+      "Bash(rm -f src/app/robots.ts src/app/sitemap.ts)",
+      "Bash(mkdir -p src/app/robots.txt src/app/sitemap.xml)"
     ]
   }
 }

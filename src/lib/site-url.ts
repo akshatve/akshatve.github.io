@@ -1,18 +1,25 @@
 /**
- * Absolute site origin, for metadata / sitemap / robots.
+ * Absolute site origin.
  *
- * Resolution order:
- *  1. NEXT_PUBLIC_SITE_URL — set this once a custom domain is attached.
- *  2. VERCEL_PROJECT_PRODUCTION_URL — the stable production domain, injected
- *     by Vercel for account-linked projects.
- *  3. VERCEL_URL — the per-deployment domain. Always present on Vercel,
- *     including anonymous/preview deployments, so this is the safety net that
- *     stops localhost leaking into robots.txt and sitemap.xml.
- *  4. localhost — local development only.
+ * Two flavours, because they solve different problems:
  *
- * All of these are read at BUILD time, because robots/sitemap are statically
- * prerendered. Setting them only at runtime has no effect.
+ * - `getRequestOrigin` reads the incoming request headers. Always correct on
+ *   whatever host is actually serving — preview URL, production, or a custom
+ *   domain — with zero configuration. Used by robots.txt and sitemap.xml.
+ *
+ * - `getSiteUrl` is the build-time fallback, used for `metadataBase` where no
+ *   request exists. Prefers an explicit value, then Vercel's injected vars.
  */
+
+export function getRequestOrigin(h: Headers): string {
+  // x-forwarded-* are set by Vercel's proxy; host is the direct fallback.
+  const host = h.get('x-forwarded-host') ?? h.get('host');
+  if (!host) return getSiteUrl();
+
+  const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https');
+  return `${proto}://${host}`;
+}
+
 export function getSiteUrl(): string {
   const explicit = process.env.NEXT_PUBLIC_SITE_URL;
   if (explicit) return explicit.replace(/\/$/, '');
