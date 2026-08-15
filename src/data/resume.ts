@@ -28,18 +28,19 @@ export const profile = {
   phoneRaw: '+15305649941',
   email: 'akshat.verma3005@gmail.com',
   /**
-   * The résumé's Professional Summary, split across the two places that use
-   * it so the same paragraph never appears twice on the page:
-   *   `summaryLead`    → hero introduction
-   *   `summarySupport` → About section
-   * `summary` keeps the full text for <meta> description / Open Graph.
+   * `summary`     → <meta> description / Open Graph (full résumé summary)
+   * `summaryLead` → hero introduction
+   * `about`       → About section paragraphs
    */
   summary:
     'Motivated Data Science undergraduate with a strong foundation in statistical modelling, data analysis, and visualisation. Experienced in leadership and cross-functional communication, with a proven ability to leverage technical skills for impactful results.',
   summaryLead:
     'Motivated Data Science undergraduate with a strong foundation in statistical modelling, data analysis, and visualisation.',
-  summarySupport:
-    'Experienced in leadership and cross-functional communication, with a proven ability to leverage technical skills for impactful results.',
+  /** About section copy, written by Akshat. Rendered as separate paragraphs. */
+  about: [
+    'As a Data Science undergraduate at UC Davis, I am passionate about building end-to-end machine learning models, exploring natural language processing, and turning complex datasets into actionable insights. My technical toolkit relies heavily on Python, R, and SQL, with hands-on experience spanning adversarial NLP pipelines, predictive logistics analytics, and optimized relational database queries.',
+    'Beyond technical development, I bring real-world corporate analytics experience from industry internships, along with proven leadership as a former Marketing Director and Project Lead. I thrive at the intersection of quantitative analysis and strategic problem-solving, where I can translate technical findings into high-impact business solutions and collaborate with cross-functional teams.',
+  ],
   /** Hero metadata strip. */
   metadata: ['AKSHAT VERMA', 'DATA SCIENCE', 'UC DAVIS'],
 } as const;

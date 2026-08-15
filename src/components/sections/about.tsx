@@ -57,15 +57,27 @@ export function About() {
 
           {/* Supporting column */}
           <div className="lg:col-span-5 lg:pt-4">
-            <motion.p
-              initial={{ opacity: 0, y: 22 }}
-              whileInView={{ opacity: 1, y: 0 }}
+            <motion.div
+              initial="hidden"
+              whileInView="visible"
               viewport={{ once: true, margin: '-15%' }}
-              transition={{ duration: 1, ease: EASE_EDITORIAL }}
-              className="text-[15px] leading-[1.85] text-beige-300 text-pretty sm:text-base"
+              transition={{ staggerChildren: 0.14 }}
+              className="flex flex-col gap-6"
             >
-              {profile.summarySupport}
-            </motion.p>
+              {profile.about.map((paragraph) => (
+                <motion.p
+                  key={paragraph.slice(0, 40)}
+                  variants={{
+                    hidden: { opacity: 0, y: 22 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  transition={{ duration: 1, ease: EASE_EDITORIAL }}
+                  className="text-[15px] leading-[1.85] text-beige-300 text-pretty sm:text-base"
+                >
+                  {paragraph}
+                </motion.p>
+              ))}
+            </motion.div>
 
             {/* Education, integrated rather than boxed */}
             <motion.div
