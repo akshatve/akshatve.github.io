@@ -110,7 +110,7 @@ export function Hero() {
             transition={{ duration: 1.2, delay: 2.1, ease: EASE_EDITORIAL }}
             className="mt-8 max-w-xl text-[15px] leading-[1.75] text-beige-300 text-pretty sm:text-base"
           >
-            {profile.summary}
+            {profile.summaryLead}
           </motion.p>
         </motion.div>
       </motion.div>

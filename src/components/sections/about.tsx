@@ -64,7 +64,7 @@ export function About() {
               transition={{ duration: 1, ease: EASE_EDITORIAL }}
               className="text-[15px] leading-[1.85] text-beige-300 text-pretty sm:text-base"
             >
-              {profile.summary}
+              {profile.summarySupport}
             </motion.p>
 
             {/* Education, integrated rather than boxed */}

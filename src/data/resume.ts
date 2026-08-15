@@ -27,8 +27,19 @@ export const profile = {
   /** Unformatted, for the tel: href. */
   phoneRaw: '+15305649941',
   email: 'akshat.verma3005@gmail.com',
+  /**
+   * The résumé's Professional Summary, split across the two places that use
+   * it so the same paragraph never appears twice on the page:
+   *   `summaryLead`    → hero introduction
+   *   `summarySupport` → About section
+   * `summary` keeps the full text for <meta> description / Open Graph.
+   */
   summary:
     'Motivated Data Science undergraduate with a strong foundation in statistical modelling, data analysis, and visualisation. Experienced in leadership and cross-functional communication, with a proven ability to leverage technical skills for impactful results.',
+  summaryLead:
+    'Motivated Data Science undergraduate with a strong foundation in statistical modelling, data analysis, and visualisation.',
+  summarySupport:
+    'Experienced in leadership and cross-functional communication, with a proven ability to leverage technical skills for impactful results.',
   /** Hero metadata strip. */
   metadata: ['AKSHAT VERMA', 'DATA SCIENCE', 'UC DAVIS'],
 } as const;

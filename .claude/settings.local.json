@@ -19,7 +19,8 @@
       "Bash(curl -s -o /dev/null -w \"server: HTTP %{http_code}\\\\n\" http://localhost:3000)",
       "Bash(open -a Safari \"http://localhost:3000\")",
       "Bash(rm -f src/app/robots.ts src/app/sitemap.ts)",
-      "Bash(mkdir -p src/app/robots.txt src/app/sitemap.xml)"
+      "Bash(mkdir -p src/app/robots.txt src/app/sitemap.xml)",
+      "Bash(open -a Safari \"https://temporary-flying-pulsar-1jww18b.vercel.app\")"
     ]
   }
 }
