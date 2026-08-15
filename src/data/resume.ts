@@ -1,0 +1,221 @@
+import type {
+  Certification,
+  Education,
+  Experience,
+  Leadership,
+  NavItem,
+  Project,
+  SkillGroup,
+} from '@/types';
+
+/**
+ * ─────────────────────────────────────────────────────────────────────
+ * SOURCE OF TRUTH — content comes from Akshat's résumé, plus additions he
+ * has supplied directly (marked inline where they differ from the PDF).
+ *
+ * Nothing here may be invented by anyone else. No fabricated metrics, dates,
+ * employers, links, or outcomes. If neither the résumé nor Akshat states it,
+ * it does not appear on the site.
+ * ─────────────────────────────────────────────────────────────────────
+ */
+
+export const profile = {
+  name: 'Akshat Verma',
+  title: 'Data Science Undergraduate',
+  location: 'Davis, CA',
+  phone: '+1 (530) 564-9941',
+  /** Unformatted, for the tel: href. */
+  phoneRaw: '+15305649941',
+  email: 'akshat.verma3005@gmail.com',
+  summary:
+    'Motivated Data Science undergraduate with a strong foundation in statistical modelling, data analysis, and visualisation. Experienced in leadership and cross-functional communication, with a proven ability to leverage technical skills for impactful results.',
+  /** Hero metadata strip. */
+  metadata: ['AKSHAT VERMA', 'DATA SCIENCE', 'UC DAVIS'],
+} as const;
+
+export const navItems: NavItem[] = [
+  { id: 'about', label: 'About', index: '01' },
+  { id: 'experience', label: 'Experience', index: '02' },
+  { id: 'leadership', label: 'Leadership', index: '03' },
+  { id: 'projects', label: 'Projects', index: '04' },
+  { id: 'skills', label: 'Skills', index: '05' },
+  { id: 'certifications', label: 'Certifications', index: '06' },
+  { id: 'contact', label: 'Contact', index: '07' },
+];
+
+export const education: Education = {
+  school: 'University of California, Davis',
+  degree: 'B.S. in Data Science',
+  period: '2023 – 2027',
+};
+
+/** Discipline labels animated into place in the About section. */
+export const disciplines = [
+  'DATA SCIENCE',
+  'STATISTICAL MODELLING',
+  'DATA ANALYSIS',
+  'VISUALIZATION',
+];
+
+export const experiences: Experience[] = [
+  {
+    company: 'Biocipher Technologies Private Limited',
+    role: 'Data Scientist Intern',
+    period: '06/2024 – 08/2024',
+    points: [
+      'Extracted, cleaned, and modeled corporate datasets to identify operational trends and generate actionable business intelligence.',
+      'Built automated workflows and contributed visualizations to research reports used in executive decision-making.',
+    ],
+  },
+  {
+    company: 'Wealth Clinic',
+    role: 'Research and Financial Data Analyst Intern',
+    period: '03/2023 – 07/2023',
+    points: [
+      'Conducted quantitative analysis on financial statements using Tally ERP 9, Python, and SQL to identify auditing anomalies and key structural trends.',
+      // Supplied directly by Akshat (not present in the PDF résumé).
+      'Engineered data extraction and cleaning workflows using Python and SQL to query Tally ERP 9 ledgers, transforming raw financial data into structured datasets for analysis.',
+      'Designed statistical scripts to detect transaction anomalies and discrepancies across balance sheets, improving auditing accuracy and data integrity.',
+    ],
+  },
+];
+
+export const leadership: Leadership[] = [
+  {
+    organization: 'Machine Learning Student Network',
+    position: 'Marketing Director',
+    period: '12/2024 – 06/2026',
+    points: [
+      'Led social media outreach, recruitment campaigns, and fundraisers across Discord and Instagram, coordinating digital assets with cross-functional teams.',
+    ],
+  },
+  {
+    organization: 'Davis Data Science Club',
+    position: 'Project Lead',
+    period: '01/2026 – 03/2026',
+    points: ['Applied Financial Analytics Using Data Science for Business Insights.'],
+  },
+];
+
+export const projects: Project[] = [
+  {
+    number: '01',
+    title: 'Fake Review Detection Pipeline',
+    period: '05/2026 – 06/2026',
+    teaser: 'Adversarial robustness testing for review classification.',
+    summary:
+      'Co-authored a detection pipeline on a 40,000-instance Amazon-style dataset combining TF-IDF n-grams with 15 stylometric features; built a TextAttack multi-perturbation framework to quantify classifier degradation under adversarial attacks.',
+    context: 'Co-authored a detection pipeline on a 40,000-instance Amazon-style dataset.',
+    built: [
+      'Combined TF-IDF n-grams with 15 stylometric features.',
+      'Built a TextAttack multi-perturbation framework.',
+      'Quantified classifier degradation under adversarial attacks.',
+    ],
+    // Only technologies the résumé ties to THIS project. Python, scikit-learn
+    // and RoBERTa appear under Skills but are not attributed here, so listing
+    // them on this card would be an invented association.
+    tech: ['TF-IDF n-grams', 'Stylometric Features', 'TextAttack'],
+    visual: 'text',
+  },
+  {
+    number: '02',
+    title: 'GoodsFlow — Inventory & Shortage Analytics Platform',
+    period: '04/2026',
+    teaser: 'End-to-end predictive logistics pipeline.',
+    summary:
+      'Engineered an end-to-end predictive logistics pipeline in Python with data seeding for edge cases; developed a localized shortage scorer and demand trend analyzer outputting JSON datasets for downstream dashboards.',
+    context:
+      'An end-to-end predictive logistics pipeline engineered in Python, with data seeding for edge cases.',
+    built: [
+      'Developed a localized shortage scorer.',
+      'Built a demand trend analyzer.',
+      'Output JSON datasets for downstream dashboards.',
+    ],
+    tech: ['Python', 'JSON'],
+    visual: 'flow',
+  },
+  {
+    number: '03',
+    title: 'Applied Financial Analytics for Business Insights',
+    period: '01/2026 – 03/2026',
+    teaser: 'Financial ratios, regression and risk categorization.',
+    summary:
+      "Led DDSC's end-to-end financial analytics project; engineered financial ratios from company statements and stock price data, applied linear regression for profitability trends and logistic regression for risk categorization.",
+    context:
+      "Led the Davis Data Science Club's end-to-end financial analytics project.",
+    built: [
+      'Engineered financial ratios from company statements and stock price data.',
+      'Applied linear regression for profitability trends.',
+      'Applied logistic regression for risk categorization.',
+    ],
+    tech: ['Linear Regression', 'Logistic Regression'],
+    visual: 'finance',
+  },
+  {
+    number: '04',
+    title: 'Stack Exchange Relational Data Analysis',
+    period: '05/2026',
+    teaser: 'SQL workflows over a 2.4+ GB SQLite dataset.',
+    summary:
+      'Optimized SQL workflows on a 2.4+ GB SQLite Cross Validated dataset using RSQLite and DBI; modeled response times, tag frequencies, and the impact of bounties on community engagement in R.',
+    context:
+      'Optimized SQL workflows on a 2.4+ GB SQLite Cross Validated dataset.',
+    built: [
+      'Optimized SQL workflows using RSQLite and DBI.',
+      'Modeled response times and tag frequencies.',
+      'Modeled the impact of bounties on community engagement in R.',
+    ],
+    tech: ['R', 'SQL', 'SQLite', 'RSQLite', 'DBI'],
+    visual: 'database',
+  },
+];
+
+export const certifications: Certification[] = [
+  {
+    title: 'AI Professional Skills',
+    detail: 'AI for real-world projects',
+    issuer: 'OpenAI',
+  },
+  {
+    title: 'Data Analysis',
+    detail: 'Excel-based recommendations',
+    issuer: 'GRAMMY Awards',
+  },
+  {
+    title: 'Data Visualization',
+    detail: 'Tableau dashboards',
+    issuer: 'Intel',
+  },
+  {
+    title: 'Intercultural Skills',
+    detail: 'Global team collaboration',
+    issuer: 'UNESCO',
+  },
+];
+
+export const skillGroups: SkillGroup[] = [
+  {
+    label: 'Programming & Tools',
+    items: ['Python', 'R', 'SQL', 'SQLite', 'Excel', 'Tableau', 'Tally ERP 9', 'Jupyter', 'Git'],
+  },
+  {
+    label: 'ML & NLP',
+    items: [
+      'scikit-learn',
+      'Logistic / Linear Regression',
+      'Random Forest',
+      'RoBERTa',
+      'TF-IDF',
+      'TextAttack',
+    ],
+  },
+  {
+    label: 'Data & Analytics',
+    items: [
+      'Statistical Modelling',
+      'Data Visualization',
+      'Predictive Analytics',
+      'GIS Analysis',
+    ],
+  },
+];

@@ -1,0 +1,165 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: #07111f;
+    --bg-deep: #050d18;
+    --bg-raised: #0b1728;
+    --ink: #e8dec8;
+    --ink-dim: #9a9179;
+    --ink-faint: #6e6857;
+    --accent: #d8c08a;
+    --rule: rgba(232, 222, 200, 0.14);
+    --rule-soft: rgba(232, 222, 200, 0.07);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: auto; /* Lenis owns scrolling */
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans), system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background: rgba(216, 192, 138, 0.22);
+    color: var(--ink);
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 3px;
+  }
+
+  /* Beige-on-navy scrollbar so the chrome matches the page. */
+  ::-webkit-scrollbar {
+    width: 9px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--bg-deep);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(232, 222, 200, 0.16);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(232, 222, 200, 0.3);
+  }
+
+  /* Lenis runtime styles, inlined to avoid depending on the package CSS. */
+  html.lenis,
+  html.lenis body {
+    height: auto;
+  }
+  .lenis.lenis-smooth {
+    scroll-behavior: auto !important;
+  }
+  .lenis.lenis-smooth [data-lenis-prevent] {
+    overscroll-behavior: contain;
+  }
+  .lenis.lenis-stopped {
+    overflow: hidden;
+  }
+}
+
+@layer components {
+  /* Editorial metadata: tiny, spaced, monospaced. Used for labels and
+     technical annotations throughout. */
+  .meta {
+    @apply font-mono text-[10px] uppercase tracking-metadata text-beige-400;
+  }
+
+  .rule {
+    height: 1px;
+    background: var(--rule);
+  }
+
+  .shell {
+    @apply mx-auto w-full max-w-[1440px] px-6 sm:px-10 lg:px-16;
+  }
+
+  /* Fine film grain. Sits above the background, below content. */
+  .grain {
+    position: fixed;
+    inset: -50%;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.16;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 180px 180px;
+    animation: grain-shift 8s steps(4, end) infinite;
+  }
+
+  /* Hairline blueprint grid, faded at the edges. */
+  .blueprint {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(to right, var(--rule-soft) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--rule-soft) 1px, transparent 1px);
+    background-size: 88px 88px;
+    -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 10%, transparent 80%);
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 10%, transparent 80%);
+  }
+
+  /* Underline that wipes in from the left on hover. */
+  .link-underline {
+    position: relative;
+  }
+  .link-underline::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: -2px;
+    width: 100%;
+    height: 1px;
+    background: currentColor;
+    transform: scaleX(0);
+    transform-origin: right;
+    transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .link-underline:hover::after,
+  .link-underline:focus-visible::after {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+}
+
+/* Native cursor is hidden only while the custom one is actually active. */
+body[data-cursor-active='true'],
+body[data-cursor-active='true'] * {
+  cursor: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* The grain animation is decorative; stop it moving entirely. */
+  .grain {
+    animation: none !important;
+  }
+}
