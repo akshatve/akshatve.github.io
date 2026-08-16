@@ -1,216 +1,161 @@
 'use client';
 
-import gsap from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import useEmblaCarousel from 'embla-carousel-react';
-import { useLenis } from 'lenis/react';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import { projects } from '@/data/resume';
-import type { Project } from '@/types';
-import { useMediaQuery, usePrefersReducedMotion } from '@/hooks/use-media-query';
-import { Button } from '@/components/ui/button';
+import { EASE_EDITORIAL } from '@/lib/utils';
 import { SectionLabel } from '@/components/shared/section-label';
-import { ProjectCard } from '@/components/shared/project-card';
-import { ProjectModal } from '@/components/sections/project-modal';
+import { ProjectVisual } from '@/components/shared/project-visual';
 
 /**
- * Three deliberately different treatments:
+ * Vertical project list. Each entry gets its own full-width row so there is
+ * room for real detail — description paragraphs plus skill pills — read by
+ * scrolling down rather than sideways.
  *
- * - Desktop: GSAP ScrollTrigger pins the section and converts vertical scroll
- *   into horizontal travel. ScrollTrigger handles pinning, resize
- *   recalculation and cleanup far more reliably than hand-rolled sticky maths.
- * - Tablet: an Embla drag carousel — the same exploration, none of the pinning.
- * - Mobile / reduced motion: a plain vertical stack, per the brief.
+ * Structure intentionally mirrors the Leadership section so both read as one
+ * editorial system.
  */
 export function Projects() {
-  const [openProject, setOpenProject] = useState<Project | null>(null);
-  const isDesktop = useMediaQuery('(min-width: 1024px)');
-  const isTablet = useMediaQuery('(min-width: 640px) and (max-width: 1023px)');
-  const reduced = usePrefersReducedMotion();
-
-  const mode: 'pinned' | 'carousel' | 'stack' = reduced
-    ? 'stack'
-    : isDesktop
-      ? 'pinned'
-      : isTablet
-        ? 'carousel'
-        : 'stack';
-
   return (
-    <section id="projects" className="relative scroll-mt-24 pt-28 sm:pt-36 lg:pt-44">
+    <section id="projects" className="relative scroll-mt-24 py-28 sm:py-36 lg:py-44">
       <div className="shell">
         <SectionLabel index="04" label="Projects" />
-      </div>
 
-      {mode === 'pinned' && <PinnedRail onOpen={setOpenProject} />}
-      {mode === 'carousel' && <DragCarousel onOpen={setOpenProject} />}
-      {mode === 'stack' && (
-        <div className="shell mt-14 flex flex-col gap-6 pb-28 sm:pb-36">
-          {projects.map((p) => (
-            <ProjectCard key={p.number} project={p} onOpen={() => setOpenProject(p)} />
+        <div className="mt-16 flex flex-col lg:mt-24">
+          {projects.map((project) => (
+            <motion.article
+              key={project.number}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, margin: '-15%' }}
+              transition={{ staggerChildren: 0.1 }}
+              className="group relative border-t border-beige-200/12 py-14 last:border-b sm:py-16"
+            >
+              {/* Hover wash — depth without a card */}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-r from-beige-200/[0.035] to-transparent opacity-0 transition-opacity duration-700 ease-editorial group-hover:opacity-100"
+              />
+
+              <div className="grid gap-10 lg:grid-cols-12 lg:gap-12">
+                <div className="lg:col-span-1">
+                  <motion.span
+                    variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
+                    transition={{ duration: 0.7 }}
+                    className="font-mono text-[11px] text-gold"
+                  >
+                    {project.number}
+                  </motion.span>
+                </div>
+
+                {/* Title, period and decorative motif */}
+                <div className="lg:col-span-5">
+                  <motion.h3
+                    variants={{
+                      hidden: { opacity: 0, y: 22 },
+                      visible: { opacity: 1, y: 0 },
+                    }}
+                    transition={{ duration: 0.95, ease: EASE_EDITORIAL }}
+                    className="font-serif text-[clamp(1.7rem,3.4vw,2.7rem)] leading-[1.12] tracking-[-0.015em] text-beige-100"
+                  >
+                    {project.title}
+                  </motion.h3>
+
+                  <motion.p
+                    variants={{
+                      hidden: { opacity: 0, y: 14 },
+                      visible: { opacity: 1, y: 0 },
+                    }}
+                    transition={{ duration: 0.8, ease: EASE_EDITORIAL }}
+                    className="mt-4 font-mono text-[11px] tracking-wide2 text-beige-400"
+                  >
+                    {project.period}
+                  </motion.p>
+
+                  <motion.div
+                    variants={{
+                      hidden: { opacity: 0, y: 18 },
+                      visible: { opacity: 1, y: 0 },
+                    }}
+                    transition={{ duration: 1, ease: EASE_EDITORIAL }}
+                    className="relative mt-8 hidden h-40 overflow-hidden border border-beige-200/12 lg:block"
+                  >
+                    <span className="absolute inset-0 opacity-55 transition-opacity duration-700 ease-editorial group-hover:opacity-80">
+                      <ProjectVisual variant={project.visual} />
+                    </span>
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 bg-gradient-to-t from-navy-800 via-transparent to-transparent"
+                    />
+                  </motion.div>
+                </div>
+
+                {/* Description + skills */}
+                <div className="lg:col-span-6">
+                  <motion.ul
+                    variants={{
+                      hidden: {},
+                      visible: { transition: { staggerChildren: 0.12, delayChildren: 0.12 } },
+                    }}
+                    className="flex flex-col gap-5"
+                  >
+                    {project.points.map((point) => (
+                      <motion.li
+                        key={point}
+                        variants={{
+                          hidden: { opacity: 0, y: 16 },
+                          visible: { opacity: 1, y: 0 },
+                        }}
+                        transition={{ duration: 0.85, ease: EASE_EDITORIAL }}
+                        className="text-[14px] leading-[1.8] text-beige-300 text-pretty sm:text-[15px]"
+                      >
+                        {point}
+                      </motion.li>
+                    ))}
+                  </motion.ul>
+
+                  {project.skills.length > 0 && (
+                    <>
+                      <motion.p
+                        variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
+                        transition={{ duration: 0.7 }}
+                        className="meta mb-5 mt-10"
+                      >
+                        Skills used
+                      </motion.p>
+
+                      <motion.ul
+                        variants={{
+                          hidden: {},
+                          visible: { transition: { staggerChildren: 0.05 } },
+                        }}
+                        className="flex flex-wrap gap-2.5"
+                      >
+                        {project.skills.map((skill) => (
+                          <motion.li
+                            key={skill}
+                            variants={{
+                              hidden: { opacity: 0, y: 12, scale: 0.96 },
+                              visible: { opacity: 1, y: 0, scale: 1 },
+                            }}
+                            transition={{ duration: 0.6, ease: EASE_EDITORIAL }}
+                          >
+                            <span
+                              tabIndex={0}
+                              className="inline-flex cursor-default items-center rounded-full border border-beige-200/20 bg-beige-200/[0.04] px-4 py-2 text-[12.5px] text-beige-300 outline-offset-2 transition-all duration-500 ease-editorial hover:-translate-y-0.5 hover:border-gold/60 hover:bg-gold/10 hover:text-beige-100 focus-visible:-translate-y-0.5 focus-visible:border-gold/60 focus-visible:text-beige-100"
+                            >
+                              {skill}
+                            </span>
+                          </motion.li>
+                        ))}
+                      </motion.ul>
+                    </>
+                  )}
+                </div>
+              </div>
+            </motion.article>
           ))}
         </div>
-      )}
-
-      <ProjectModal project={openProject} onClose={() => setOpenProject(null)} />
+      </div>
     </section>
-  );
-}
-
-/* ---------------------------------------------------------------- desktop */
-
-function PinnedRail({ onOpen }: { onOpen: (p: Project) => void }) {
-  const sectionRef = useRef<HTMLDivElement>(null);
-  const trackRef = useRef<HTMLDivElement>(null);
-  const [distance, setDistance] = useState(0);
-  const lenis = useLenis();
-
-  // Lenis owns the scroll position, so ScrollTrigger has to be told to re-read
-  // it — otherwise the scrub lags a frame behind the page.
-  useEffect(() => {
-    if (!lenis) return;
-    const onScroll = () => ScrollTrigger.update();
-    lenis.on('scroll', onScroll);
-    return () => lenis.off('scroll', onScroll);
-  }, [lenis]);
-
-  // Measure the travel and keep it in state, so the wrapper's height is set in
-  // CSS rather than by ScrollTrigger's pin-spacer.
-  useLayoutEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-
-    const measure = () => {
-      setDistance(Math.max(0, track.scrollWidth - window.innerWidth + 96));
-      ScrollTrigger.refresh();
-    };
-
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(track);
-    window.addEventListener('resize', measure);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', measure);
-    };
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!distance) return;
-    gsap.registerPlugin(ScrollTrigger);
-
-    const ctx = gsap.context(() => {
-      // Deliberately NOT using ScrollTrigger's `pin`. The pin is handled by CSS
-      // `position: sticky` below, which needs no JavaScript at all — so if GSAP
-      // fails to initialise or its ticker is throttled, the section still lays
-      // out correctly and the cards simply don't slide. With `pin: true` the
-      // same failure collapses the whole section.
-      gsap.to(trackRef.current, {
-        x: -distance,
-        ease: 'none',
-        scrollTrigger: {
-          trigger: sectionRef.current,
-          start: 'top top',
-          end: `+=${distance}`,
-          scrub: 0.6,
-          invalidateOnRefresh: true,
-        },
-      });
-    }, sectionRef);
-
-    return () => ctx.revert();
-  }, [distance]);
-
-  return (
-    <div
-      ref={sectionRef}
-      style={{ height: `calc(100vh + ${distance}px)` }}
-      className="relative mt-12"
-    >
-      <div className="sticky top-0 flex h-screen items-center overflow-hidden">
-        <div ref={trackRef} className="flex gap-8 pl-6 pr-24 sm:pl-10 lg:pl-16">
-          {projects.map((p) => (
-            <ProjectCard
-              key={p.number}
-              project={p}
-              onOpen={() => onOpen(p)}
-              className="w-[min(78vw,620px)] shrink-0"
-            />
-          ))}
-          <div className="flex w-[280px] shrink-0 items-center">
-            <p className="meta leading-relaxed">
-              End of selected work
-              <span className="mt-3 block h-px w-16 bg-beige-200/20" />
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ----------------------------------------------------------------- tablet */
-
-function DragCarousel({ onOpen }: { onOpen: (p: Project) => void }) {
-  const [emblaRef, emblaApi] = useEmblaCarousel({
-    align: 'start',
-    containScroll: 'trimSnaps',
-    dragFree: true,
-  });
-  const [canPrev, setCanPrev] = useState(false);
-  const [canNext, setCanNext] = useState(false);
-
-  const sync = useCallback(() => {
-    if (!emblaApi) return;
-    setCanPrev(emblaApi.canScrollPrev());
-    setCanNext(emblaApi.canScrollNext());
-  }, [emblaApi]);
-
-  useEffect(() => {
-    if (!emblaApi) return;
-    sync();
-    emblaApi.on('select', sync).on('reInit', sync);
-    return () => {
-      emblaApi.off('select', sync).off('reInit', sync);
-    };
-  }, [emblaApi, sync]);
-
-  return (
-    <div className="mt-14 pb-28 sm:pb-36">
-      {/* data-lenis-prevent stops Lenis hijacking the drag gesture */}
-      <div ref={emblaRef} className="overflow-hidden" data-lenis-prevent>
-        <div className="flex gap-6 pl-6 pr-6 sm:pl-10 sm:pr-10">
-          {projects.map((p) => (
-            <ProjectCard
-              key={p.number}
-              project={p}
-              onOpen={() => onOpen(p)}
-              className="w-[min(80vw,520px)] shrink-0"
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className="shell mt-8 flex items-center gap-3">
-        <Button
-          size="sm"
-          onClick={() => emblaApi?.scrollPrev()}
-          disabled={!canPrev}
-          aria-label="Previous project"
-        >
-          <ArrowLeft aria-hidden />
-        </Button>
-        <Button
-          size="sm"
-          onClick={() => emblaApi?.scrollNext()}
-          disabled={!canNext}
-          aria-label="Next project"
-        >
-          <ArrowRight aria-hidden />
-        </Button>
-        <span className="meta ml-2">Drag to explore</span>
-      </div>
-    </div>
   );
 }

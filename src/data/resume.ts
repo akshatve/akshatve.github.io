@@ -138,70 +138,41 @@ export const projects: Project[] = [
     number: '01',
     title: 'Fake Review Detection Pipeline',
     period: '05/2026 – 06/2026',
-    teaser: 'Adversarial robustness testing for review classification.',
-    summary:
+    points: [
       'Co-authored a detection pipeline on a 40,000-instance Amazon-style dataset combining TF-IDF n-grams with 15 stylometric features; built a TextAttack multi-perturbation framework to quantify classifier degradation under adversarial attacks.',
-    context: 'Co-authored a detection pipeline on a 40,000-instance Amazon-style dataset.',
-    built: [
-      'Combined TF-IDF n-grams with 15 stylometric features.',
-      'Built a TextAttack multi-perturbation framework.',
-      'Quantified classifier degradation under adversarial attacks.',
     ],
-    // Only technologies the résumé ties to THIS project. Python, scikit-learn
-    // and RoBERTa appear under Skills but are not attributed here, so listing
-    // them on this card would be an invented association.
-    tech: ['TF-IDF n-grams', 'Stylometric Features', 'TextAttack'],
+    // Only technologies the résumé ties to THIS project.
+    skills: ['TF-IDF n-grams', 'Stylometric Features', 'TextAttack'],
     visual: 'text',
   },
   {
     number: '02',
     title: 'GoodsFlow — Inventory & Shortage Analytics Platform',
     period: '04/2026',
-    teaser: 'End-to-end predictive logistics pipeline.',
-    summary:
+    points: [
       'Engineered an end-to-end predictive logistics pipeline in Python with data seeding for edge cases; developed a localized shortage scorer and demand trend analyzer outputting JSON datasets for downstream dashboards.',
-    context:
-      'An end-to-end predictive logistics pipeline engineered in Python, with data seeding for edge cases.',
-    built: [
-      'Developed a localized shortage scorer.',
-      'Built a demand trend analyzer.',
-      'Output JSON datasets for downstream dashboards.',
     ],
-    tech: ['Python', 'JSON'],
+    skills: ['Python', 'JSON'],
     visual: 'flow',
   },
   {
     number: '03',
     title: 'Applied Financial Analytics for Business Insights',
     period: '01/2026 – 03/2026',
-    teaser: 'Financial ratios, regression and risk categorization.',
-    summary:
+    points: [
       "Led DDSC's end-to-end financial analytics project; engineered financial ratios from company statements and stock price data, applied linear regression for profitability trends and logistic regression for risk categorization.",
-    context:
-      "Led the Davis Data Science Club's end-to-end financial analytics project.",
-    built: [
-      'Engineered financial ratios from company statements and stock price data.',
-      'Applied linear regression for profitability trends.',
-      'Applied logistic regression for risk categorization.',
     ],
-    tech: ['Linear Regression', 'Logistic Regression'],
+    skills: ['Linear Regression', 'Logistic Regression'],
     visual: 'finance',
   },
   {
     number: '04',
     title: 'Stack Exchange Relational Data Analysis',
     period: '05/2026',
-    teaser: 'SQL workflows over a 2.4+ GB SQLite dataset.',
-    summary:
+    points: [
       'Optimized SQL workflows on a 2.4+ GB SQLite Cross Validated dataset using RSQLite and DBI; modeled response times, tag frequencies, and the impact of bounties on community engagement in R.',
-    context:
-      'Optimized SQL workflows on a 2.4+ GB SQLite Cross Validated dataset.',
-    built: [
-      'Optimized SQL workflows using RSQLite and DBI.',
-      'Modeled response times and tag frequencies.',
-      'Modeled the impact of bounties on community engagement in R.',
     ],
-    tech: ['R', 'SQL', 'SQLite', 'RSQLite', 'DBI'],
+    skills: ['R', 'SQL', 'SQLite', 'RSQLite', 'DBI'],
     visual: 'database',
   },
 ];

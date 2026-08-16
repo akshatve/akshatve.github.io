@@ -37,15 +37,10 @@ export interface Project {
   number: string;
   title: string;
   period: string;
-  /** One-line teaser shown in the closed card. */
-  teaser: string;
-  /** Full résumé sentence, shown in the expanded case study. */
-  summary: string;
-  /** Short context line — derived only from what the résumé states. */
-  context: string;
-  /** Discrete points of what was built, split from the résumé sentence. */
-  built: string[];
-  tech: string[];
+  /** Description paragraphs. Same shape as Leadership.points. */
+  points: string[];
+  /** Skill / technology pills rendered beneath the description. */
+  skills: string[];
   /** Decorative visual treatment key — not data-bearing. */
   visual: 'text' | 'flow' | 'finance' | 'database';
 }
