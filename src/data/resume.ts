@@ -96,8 +96,18 @@ export const leadership: Leadership[] = [
     organization: 'Machine Learning Student Network',
     position: 'Marketing Director',
     period: '12/2024 – 06/2026',
+    // Description and skills supplied directly by Akshat.
     points: [
-      'Led social media outreach, recruitment campaigns, and fundraisers across Discord and Instagram, coordinating digital assets with cross-functional teams.',
+      'Served as Marketing Director for the Machine Learning Student Network, directing end-to-end social media outreach, professional branding, and recruitment campaigns across Instagram, Discord, and LinkedIn.',
+      'Designed digital visual assets and structured targeted promo strategy in coordination with cross-functional club teams.',
+      'Streamlined multi-channel campaign execution to expand club visibility, drive member acquisition, and elevate organizational presence across professional networks.',
+    ],
+    skills: [
+      'Social Media Strategy & Brand Management (Instagram, Discord, LinkedIn)',
+      'Digital Campaign & Recruitment Planning',
+      'Visual Asset Design & Content Creation',
+      'Cross-Functional Team Leadership',
+      'Community Engagement & Outreach',
     ],
   },
   {
