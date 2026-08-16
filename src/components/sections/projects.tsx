@@ -16,18 +16,18 @@ const CLOSE_DELAY = 220;
 
 export function Projects() {
   return (
-    <section id="projects" className="relative scroll-mt-24 py-28 sm:py-36 lg:py-44">
+    <section id="projects" className="relative scroll-mt-24 py-16 sm:py-20 lg:py-24">
       <div className="shell">
         <SectionLabel index="04" label="Projects" />
 
         {/* Desktop: menu + preview panel. Mobile: plain stack. Both render
             from the same data and are switched with CSS rather than JS, so
             there is no layout flash on hydration. */}
-        <div className="mt-16 hidden lg:mt-24 lg:block">
+        <div className="mt-10 hidden lg:mt-14 lg:block">
           <Showcase />
         </div>
 
-        <div className="mt-14 flex flex-col gap-4 lg:hidden">
+        <div className="mt-10 flex flex-col gap-4 lg:hidden">
           {projects.map((p) => (
             <StackedCard key={p.number} project={p} />
           ))}

@@ -16,11 +16,11 @@ const details = [
 /** Closing statement plus résumé contact details. */
 export function Contact() {
   return (
-    <section id="contact" className="relative scroll-mt-24 py-28 sm:py-36 lg:py-44">
+    <section id="contact" className="relative scroll-mt-24 py-16 sm:py-20 lg:py-24">
       <div className="shell">
         <SectionLabel index="07" label="Contact" />
 
-        <div className="mt-16 lg:mt-24">
+        <div className="mt-10 lg:mt-14">
           <SplitText
             as="h2"
             text="Let's build something meaningful with data."

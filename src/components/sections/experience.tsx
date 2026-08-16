@@ -21,11 +21,11 @@ export function Experience() {
   const dotY = useTransform(scrollYProgress, [0, 1], ['0%', '100%']);
 
   return (
-    <section id="experience" className="relative scroll-mt-24 py-28 sm:py-36 lg:py-44">
+    <section id="experience" className="relative scroll-mt-24 py-16 sm:py-20 lg:py-24">
       <div className="shell">
         <SectionLabel index="02" label="Experience" />
 
-        <div ref={ref} className="relative mt-16 lg:mt-24">
+        <div ref={ref} className="relative mt-10 lg:mt-14">
           {/* Spine — track plus the drawn progress line */}
           <div
             aria-hidden

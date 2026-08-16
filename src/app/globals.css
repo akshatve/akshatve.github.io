@@ -4,9 +4,9 @@
 
 @layer base {
   :root {
-    --bg: #07111f;
-    --bg-deep: #050d18;
-    --bg-raised: #0b1728;
+    --bg: #050b14;
+    --bg-deep: #02060c;
+    --bg-raised: #08111d;
     --ink: #e8dec8;
     --ink-dim: #9a9179;
     --ink-faint: #6e6857;

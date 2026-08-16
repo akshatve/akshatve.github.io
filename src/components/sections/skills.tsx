@@ -15,11 +15,11 @@ export function Skills() {
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
 
   return (
-    <section id="skills" className="relative scroll-mt-24 py-28 sm:py-36 lg:py-44">
+    <section id="skills" className="relative scroll-mt-24 py-16 sm:py-20 lg:py-24">
       <div className="shell">
         <SectionLabel index="05" label="Skills" />
 
-        <div className="mt-16 lg:mt-24">
+        <div className="mt-10 lg:mt-14">
           {/* Anchor */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}

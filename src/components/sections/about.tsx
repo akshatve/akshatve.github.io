@@ -12,7 +12,7 @@ import { SplitText } from '@/components/shared/split-text';
  */
 export function About() {
   return (
-    <section id="about" className="relative scroll-mt-24 py-28 sm:py-36 lg:py-44">
+    <section id="about" className="relative scroll-mt-24 py-16 sm:py-20 lg:py-24">
       <div className="shell">
         <SectionLabel index="01" label="About" />
 
@@ -31,7 +31,7 @@ export function About() {
               whileInView="visible"
               viewport={{ once: true, margin: '-15%' }}
               transition={{ staggerChildren: 0.1, delayChildren: 0.35 }}
-              className="mt-14 flex flex-col"
+              className="mt-10 flex flex-col"
             >
               {disciplines.map((d) => (
                 <motion.li

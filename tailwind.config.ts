@@ -14,11 +14,11 @@ const config: Config = {
       colors: {
         /* Deep navy ground, warm beige ink. Nothing else. */
         navy: {
-          900: '#050D18',
-          800: '#07111F',
-          700: '#0B1728',
-          600: '#101F33',
-          500: '#16293F',
+          900: '#02060C',
+          800: '#050B14',
+          700: '#08111D',
+          600: '#0C1826',
+          500: '#122132',
         },
         beige: {
           100: '#F3ECDC',

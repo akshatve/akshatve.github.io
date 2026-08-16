@@ -11,11 +11,11 @@ import { SectionLabel } from '@/components/shared/section-label';
  */
 export function Certifications() {
   return (
-    <section id="certifications" className="relative scroll-mt-24 py-28 sm:py-36 lg:py-44">
+    <section id="certifications" className="relative scroll-mt-24 py-16 sm:py-20 lg:py-24">
       <div className="shell">
         <SectionLabel index="06" label="Certifications" />
 
-        <ul className="mt-16 lg:mt-24">
+        <ul className="mt-10 lg:mt-14">
           {certifications.map((cert, i) => (
             <motion.li
               key={cert.title}

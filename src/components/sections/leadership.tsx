@@ -12,11 +12,11 @@ import { SectionLabel } from '@/components/shared/section-label';
  */
 export function Leadership() {
   return (
-    <section id="leadership" className="relative scroll-mt-24 py-28 sm:py-36 lg:py-44">
+    <section id="leadership" className="relative scroll-mt-24 py-16 sm:py-20 lg:py-24">
       <div className="shell">
         <SectionLabel index="03" label="Leadership" />
 
-        <div className="mt-16 flex flex-col lg:mt-24">
+        <div className="mt-10 flex flex-col lg:mt-24">
           {leadership.map((item, i) => (
             <motion.article
               key={item.organization}
