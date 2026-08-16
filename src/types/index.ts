@@ -28,6 +28,8 @@ export interface Leadership {
   position: string;
   period: string;
   points: string[];
+  /** Optional skill pills rendered beneath the description. */
+  skills?: string[];
 }
 
 export interface Project {

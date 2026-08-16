@@ -104,7 +104,22 @@ export const leadership: Leadership[] = [
     organization: 'Davis Data Science Club',
     position: 'Project Lead',
     period: '01/2026 – 03/2026',
-    points: ['Applied Financial Analytics Using Data Science for Business Insights.'],
+    // Description and skills supplied directly by Akshat.
+    points: [
+      'Led an end-to-end financial analytics project for the Davis Data Science Club, managing a team through the ingestion, cleaning, and standardization of 15–20 years of multi-statement financial data using the Alpha Vantage API.',
+      'Engineered key metrics like gross margins, net margins, and Return on Equity (ROE) across major tech firms by consolidating disparate income statements, balance sheets, and cash flow reports into clean timeline datasets.',
+      'Performed exploratory data analysis and applied regression models to uncover profitability drivers, evaluate risk, and synthesize quantitative trends into actionable business insights and visual reports.',
+    ],
+    skills: [
+      'Python (Pandas, NumPy)',
+      'REST APIs (Alpha Vantage API)',
+      'Data Cleaning & Standardization',
+      'Feature Engineering & Financial Ratio Calculation',
+      'Exploratory Data Analysis (EDA)',
+      'Linear & Logistic Regression',
+      'Data Visualisation & Reporting',
+      'Technical Project Leadership',
+    ],
   },
 ];
 

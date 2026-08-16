@@ -96,6 +96,49 @@ export function Leadership() {
                     ))}
                   </motion.ul>
                 </div>
+
+                {/* Skill bubbles — offset to align under the description
+                    column on wide screens, full width below that. */}
+                {item.skills && (
+                  <div className="lg:col-span-11 lg:col-start-2">
+                    <motion.p
+                      variants={{
+                        hidden: { opacity: 0 },
+                        visible: { opacity: 1 },
+                      }}
+                      transition={{ duration: 0.7 }}
+                      className="meta mb-5 mt-4"
+                    >
+                      Skills used
+                    </motion.p>
+
+                    <motion.ul
+                      variants={{
+                        hidden: {},
+                        visible: { transition: { staggerChildren: 0.05, delayChildren: 0.1 } },
+                      }}
+                      className="flex flex-wrap gap-2.5"
+                    >
+                      {item.skills.map((skill) => (
+                        <motion.li
+                          key={skill}
+                          variants={{
+                            hidden: { opacity: 0, y: 12, scale: 0.96 },
+                            visible: { opacity: 1, y: 0, scale: 1 },
+                          }}
+                          transition={{ duration: 0.6, ease: EASE_EDITORIAL }}
+                        >
+                          <span
+                            tabIndex={0}
+                            className="inline-flex cursor-default items-center rounded-full border border-beige-200/20 bg-beige-200/[0.04] px-4 py-2 text-[12.5px] text-beige-300 outline-offset-2 transition-all duration-500 ease-editorial hover:-translate-y-0.5 hover:border-gold/60 hover:bg-gold/10 hover:text-beige-100 focus-visible:-translate-y-0.5 focus-visible:border-gold/60 focus-visible:text-beige-100"
+                          >
+                            {skill}
+                          </span>
+                        </motion.li>
+                      ))}
+                    </motion.ul>
+                  </div>
+                )}
               </div>
             </motion.article>
           ))}
