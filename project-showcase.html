@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Interactive Project Showcase — prototype</title>
+<style>
+  /* ── Theme tokens — retheme the whole prototype from here ───────── */
+  :root{
+    --bg:#07111f;
+    --bg-deep:#050d18;
+    --panel:#0b1728;
+    --ink:#e8dec8;
+    --ink-dim:#9a9179;
+    --ink-faint:#6e6857;
+    --accent:#d8c08a;
+    --rule:rgba(232,222,200,.14);
+    --rule-soft:rgba(232,222,200,.07);
+    --ease:cubic-bezier(.22,1,.36,1);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%}
+  body{
+    background:var(--bg);color:var(--ink);
+    font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  .wrap{max-width:1240px;margin:0 auto;padding:34px 22px 70px}
+
+  header{padding-bottom:20px;border-bottom:1px solid var(--rule)}
+  h1{margin:0;font-size:19px;font-weight:600;letter-spacing:-.01em}
+  .sub{margin:6px 0 0;color:var(--ink-dim);font-size:12.5px}
+
+  /* ── Showcase shell ─────────────────────────────────────────────── */
+  .showcase{position:relative;display:grid;gap:0;margin-top:28px;grid-template-columns:1fr}
+  @media(min-width:900px){
+    .showcase{grid-template-columns:minmax(300px,38%) 1fr;gap:40px}
+  }
+
+  /* ── Menu ───────────────────────────────────────────────────────── */
+  .menu{list-style:none;margin:0;padding:0}
+  .item{border-top:1px solid var(--rule-soft)}
+  .item:last-child{border-bottom:1px solid var(--rule-soft)}
+
+  .item button{
+    all:unset;display:flex;align-items:baseline;gap:14px;width:100%;
+    padding:18px 6px;cursor:pointer;position:relative;
+    transition:padding-left .55s var(--ease);
+  }
+  .item button:focus-visible{outline:1px solid var(--accent);outline-offset:-2px}
+  .idx{font-family:ui-monospace,monospace;font-size:10px;color:var(--ink-faint);
+       transition:color .45s var(--ease)}
+  .name{font-size:clamp(17px,2.3vw,23px);letter-spacing:-.01em;color:var(--ink-dim);
+        transition:color .45s var(--ease)}
+  .item button::before{
+    content:"";position:absolute;left:0;top:50%;width:0;height:1px;background:var(--accent);
+    transform:translateY(-50%);transition:width .55s var(--ease);
+  }
+
+  .item[data-state="active"] button{padding-left:34px}
+  .item[data-state="active"] button::before{width:24px}
+  .item[data-state="active"] .name{color:var(--ink)}
+  .item[data-state="active"] .idx{color:var(--accent)}
+
+  /* locked adds a persistent marker so the state is legible */
+  .item[data-locked="true"] .lock{opacity:1;transform:translateX(0)}
+  .lock{
+    margin-left:auto;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent);opacity:0;transform:translateX(-6px);
+    transition:opacity .4s var(--ease),transform .4s var(--ease);
+  }
+
+  /* ── Stage ──────────────────────────────────────────────────────── */
+  .stage{position:relative;min-height:430px;margin-top:22px}
+  @media(min-width:900px){ .stage{margin-top:0} }
+
+  .card{
+    position:absolute;inset:0;border:1px solid var(--rule);background:var(--panel);
+    padding:24px;display:flex;flex-direction:column;
+    opacity:0;visibility:hidden;transform:translateY(14px);
+    transition:opacity .5s var(--ease),transform .5s var(--ease),visibility .5s;
+  }
+  .card[data-show="true"]{opacity:1;visibility:visible;transform:translateY(0)}
+
+  .card .meta{display:flex;justify-content:space-between;gap:14px;align-items:baseline}
+  .card .kicker{font-family:ui-monospace,monospace;font-size:9.5px;letter-spacing:.24em;
+    text-transform:uppercase;color:var(--ink-faint)}
+  .card h2{margin:12px 0 0;font-size:clamp(19px,2.6vw,26px);font-weight:600;letter-spacing:-.015em}
+  .card p{margin:12px 0 0;color:var(--ink-dim);font-size:13.5px;line-height:1.75;max-width:56ch}
+
+  .viz{margin-top:18px;flex:1;min-height:190px;border:1px solid var(--rule-soft);
+       background:var(--bg-deep);position:relative;overflow:hidden}
+  .viz canvas{display:block;width:100%;height:100%}
+
+  .tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .tag{
+    font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ink-dim);border:1px solid var(--rule);border-radius:999px;padding:5px 11px;
+    transition:color .45s var(--ease),border-color .45s var(--ease),transform .45s var(--ease);
+  }
+  .tag:hover{color:var(--ink);border-color:var(--accent);transform:translateY(-1px)}
+
+  .empty{
+    position:absolute;inset:0;display:grid;place-items:center;text-align:center;
+    border:1px dashed var(--rule-soft);color:var(--ink-faint);
+    font-family:ui-monospace,monospace;font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;
+    transition:opacity .45s var(--ease);
+  }
+  .empty[data-hide="true"]{opacity:0}
+
+  /* ── Cursor bridge ──────────────────────────────────────────────────
+     An overlay clipped to a triangle running from the cursor to the two
+     near corners of the stage. While the pointer is inside that wedge it
+     is plausibly travelling toward the panel, so the close timer is held
+     off. Invisible, and only present while a hover is live.            */
+  #safe-area{
+    position:fixed;inset:0;z-index:40;pointer-events:none;display:none;
+    /* background:rgba(216,192,138,.12);  ← uncomment to see the wedge */
+  }
+  #safe-area[data-on="true"]{display:block;pointer-events:auto}
+
+  footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--rule);
+    display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;
+    font-family:ui-monospace,monospace;font-size:10.5px;color:var(--ink-faint)}
+  kbd{border:1px solid var(--rule);border-radius:4px;padding:1px 5px;font-size:9.5px}
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:.001ms !important;animation-iteration-count:1 !important;
+      transition-duration:.001ms !important}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Interactive Project Showcase</h1>
+    <p class="sub">Hover a project to preview · click to lock · <kbd>Esc</kbd> to release</p>
+  </header>
+
+  <div class="showcase" id="showcase">
+    <ul class="menu" id="menu" role="tablist" aria-label="Projects"></ul>
+    <div class="stage" id="stage">
+      <div class="empty" id="empty">Hover a project</div>
+    </div>
+  </div>
+
+  <footer>
+    <span id="status">Idle</span>
+    <span>Safe-triangle bridge · 220 ms grace</span>
+  </footer>
+</div>
+
+<div id="safe-area" aria-hidden="true"></div>
+
+<script>
+(function(){
+  'use strict';
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+  /* ── Content ─────────────────────────────────────────────────────── */
+  const PROJECTS = [
+    { id:'nlp', title:'Fake News Classifier',
+      blurb:'An end-to-end NLP credibility pipeline over ~44K news articles. Benchmarks a lexical TF-IDF model against a fine-tuned DistilBERT, and returns calibrated probabilities with token attribution rather than a flat binary verdict.',
+      tags:['Python','TF-IDF','DistilBERT','Token attribution'], viz:'tokens' },
+
+    { id:'flow', title:'GoodsFlow — Shortage Analytics',
+      blurb:'A predictive logistics pipeline with edge-case seeding, a localized shortage scorer and a demand-trend analyzer. Emits JSON datasets consumed directly by downstream dashboards.',
+      tags:['Python','Forecasting','JSON'], viz:'flow' },
+
+    { id:'fin', title:'Applied Financial Analytics',
+      blurb:'An interactive platform running automated quantitative evaluation and OLS predictive modeling across two decades of multi-statement disclosures, with confidence-interval forecasting and custom CSV ingestion.',
+      tags:['Python','OLS regression','Feature extraction'], viz:'regression' },
+
+    { id:'sql', title:'Stack Exchange Relational Analysis',
+      blurb:'Optimized SQL workflows over a 2.4+ GB SQLite corpus using RSQLite and DBI, modeling response times, tag frequencies and the effect of bounties on community engagement.',
+      tags:['R','SQL','SQLite','RSQLite'], viz:'db' }
+  ];
+
+  const menu   = document.getElementById('menu');
+  const stage  = document.getElementById('stage');
+  const empty  = document.getElementById('empty');
+  const safe   = document.getElementById('safe-area');
+  const status = document.getElementById('status');
+
+  let activeId = null;      // currently previewed
+  let lockedId = null;      // pinned by click
+  let closeTimer = null;
+  const CLOSE_DELAY = 220;  // grace period before the panel drops
+
+  /* ── Build menu + cards ──────────────────────────────────────────── */
+  const cards = {};
+
+  PROJECTS.forEach((p, i) => {
+    const li = document.createElement('li');
+    li.className = 'item';
+    li.dataset.id = p.id;
+    li.innerHTML =
+      '<button role="tab" aria-selected="false" aria-controls="card-' + p.id + '">' +
+        '<span class="idx mono">' + String(i + 1).padStart(2,'0') + '</span>' +
+        '<span class="name">' + p.title + '</span>' +
+        '<span class="lock mono">Locked</span>' +
+      '</button>';
+    menu.appendChild(li);
+
+    const card = document.createElement('article');
+    card.className = 'card';
+    card.id = 'card-' + p.id;
+    card.innerHTML =
+      '<div class="meta"><span class="kicker">Project ' + String(i+1).padStart(2,'0') + '</span>' +
+      '<span class="kicker" data-role="state">Preview</span></div>' +
+      '<h2>' + p.title + '</h2>' +
+      '<p>' + p.blurb + '</p>' +
+      '<div class="viz"><canvas></canvas></div>' +
+      '<div class="tags">' + p.tags.map(t => '<span class="tag">' + t + '</span>').join('') + '</div>';
+    stage.appendChild(card);
+
+    cards[p.id] = { el:card, canvas:card.querySelector('canvas'), viz:p.viz, anim:null };
+  });
+
+  /* ── Show / hide ─────────────────────────────────────────────────── */
+  function show(id){
+    if (activeId === id) return;
+    if (activeId) hideCard(activeId);
+    activeId = id;
+
+    const c = cards[id];
+    c.el.dataset.show = 'true';
+    empty.dataset.hide = 'true';
+    document.querySelector('.item[data-id="' + id + '"]').dataset.state = 'active';
+    document.querySelector('.item[data-id="' + id + '"] button').setAttribute('aria-selected','true');
+    startViz(id);
+    setStatus();
+  }
+
+  function hideCard(id){
+    const c = cards[id];
+    if (!c) return;
+    c.el.dataset.show = 'false';
+    stopViz(id);
+    const li = document.querySelector('.item[data-id="' + id + '"]');
+    if (li && li.dataset.locked !== 'true') li.dataset.state = '';
+    const btn = document.querySelector('.item[data-id="' + id + '"] button');
+    if (btn) btn.setAttribute('aria-selected','false');
+  }
+
+  function clearPreview(){
+    if (lockedId) return;                 // a locked card never auto-closes
+    if (activeId) hideCard(activeId);
+    activeId = null;
+    empty.dataset.hide = 'false';
+    setStatus();
+  }
+
+  function setStatus(){
+    status.textContent = lockedId
+      ? 'Locked · ' + PROJECTS.find(p => p.id === lockedId).title
+      : (activeId ? 'Previewing · ' + PROJECTS.find(p => p.id === activeId).title : 'Idle');
+  }
+
+  /* ── Hover intent + safe triangle ────────────────────────────────── */
+  function cancelClose(){ clearTimeout(closeTimer); closeTimer = null; }
+  function scheduleClose(){
+    cancelClose();
+    closeTimer = setTimeout(() => { clearPreview(); disarmSafeArea(); }, CLOSE_DELAY);
+  }
+
+  /**
+   * Clip the overlay to a wedge from the cursor to the stage's near edge.
+   * Inside that wedge the pointer is heading for the panel, so hovering it
+   * simply cancels the pending close — the preview stays put on a diagonal
+   * traverse, which a naive mouseleave handler would drop instantly.
+   */
+  function armSafeArea(x, y){
+    if (!finePointer) return;
+    const r = stage.getBoundingClientRect();
+    // pad vertically so shallow diagonals still land inside the wedge
+    const pad = 24;
+    safe.style.clipPath =
+      'polygon(' + x + 'px ' + y + 'px, ' +
+                   r.left + 'px ' + (r.top - pad) + 'px, ' +
+                   r.left + 'px ' + (r.bottom + pad) + 'px)';
+    safe.dataset.on = 'true';
+  }
+  function disarmSafeArea(){ safe.dataset.on = 'false'; }
+
+  safe.addEventListener('pointerenter', cancelClose);
+  safe.addEventListener('pointerleave', () => { if (!lockedId) scheduleClose(); });
+  // Leaving the wedge sideways should also release it.
+  safe.addEventListener('pointermove', e => {
+    const r = stage.getBoundingClientRect();
+    if (e.clientX > r.left) disarmSafeArea();
+  });
+
+  menu.addEventListener('pointerover', e => {
+    const li = e.target.closest('.item');
+    if (!li || !finePointer || lockedId) return;
+    cancelClose();
+    show(li.dataset.id);
+  });
+
+  menu.addEventListener('pointermove', e => {
+    const li = e.target.closest('.item');
+    if (li && !lockedId && finePointer) armSafeArea(e.clientX, e.clientY);
+  });
+
+  menu.addEventListener('pointerleave', e => {
+    if (lockedId || !finePointer) return;
+    armSafeArea(e.clientX, e.clientY);
+    scheduleClose();
+  });
+
+  stage.addEventListener('pointerenter', () => { cancelClose(); disarmSafeArea(); });
+  stage.addEventListener('pointerleave', () => { if (!lockedId) scheduleClose(); });
+
+  /* ── Lock on click ───────────────────────────────────────────────── */
+  menu.addEventListener('click', e => {
+    const li = e.target.closest('.item');
+    if (!li) return;
+    const id = li.dataset.id;
+
+    if (lockedId === id){                 // clicking the locked item releases it
+      lockedId = null;
+      li.dataset.locked = 'false';
+    } else {
+      document.querySelectorAll('.item').forEach(n => n.dataset.locked = 'false');
+      lockedId = id;
+      li.dataset.locked = 'true';
+      cancelClose();
+      show(id);
+    }
+    disarmSafeArea();
+    setStatus();
+    // reflect lock state in the card's own label
+    Object.keys(cards).forEach(k => {
+      const tag = cards[k].el.querySelector('[data-role="state"]');
+      if (tag) tag.textContent = (lockedId === k) ? 'Locked' : 'Preview';
+    });
+  });
+
+  /* Keyboard: focus previews, Enter/Space locks, Esc releases. */
+  menu.addEventListener('focusin', e => {
+    const li = e.target.closest('.item');
+    if (li && !lockedId) show(li.dataset.id);
+  });
+  addEventListener('keydown', e => {
+    if (e.key === 'Escape' && lockedId){
+      document.querySelectorAll('.item').forEach(n => n.dataset.locked = 'false');
+      lockedId = null; setStatus();
+      Object.keys(cards).forEach(k => {
+        const t = cards[k].el.querySelector('[data-role="state"]'); if (t) t.textContent = 'Preview';
+      });
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+      const btns = [...menu.querySelectorAll('button')];
+      const i = btns.indexOf(document.activeElement);
+      if (i > -1){
+        e.preventDefault();
+        btns[(i + (e.key === 'ArrowDown' ? 1 : btns.length - 1)) % btns.length].focus();
+      }
+    }
+  });
+
+  /* Touch: no hover, so the first tap simply selects (and locks). */
+  if (!finePointer){
+    menu.addEventListener('pointerup', e => {
+      const li = e.target.closest('.item');
+      if (li) show(li.dataset.id);
+    });
+  }
+
+  /* ── Visualisations ──────────────────────────────────────────────── */
+  function fit(canvas){
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const r = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.floor(r.width * dpr));
+    canvas.height = Math.max(1, Math.floor(r.height * dpr));
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx, w:r.width, h:r.height };
+  }
+
+  const INK = '232,222,200', GOLD = '216,192,138';
+
+  function startViz(id){
+    const c = cards[id];
+    stopViz(id);
+    const { ctx, w, h } = fit(c.canvas);
+    const t0 = performance.now();
+    let state = null;
+
+    if (c.viz === 'tokens'){
+      state = Array.from({length: Math.round(w * h / 900)}, () => ({
+        x: Math.random()*w, y: Math.random()*h,
+        v: .2 + Math.random()*1.1, a: .1 + Math.random()*.45,
+        r: Math.random() < .1 ? 1.8 : .9
+      }));
+    }
+
+    function frame(now){
+      const t = Math.min(1, (now - t0) / 1400);
+      const e = 1 - Math.pow(1 - t, 3);
+      ctx.clearRect(0,0,w,h);
+
+      // shared hairline grid
+      ctx.strokeStyle = 'rgba(' + INK + ',.05)'; ctx.lineWidth = 1;
+      for (let i=1;i<4;i++){ ctx.beginPath(); ctx.moveTo(0,h/4*i); ctx.lineTo(w,h/4*i); ctx.stroke(); }
+
+      if (c.viz === 'tokens'){
+        for (const p of state){
+          p.x += p.v; if (p.x > w+3){ p.x = -3; p.y = Math.random()*h; }
+          ctx.beginPath();
+          ctx.fillStyle = 'rgba(' + (p.r > 1 ? GOLD : INK) + ',' + p.a*e + ')';
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+        }
+      }
+
+      if (c.viz === 'flow'){
+        const n = 5, gap = w/(n+1);
+        for (let i=0;i<n;i++){
+          const x = gap*(i+1), y = h/2 + Math.sin((now/900)+i)*h*.16;
+          if (i){
+            const px = gap*i, py = h/2 + Math.sin((now/900)+i-1)*h*.16;
+            ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(x,y);
+            ctx.strokeStyle = 'rgba(' + INK + ',' + .22*e + ')'; ctx.lineWidth = 1; ctx.stroke();
+          }
+          ctx.beginPath();
+          ctx.strokeStyle = 'rgba(' + (i===2?GOLD:INK) + ',' + .7*e + ')';
+          ctx.lineWidth = 1.2; ctx.rect(x-6,y-6,12,12); ctx.stroke();
+        }
+      }
+
+      if (c.viz === 'regression'){
+        const fy = x => h*.78 - (x/w)*h*.5;
+        const spread = 15;
+        ctx.beginPath();
+        ctx.moveTo(0, fy(0)-spread); ctx.lineTo(w*e, fy(w*e)-spread);
+        ctx.lineTo(w*e, fy(w*e)+spread); ctx.lineTo(0, fy(0)+spread); ctx.closePath();
+        ctx.fillStyle = 'rgba(' + GOLD + ',.11)'; ctx.fill();
+        ctx.beginPath(); ctx.moveTo(0, fy(0)); ctx.lineTo(w*e, fy(w*e));
+        ctx.strokeStyle = 'rgba(' + GOLD + ',.95)'; ctx.lineWidth = 1.6; ctx.stroke();
+        for (let i=0;i<10;i++){
+          const x = w*(i+.5)/10;
+          if (x > w*e) break;
+          ctx.beginPath(); ctx.fillStyle = 'rgba(' + INK + ',.55)';
+          ctx.arc(x, fy(x) + Math.sin(i*2.1)*11, 1.7, 0, Math.PI*2); ctx.fill();
+        }
+      }
+
+      if (c.viz === 'db'){
+        const cols = 3, rows = 5, bw = w*.2, bh = h*.62;
+        for (let g=0; g<cols; g++){
+          const x = w*.1 + g*(bw + w*.12), y = h*.19;
+          ctx.strokeStyle = 'rgba(' + (g===1?GOLD:INK) + ',' + .5*e + ')';
+          ctx.lineWidth = 1; ctx.strokeRect(x, y, bw, bh);
+          for (let r=1;r<rows;r++){
+            const ry = y + bh/rows*r;
+            const pulse = (Math.sin(now/500 + g*1.7 + r) + 1)/2;
+            ctx.beginPath(); ctx.moveTo(x, ry); ctx.lineTo(x+bw, ry);
+            ctx.strokeStyle = 'rgba(' + INK + ',' + (.08 + pulse*.16)*e + ')';
+            ctx.stroke();
+          }
+          if (g < cols-1){
+            ctx.beginPath();
+            ctx.moveTo(x+bw, y+bh*.4); ctx.lineTo(x+bw+w*.12, y+bh*.6);
+            ctx.strokeStyle = 'rgba(' + INK + ',' + .25*e + ')'; ctx.stroke();
+          }
+        }
+      }
+
+      if (!reduce) c.anim = requestAnimationFrame(frame);
+    }
+
+    c.anim = requestAnimationFrame(frame);
+  }
+
+  function stopViz(id){
+    const c = cards[id];
+    if (c && c.anim){ cancelAnimationFrame(c.anim); c.anim = null; }
+  }
+
+  addEventListener('resize', () => { if (activeId) startViz(activeId); });
+
+  // Touch and reduced-motion visitors get the first project up front.
+  if (!finePointer) show(PROJECTS[0].id);
+  setStatus();
+})();
+</script>
+</body>
+</html>
