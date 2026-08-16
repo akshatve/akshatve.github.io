@@ -109,6 +109,26 @@ export function FinanceVisual({ active }: { active: boolean }) {
             transition={{ duration: d(1), delay: d(0.55), ease: EASE_EDITORIAL }}
           />
 
+          {/* forecast sweep — keeps the panel alive after the one-shot trace */}
+          {active && !reduced && (
+            <motion.rect
+              y="6"
+              width="1.5"
+              height={H - 12}
+              fill="rgba(216,192,138,0.5)"
+              initial={{ x: 14 }}
+              animate={{ x: [14, 300], opacity: [0, 0.85, 0.85, 0] }}
+              transition={{
+                duration: 2.8,
+                delay: 1.6,
+                repeat: Infinity,
+                repeatDelay: 1.1,
+                ease: 'linear',
+                times: [0, 0.08, 0.9, 1],
+              }}
+            />
+          )}
+
           {/* observation markers */}
           {POINTS.map(([x, y], i) => (
             <motion.circle

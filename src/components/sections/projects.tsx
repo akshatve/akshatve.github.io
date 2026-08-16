@@ -1,6 +1,6 @@
 'use client';
 
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { projects } from '@/data/resume';
 import type { Project } from '@/types';
@@ -10,6 +10,8 @@ import { SectionLabel } from '@/components/shared/section-label';
 import { ProjectVisual } from '@/components/shared/project-visual';
 import { FakeNewsVisual } from '@/components/shared/fake-news-visual';
 import { FinanceVisual } from '@/components/shared/finance-visual';
+import { FlowVisual } from '@/components/shared/flow-visual';
+import { DatabaseVisual } from '@/components/shared/database-visual';
 
 /** Grace period before an un-hovered preview releases. */
 const CLOSE_DELAY = 220;
@@ -215,15 +217,18 @@ function Showcase() {
           onPointerLeave={scheduleClose}
         >
           <div className="sticky top-28 border border-beige-200/12 bg-navy-700/30 p-8">
-            <AnimatePresence mode="wait">
+            {/* No AnimatePresence: `mode="wait"` makes every hover wait for the
+                outgoing panel to finish exiting, which adds latency to a menu
+                meant to feel instant — and stalls outright if frames are
+                throttled. Keying on the project re-mounts it, so the enter
+                animation replays immediately with no exit to wait on. */}
+            <div key={active.number}>
               <motion.div
-                key={active.number}
                 id={`project-panel-${active.number}`}
                 role="tabpanel"
-                initial={{ opacity: 0, y: 12 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.4, ease: EASE_EDITORIAL }}
+                transition={{ duration: 0.35, ease: EASE_EDITORIAL }}
               >
                 <div className="flex items-baseline justify-between gap-6">
                   <span className="font-mono text-[10px] tracking-wide2 text-gold">
@@ -264,7 +269,7 @@ function Showcase() {
                   ))}
                 </ul>
               </motion.div>
-            </AnimatePresence>
+            </div>
           </div>
         </div>
       </div>
@@ -276,6 +281,8 @@ function Showcase() {
 function Visual({ project }: { project: Project }) {
   if (project.visual === 'fakenews') return <FakeNewsVisual active />;
   if (project.visual === 'finance') return <FinanceVisual active />;
+  if (project.visual === 'flow') return <FlowVisual active />;
+  if (project.visual === 'database') return <DatabaseVisual active />;
   return (
     <>
       <span className="absolute inset-0 opacity-60">
