@@ -168,10 +168,24 @@ export const projects: Project[] = [
     number: '03',
     title: 'Applied Financial Analytics for Business Insights',
     period: '01/2026 – 03/2026',
+    // Description supplied directly by Akshat.
     points: [
-      "Led DDSC's end-to-end financial analytics project; engineered financial ratios from company statements and stock price data, applied linear regression for profitability trends and logistic regression for risk categorization.",
+      'The Applied Financial Analytics Dashboard is an interactive Python-based platform engineered to execute automated quantitative evaluations and linear predictive modeling across fundamental enterprise data. Built using Python data engineering and visualization tools, the application translates multi-year financial disclosures into dynamic visual indicators and statistical metrics.',
+      'Centered on a preloaded machine learning analytics dataset spanning two decades of historical financial records (2006–2025) for major technology corporations like Apple Inc. and Alphabet Inc., the platform synthesizes data across income statements, balance sheets, and cash flow reports to evaluate key metrics such as revenue streams, net margins, return on assets, return on equity, and EBITDA.',
+      'To deliver forward-looking financial insights, the system incorporates an integrated Python-driven ordinary least squares (OLS) linear regression engine that calculates statistical parameters — including R² scores, t-statistics, p-values, and 3-year confidence interval forecasts — to quantify trend strength and evaluate projected growth trajectories.',
+      'In addition to pre-configured enterprise analytics, the platform features a flexible data ingestion module. Through an interactive upload workspace, users can import custom multi-statement CSV files for automated data parsing, feature extraction, and statistical regression calculation directly within the application runtime.',
     ],
-    skills: ['Linear Regression', 'Logistic Regression'],
+    // Drawn only from the technologies named in the description above.
+    skills: [
+      'Python',
+      'OLS Linear Regression',
+      'Financial Statement Analysis',
+      'Statistical Inference (R², t-stats, p-values)',
+      'Confidence Interval Forecasting',
+      'Feature Extraction',
+      'CSV Data Ingestion & Parsing',
+      'Data Visualisation',
+    ],
     visual: 'finance',
   },
   {

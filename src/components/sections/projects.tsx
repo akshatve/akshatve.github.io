@@ -9,6 +9,7 @@ import { usePointerFine } from '@/hooks/use-media-query';
 import { SectionLabel } from '@/components/shared/section-label';
 import { ProjectVisual } from '@/components/shared/project-visual';
 import { FakeNewsVisual } from '@/components/shared/fake-news-visual';
+import { FinanceVisual } from '@/components/shared/finance-visual';
 
 /**
  * Vertical project list. Each entry gets its own full-width row so there is
@@ -107,11 +108,15 @@ function ProjectRow({ project }: { project: Project }) {
                     transition={{ duration: 1, ease: EASE_EDITORIAL }}
                     className={cn(
                       'relative mt-8 hidden overflow-hidden border border-beige-200/12 lg:block',
-                      project.visual === 'fakenews' ? 'h-[19.5rem]' : 'h-40',
+                      project.visual === 'fakenews' || project.visual === 'finance'
+                        ? 'h-[19.5rem]'
+                        : 'h-40',
                     )}
                   >
                     {project.visual === 'fakenews' ? (
                       <FakeNewsVisual active={visualActive} />
+                    ) : project.visual === 'finance' ? (
+                      <FinanceVisual active={visualActive} />
                     ) : (
                       <>
                         <span className="absolute inset-0 opacity-55 transition-opacity duration-700 ease-editorial group-hover:opacity-80">
