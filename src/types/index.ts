@@ -41,8 +41,11 @@ export interface Project {
   points: string[];
   /** Skill / technology pills rendered beneath the description. */
   skills: string[];
-  /** Decorative visual treatment key — not data-bearing. */
-  visual: 'text' | 'flow' | 'finance' | 'database';
+  /**
+   * Visual treatment. 'fakenews' renders a bespoke interactive panel; the
+   * others are abstract decorative motifs carrying no data.
+   */
+  visual: 'fakenews' | 'text' | 'flow' | 'finance' | 'database';
 }
 
 export interface Certification {

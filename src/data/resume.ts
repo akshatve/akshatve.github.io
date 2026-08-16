@@ -136,14 +136,23 @@ export const leadership: Leadership[] = [
 export const projects: Project[] = [
   {
     number: '01',
-    title: 'Fake Review Detection Pipeline',
+    title: 'Fake News Classifier',
     period: '05/2026 – 06/2026',
+    // Description and skills supplied directly by Akshat.
     points: [
-      'Co-authored a detection pipeline on a 40,000-instance Amazon-style dataset combining TF-IDF n-grams with 15 stylometric features; built a TextAttack multi-perturbation framework to quantify classifier degradation under adversarial attacks.',
+      'Engineered an end-to-end NLP credibility pipeline using a corpus of ~44K real-world news articles to evaluate news authenticity beyond simple binary labels.',
+      'Built and benchmarked a classical lexical model (TF-IDF + Logistic Regression) against a fine-tuned contextual Transformer (DistilBERT), achieving 99% test accuracy on held-out data.',
+      'Designed a probabilistic output framework featuring token attribution highlighting and calibrated confidence scoring to prioritize ethical, non-binary credibility assessments over false certainty.',
     ],
-    // Only technologies the résumé ties to THIS project.
-    skills: ['TF-IDF n-grams', 'Stylometric Features', 'TextAttack'],
-    visual: 'text',
+    skills: [
+      'Python',
+      'TF-IDF + Logistic Regression',
+      'DistilBERT (Transformers)',
+      'Model Benchmarking',
+      'Token Attribution',
+      'Confidence Calibration',
+    ],
+    visual: 'fakenews',
   },
   {
     number: '02',

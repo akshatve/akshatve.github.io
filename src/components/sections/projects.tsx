@@ -1,10 +1,14 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { motion, useInView } from 'framer-motion';
+import { useRef, useState } from 'react';
 import { projects } from '@/data/resume';
-import { EASE_EDITORIAL } from '@/lib/utils';
+import type { Project } from '@/types';
+import { EASE_EDITORIAL, cn } from '@/lib/utils';
+import { usePointerFine } from '@/hooks/use-media-query';
 import { SectionLabel } from '@/components/shared/section-label';
 import { ProjectVisual } from '@/components/shared/project-visual';
+import { FakeNewsVisual } from '@/components/shared/fake-news-visual';
 
 /**
  * Vertical project list. Each entry gets its own full-width row so there is
@@ -22,8 +26,32 @@ export function Projects() {
 
         <div className="mt-16 flex flex-col lg:mt-24">
           {projects.map((project) => (
+            <ProjectRow key={project.number} project={project} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * One project. Hover state is tracked here so the interactive visual can react
+ * to the whole row, not just itself. On touch there is no hover, so the visual
+ * activates when the row scrolls into view instead.
+ */
+function ProjectRow({ project }: { project: Project }) {
+  const ref = useRef<HTMLElement>(null);
+  const fine = usePointerFine();
+  const inView = useInView(ref, { once: true, margin: '-25%' });
+  const [hovered, setHovered] = useState(false);
+  const visualActive = fine ? hovered : inView;
+
+  return (
+    <>
             <motion.article
-              key={project.number}
+              ref={ref}
+              onHoverStart={() => setHovered(true)}
+              onHoverEnd={() => setHovered(false)}
               initial="hidden"
               whileInView="visible"
               viewport={{ once: true, margin: '-15%' }}
@@ -77,15 +105,24 @@ export function Projects() {
                       visible: { opacity: 1, y: 0 },
                     }}
                     transition={{ duration: 1, ease: EASE_EDITORIAL }}
-                    className="relative mt-8 hidden h-40 overflow-hidden border border-beige-200/12 lg:block"
+                    className={cn(
+                      'relative mt-8 hidden overflow-hidden border border-beige-200/12 lg:block',
+                      project.visual === 'fakenews' ? 'h-[19.5rem]' : 'h-40',
+                    )}
                   >
-                    <span className="absolute inset-0 opacity-55 transition-opacity duration-700 ease-editorial group-hover:opacity-80">
-                      <ProjectVisual variant={project.visual} />
-                    </span>
-                    <span
-                      aria-hidden
-                      className="absolute inset-0 bg-gradient-to-t from-navy-800 via-transparent to-transparent"
-                    />
+                    {project.visual === 'fakenews' ? (
+                      <FakeNewsVisual active={visualActive} />
+                    ) : (
+                      <>
+                        <span className="absolute inset-0 opacity-55 transition-opacity duration-700 ease-editorial group-hover:opacity-80">
+                          <ProjectVisual variant={project.visual} />
+                        </span>
+                        <span
+                          aria-hidden
+                          className="absolute inset-0 bg-gradient-to-t from-navy-800 via-transparent to-transparent"
+                        />
+                      </>
+                    )}
                   </motion.div>
                 </div>
 
@@ -153,9 +190,6 @@ export function Projects() {
                 </div>
               </div>
             </motion.article>
-          ))}
-        </div>
-      </div>
-    </section>
+    </>
   );
 }
