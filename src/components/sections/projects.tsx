@@ -1,7 +1,7 @@
 'use client';
 
-import { motion, useInView } from 'framer-motion';
-import { useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { projects } from '@/data/resume';
 import type { Project } from '@/types';
 import { EASE_EDITORIAL, cn } from '@/lib/utils';
@@ -11,23 +11,25 @@ import { ProjectVisual } from '@/components/shared/project-visual';
 import { FakeNewsVisual } from '@/components/shared/fake-news-visual';
 import { FinanceVisual } from '@/components/shared/finance-visual';
 
-/**
- * Vertical project list. Each entry gets its own full-width row so there is
- * room for real detail — description paragraphs plus skill pills — read by
- * scrolling down rather than sideways.
- *
- * Structure intentionally mirrors the Leadership section so both read as one
- * editorial system.
- */
+/** Grace period before an un-hovered preview releases. */
+const CLOSE_DELAY = 220;
+
 export function Projects() {
   return (
     <section id="projects" className="relative scroll-mt-24 py-28 sm:py-36 lg:py-44">
       <div className="shell">
         <SectionLabel index="04" label="Projects" />
 
-        <div className="mt-16 flex flex-col lg:mt-24">
-          {projects.map((project) => (
-            <ProjectRow key={project.number} project={project} />
+        {/* Desktop: menu + preview panel. Mobile: plain stack. Both render
+            from the same data and are switched with CSS rather than JS, so
+            there is no layout flash on hydration. */}
+        <div className="mt-16 hidden lg:mt-24 lg:block">
+          <Showcase />
+        </div>
+
+        <div className="mt-14 flex flex-col gap-4 lg:hidden">
+          {projects.map((p) => (
+            <StackedCard key={p.number} project={p} />
           ))}
         </div>
       </div>
@@ -35,166 +37,298 @@ export function Projects() {
   );
 }
 
-/**
- * One project. Hover state is tracked here so the interactive visual can react
- * to the whole row, not just itself. On touch there is no hover, so the visual
- * activates when the row scrolls into view instead.
- */
-function ProjectRow({ project }: { project: Project }) {
-  const ref = useRef<HTMLElement>(null);
+/* ------------------------------------------------------------------ desktop */
+
+function Showcase() {
   const fine = usePointerFine();
-  const inView = useInView(ref, { once: true, margin: '-25%' });
-  const [hovered, setHovered] = useState(false);
-  const visualActive = fine ? hovered : inView;
+  const [activeId, setActiveId] = useState(projects[0].number);
+  const [lockedId, setLockedId] = useState<string | null>(null);
+  const [wedge, setWedge] = useState<string | null>(null);
+
+  const stageRef = useRef<HTMLDivElement>(null);
+  const timer = useRef<number | null>(null);
+
+  const active = projects.find((p) => p.number === activeId) ?? projects[0];
+
+  const cancelClose = useCallback(() => {
+    if (timer.current !== null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, []);
+
+  const disarm = useCallback(() => setWedge(null), []);
+
+  /**
+   * Safe triangle: a wedge from the cursor to the panel's near corners.
+   * While the pointer sits inside it the cursor is plausibly travelling
+   * toward the panel, so the release is held off — a diagonal traverse no
+   * longer drops the preview the way a bare pointerleave would.
+   */
+  const arm = useCallback(
+    (x: number, y: number) => {
+      if (!fine) return;
+      const r = stageRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const pad = 24; // catches shallow diagonals
+      setWedge(
+        `polygon(${x}px ${y}px, ${r.left}px ${r.top - pad}px, ${r.left}px ${r.bottom + pad}px)`,
+      );
+    },
+    [fine],
+  );
+
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    // The panel keeps its last project; releasing only drops the wedge, so
+    // the reader is never left staring at an empty container.
+    timer.current = window.setTimeout(disarm, CLOSE_DELAY);
+  }, [cancelClose, disarm]);
+
+  useEffect(() => {
+    if (!lockedId) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setLockedId(null);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [lockedId]);
+
+  useEffect(() => () => cancelClose(), [cancelClose]);
+
+  const select = (id: string) => {
+    if (lockedId) return;
+    cancelClose();
+    setActiveId(id);
+  };
 
   return (
     <>
-            <motion.article
-              ref={ref}
-              onHoverStart={() => setHovered(true)}
-              onHoverEnd={() => setHovered(false)}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true, margin: '-15%' }}
-              transition={{ staggerChildren: 0.1 }}
-              className="group relative border-t border-beige-200/12 py-14 last:border-b sm:py-16"
-            >
-              {/* Hover wash — depth without a card */}
-              <span
-                aria-hidden
-                className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-r from-beige-200/[0.035] to-transparent opacity-0 transition-opacity duration-700 ease-editorial group-hover:opacity-100"
-              />
+      {/* Hover bridge. Mounted only while armed, so it can never be left
+          behind swallowing clicks elsewhere on the page. */}
+      {wedge && fine && (
+        <div
+          aria-hidden
+          className="fixed inset-0 z-40"
+          style={{ clipPath: wedge }}
+          onPointerEnter={cancelClose}
+          onPointerLeave={() => {
+            disarm();
+            cancelClose();
+          }}
+          // Belt and braces: the moment the cursor passes the panel's left
+          // edge the wedge has done its job, so drop it. Without this a
+          // missed pointerleave could leave an invisible overlay mounted.
+          onPointerMove={(e) => {
+            const r = stageRef.current?.getBoundingClientRect();
+            if (r && e.clientX > r.left) disarm();
+          }}
+        />
+      )}
 
-              <div className="grid gap-10 lg:grid-cols-12 lg:gap-12">
-                <div className="lg:col-span-1">
-                  <motion.span
-                    variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
-                    transition={{ duration: 0.7 }}
-                    className="font-mono text-[11px] text-gold"
-                  >
-                    {project.number}
-                  </motion.span>
-                </div>
+      <div
+        className="grid grid-cols-12 gap-12"
+        // Leaving the whole showcase always releases the bridge.
+        onPointerLeave={() => {
+          disarm();
+          cancelClose();
+        }}
+      >
+        <div className="col-span-5">
+          <ul role="tablist" aria-label="Projects">
+            {projects.map((p) => {
+              const isActive = p.number === active.number;
+              const isLocked = lockedId === p.number;
 
-                {/* Title, period and decorative motif */}
-                <div className="lg:col-span-5">
-                  <motion.h3
-                    variants={{
-                      hidden: { opacity: 0, y: 22 },
-                      visible: { opacity: 1, y: 0 },
+              return (
+                <li key={p.number}>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    aria-controls={`project-panel-${p.number}`}
+                    onPointerEnter={() => select(p.number)}
+                    onPointerMove={(e) => !lockedId && arm(e.clientX, e.clientY)}
+                    onFocus={() => select(p.number)}
+                    onClick={() => {
+                      setLockedId(isLocked ? null : p.number);
+                      setActiveId(p.number);
+                      cancelClose();
+                      disarm();
                     }}
-                    transition={{ duration: 0.95, ease: EASE_EDITORIAL }}
-                    className="font-serif text-[clamp(1.7rem,3.4vw,2.7rem)] leading-[1.12] tracking-[-0.015em] text-beige-100"
-                  >
-                    {project.title}
-                  </motion.h3>
-
-                  <motion.p
-                    variants={{
-                      hidden: { opacity: 0, y: 14 },
-                      visible: { opacity: 1, y: 0 },
-                    }}
-                    transition={{ duration: 0.8, ease: EASE_EDITORIAL }}
-                    className="mt-4 font-mono text-[11px] tracking-wide2 text-beige-400"
-                  >
-                    {project.period}
-                  </motion.p>
-
-                  <motion.div
-                    variants={{
-                      hidden: { opacity: 0, y: 18 },
-                      visible: { opacity: 1, y: 0 },
-                    }}
-                    transition={{ duration: 1, ease: EASE_EDITORIAL }}
                     className={cn(
-                      'relative mt-8 hidden overflow-hidden border border-beige-200/12 lg:block',
-                      project.visual === 'fakenews' || project.visual === 'finance'
-                        ? 'h-[19.5rem]'
-                        : 'h-40',
+                      'group relative flex w-full items-baseline gap-5 border-t border-beige-200/10 py-7 pr-4 text-left transition-all duration-500 ease-editorial',
+                      'last:border-b',
+                      // the highlight: wash + indent, deepening on hover
+                      isActive
+                        ? 'bg-beige-200/[0.055] pl-8'
+                        : 'pl-2 hover:bg-beige-200/[0.03] hover:pl-5',
                     )}
                   >
-                    {project.visual === 'fakenews' ? (
-                      <FakeNewsVisual active={visualActive} />
-                    ) : project.visual === 'finance' ? (
-                      <FinanceVisual active={visualActive} />
-                    ) : (
-                      <>
-                        <span className="absolute inset-0 opacity-55 transition-opacity duration-700 ease-editorial group-hover:opacity-80">
-                          <ProjectVisual variant={project.visual} />
-                        </span>
-                        <span
-                          aria-hidden
-                          className="absolute inset-0 bg-gradient-to-t from-navy-800 via-transparent to-transparent"
-                        />
-                      </>
-                    )}
-                  </motion.div>
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'absolute left-0 top-1/2 h-[calc(100%-2.25rem)] w-px -translate-y-1/2 bg-gold transition-opacity duration-500',
+                        isActive ? 'opacity-100' : 'opacity-0',
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        'font-mono text-[10px] transition-colors duration-500',
+                        isActive ? 'text-gold' : 'text-beige-500',
+                      )}
+                    >
+                      {p.number}
+                    </span>
+                    <span
+                      className={cn(
+                        'font-serif text-[clamp(1.15rem,1.9vw,1.6rem)] leading-tight tracking-[-0.01em] transition-colors duration-500',
+                        isActive ? 'text-beige-100' : 'text-beige-300 group-hover:text-beige-100',
+                      )}
+                    >
+                      {p.title}
+                    </span>
+                    <span
+                      className={cn(
+                        'ml-auto shrink-0 font-mono text-[9px] uppercase tracking-metadata transition-all duration-500',
+                        isLocked ? 'translate-x-0 text-gold opacity-100' : 'translate-x-1 opacity-0',
+                      )}
+                    >
+                      Locked
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          <p className="mt-6 font-mono text-[9.5px] uppercase tracking-metadata text-beige-500">
+            {lockedId ? 'Click again or press Esc to release' : 'Click a project to lock it'}
+          </p>
+        </div>
+
+        <div
+          ref={stageRef}
+          className="col-span-7"
+          onPointerEnter={() => {
+            cancelClose();
+            disarm();
+          }}
+          onPointerLeave={scheduleClose}
+        >
+          <div className="sticky top-28 border border-beige-200/12 bg-navy-700/30 p-8">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={active.number}
+                id={`project-panel-${active.number}`}
+                role="tabpanel"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.4, ease: EASE_EDITORIAL }}
+              >
+                <div className="flex items-baseline justify-between gap-6">
+                  <span className="font-mono text-[10px] tracking-wide2 text-gold">
+                    {active.number}
+                  </span>
+                  <span className="font-mono text-[10px] tracking-wide2 text-beige-400">
+                    {active.period}
+                  </span>
                 </div>
 
-                {/* Description + skills */}
-                <div className="lg:col-span-6">
-                  <motion.ul
-                    variants={{
-                      hidden: {},
-                      visible: { transition: { staggerChildren: 0.12, delayChildren: 0.12 } },
-                    }}
-                    className="flex flex-col gap-5"
-                  >
-                    {project.points.map((point) => (
-                      <motion.li
-                        key={point}
-                        variants={{
-                          hidden: { opacity: 0, y: 16 },
-                          visible: { opacity: 1, y: 0 },
-                        }}
-                        transition={{ duration: 0.85, ease: EASE_EDITORIAL }}
-                        className="text-[14px] leading-[1.8] text-beige-300 text-pretty sm:text-[15px]"
-                      >
-                        {point}
-                      </motion.li>
-                    ))}
-                  </motion.ul>
+                <h3 className="mt-4 font-serif text-[clamp(1.5rem,2.6vw,2.1rem)] leading-[1.15] tracking-[-0.015em] text-beige-100">
+                  {active.title}
+                </h3>
 
-                  {project.skills.length > 0 && (
-                    <>
-                      <motion.p
-                        variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
-                        transition={{ duration: 0.7 }}
-                        className="meta mb-5 mt-10"
-                      >
-                        Skills used
-                      </motion.p>
-
-                      <motion.ul
-                        variants={{
-                          hidden: {},
-                          visible: { transition: { staggerChildren: 0.05 } },
-                        }}
-                        className="flex flex-wrap gap-2.5"
-                      >
-                        {project.skills.map((skill) => (
-                          <motion.li
-                            key={skill}
-                            variants={{
-                              hidden: { opacity: 0, y: 12, scale: 0.96 },
-                              visible: { opacity: 1, y: 0, scale: 1 },
-                            }}
-                            transition={{ duration: 0.6, ease: EASE_EDITORIAL }}
-                          >
-                            <span
-                              tabIndex={0}
-                              className="inline-flex cursor-default items-center rounded-full border border-beige-200/20 bg-beige-200/[0.04] px-4 py-2 text-[12.5px] text-beige-300 outline-offset-2 transition-all duration-500 ease-editorial hover:-translate-y-0.5 hover:border-gold/60 hover:bg-gold/10 hover:text-beige-100 focus-visible:-translate-y-0.5 focus-visible:border-gold/60 focus-visible:text-beige-100"
-                            >
-                              {skill}
-                            </span>
-                          </motion.li>
-                        ))}
-                      </motion.ul>
-                    </>
-                  )}
+                <div className="relative mt-6 h-[15rem] overflow-hidden border border-beige-200/12">
+                  <Visual project={active} />
                 </div>
-              </div>
-            </motion.article>
+
+                <div className="mt-7 flex max-h-[14rem] flex-col gap-4 overflow-y-auto pr-2">
+                  {active.points.map((point) => (
+                    <p key={point} className="text-[14px] leading-[1.8] text-beige-300 text-pretty">
+                      {point}
+                    </p>
+                  ))}
+                </div>
+
+                <p className="meta mb-4 mt-8">Skills used</p>
+                <ul className="flex flex-wrap gap-2.5">
+                  {active.skills.map((s) => (
+                    <li key={s}>
+                      <span
+                        tabIndex={0}
+                        className="inline-flex cursor-default items-center rounded-full border border-beige-200/20 bg-beige-200/[0.04] px-4 py-2 text-[12.5px] text-beige-300 outline-offset-2 transition-all duration-500 ease-editorial hover:-translate-y-0.5 hover:border-gold/60 hover:bg-gold/10 hover:text-beige-100 focus-visible:-translate-y-0.5 focus-visible:border-gold/60"
+                      >
+                        {s}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
     </>
+  );
+}
+
+/** Bespoke panel where one exists, else the abstract motif. */
+function Visual({ project }: { project: Project }) {
+  if (project.visual === 'fakenews') return <FakeNewsVisual active />;
+  if (project.visual === 'finance') return <FinanceVisual active />;
+  return (
+    <>
+      <span className="absolute inset-0 opacity-60">
+        <ProjectVisual variant={project.visual} />
+      </span>
+      <span
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-t from-navy-800 via-transparent to-transparent"
+      />
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------- mobile */
+
+function StackedCard({ project }: { project: Project }) {
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-12%' }}
+      transition={{ duration: 0.8, ease: EASE_EDITORIAL }}
+      className="border border-beige-200/12 bg-navy-700/25 p-6 transition-colors duration-500 hover:border-beige-200/25"
+    >
+      <div className="flex items-baseline justify-between gap-4">
+        <span className="font-mono text-[10px] text-gold">{project.number}</span>
+        <span className="font-mono text-[10px] tracking-wide2 text-beige-400">
+          {project.period}
+        </span>
+      </div>
+
+      <h3 className="mt-3 font-serif text-2xl leading-tight tracking-[-0.015em] text-beige-100">
+        {project.title}
+      </h3>
+
+      <div className="mt-5 flex flex-col gap-4">
+        {project.points.map((point) => (
+          <p key={point} className="text-[14px] leading-[1.8] text-beige-300 text-pretty">
+            {point}
+          </p>
+        ))}
+      </div>
+
+      <p className="meta mb-4 mt-7">Skills used</p>
+      <ul className="flex flex-wrap gap-2.5">
+        {project.skills.map((s) => (
+          <li key={s}>
+            <span className="inline-flex items-center rounded-full border border-beige-200/20 bg-beige-200/[0.04] px-3.5 py-1.5 text-[12px] text-beige-300">
+              {s}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </motion.article>
   );
 }
