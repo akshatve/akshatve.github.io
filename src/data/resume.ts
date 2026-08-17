@@ -158,8 +158,12 @@ export const projects: Project[] = [
     number: '02',
     title: 'GoodsFlow — Inventory & Shortage Analytics Platform',
     period: '04/2026',
+    // Reworded from the résumé's single sentence so the opening no longer
+    // echoes project 01. Facts are unchanged — nothing added or dropped.
     points: [
-      'Engineered an end-to-end predictive logistics pipeline in Python with data seeding for edge cases; developed a localized shortage scorer and demand trend analyzer outputting JSON datasets for downstream dashboards.',
+      'Designed a predictive logistics pipeline in Python, with data seeding for edge cases.',
+      'Developed a localized shortage scorer and a demand trend analyzer.',
+      'Emitted JSON datasets for downstream dashboards.',
     ],
     skills: ['Python', 'JSON'],
     visual: 'flow',

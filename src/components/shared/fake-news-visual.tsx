@@ -1,223 +1,189 @@
 'use client';
 
-import { animate, motion, useMotionValue, useTransform } from 'framer-motion';
-import { useEffect } from 'react';
-import { EASE_EDITORIAL } from '@/lib/utils';
+import { useEffect, useRef } from 'react';
 import { usePrefersReducedMotion } from '@/hooks/use-media-query';
 
 /**
- * Interactive panel for the Fake News Classifier project.
+ * Interactive panel for the Fake News Classifier.
  *
- * Four layers animate in sequence when `active` flips true:
- *   1. token attribution highlights on a sample headline
- *   2. per-model confidence bars
- *   3. ensemble spread with a sliding indicator and calibrated verdict
- *   4. key metrics, counting up
+ * An embedding space: article points start scattered, then migrate into two
+ * lobes as a decision boundary sweeps in. Points that land near the boundary
+ * stay gold and keep drifting — the calibrated-uncertainty band. That is the
+ * point the description makes ("non-binary credibility assessments over false
+ * certainty"), so the visual argues it rather than drawing bar charts.
  *
- * `active` is driven by hover on desktop and by scroll-into-view on touch,
- * where there is no hover state to trigger it.
- *
- * The sample headline is illustrative UI copy, not a real model output.
+ * Canvas rather than DOM nodes: ~90 points animating at once is one paint
+ * instead of ninety layers. Deterministic seeding, so it never depends on
+ * render-time randomness.
  */
 
-/** Sample headline, split so attributed spans can be highlighted. */
-const HEADLINE: { text: string; weight?: number }[] = [
-  { text: 'Local council ' },
-  { text: 'votes', weight: 0.82 },
-  { text: ' to ' },
-  { text: 'expand transit', weight: 0.64 },
-  { text: ' after ' },
-  { text: 'four-hour hearing', weight: 0.47 },
-];
+const COUNT = 90;
+const SETTLE_MS = 1800;
 
-const MODELS = [
-  { label: 'TF-IDF + LOGREG', kind: 'Lexical', value: 71 },
-  { label: 'DISTILBERT', kind: 'Contextual', value: 86 },
-];
-
-const METRICS = [
-  { value: 99, suffix: '%', label: 'Test acc.' },
-  { value: 44, suffix: 'K', label: 'Corpus' },
-  { value: 2, suffix: '', label: 'Models' },
-  { text: 'Prob.', label: 'Output' },
-];
-
-/** Counts to `to` when active; snaps instantly under reduced motion. */
-function Count({ to, suffix, active }: { to: number; suffix: string; active: boolean }) {
-  const reduced = usePrefersReducedMotion();
-  const mv = useMotionValue(0);
-  const rounded = useTransform(mv, (v) => `${Math.round(v)}${suffix}`);
-
-  useEffect(() => {
-    if (!active) {
-      mv.set(0);
-      return;
-    }
-    if (reduced) {
-      mv.set(to);
-      return;
-    }
-    const controls = animate(mv, to, { duration: 1.1, ease: EASE_EDITORIAL });
-    return () => controls.stop();
-  }, [active, to, mv, reduced]);
-
-  return <motion.span>{rounded}</motion.span>;
+/** Small deterministic PRNG — stable output, no hydration surprises. */
+function rng(seed: number) {
+  let s = seed;
+  return () => {
+    s = (s * 1664525 + 1013904223) % 4294967296;
+    return s / 4294967296;
+  };
 }
 
 export function FakeNewsVisual({ active }: { active: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const reduced = usePrefersReducedMotion();
-  const show = active;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let raf = 0;
+    let w = 0;
+    let h = 0;
+    let start = performance.now();
+
+    type P = {
+      sx: number; sy: number;   // scattered origin
+      tx: number; ty: number;   // settled target
+      amb: boolean;             // sits in the uncertainty band
+      ph: number;               // drift phase
+      r: number;
+    };
+    let pts: P[] = [];
+
+    const build = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = canvas.getBoundingClientRect();
+      w = rect.width;
+      h = rect.height;
+      canvas.width = Math.max(1, Math.floor(w * dpr));
+      canvas.height = Math.max(1, Math.floor(h * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const rand = rng(20260815);
+      const plotH = h * 0.62;
+      pts = Array.from({ length: COUNT }, () => {
+        const side = rand() < 0.5 ? -1 : 1;
+        // ~14% land in the ambiguous band straddling the boundary
+        const amb = rand() < 0.14;
+        const spreadX = amb ? 0.05 : 0.15;
+        const cx = amb ? 0.5 : 0.5 + side * 0.21;
+        return {
+          sx: rand() * w,
+          sy: 18 + rand() * plotH,
+          tx: (cx + (rand() - 0.5) * spreadX) * w,
+          ty: 18 + (0.2 + rand() * 0.6) * plotH,
+          amb,
+          ph: rand() * Math.PI * 2,
+          r: rand() < 0.12 ? 2.1 : 1.35,
+        };
+      });
+    };
+
+    const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
+    const draw = (now: number) => {
+      const raw = active ? Math.min(1, (now - start) / SETTLE_MS) : 0;
+      const t = reduced ? (active ? 1 : 0) : easeOut(raw);
+      const plotH = h * 0.62;
+      const boundaryX = w * 0.5;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // uncertainty band — widens as the boundary resolves
+      const bandW = 26 * t;
+      ctx.fillStyle = 'rgba(216,192,138,0.07)';
+      ctx.fillRect(boundaryX - bandW, 10, bandW * 2, plotH + 14);
+
+      // decision boundary, drawing downward
+      ctx.beginPath();
+      ctx.setLineDash([4, 4]);
+      ctx.moveTo(boundaryX, 10);
+      ctx.lineTo(boundaryX, 10 + (plotH + 14) * t);
+      ctx.strokeStyle = 'rgba(216,192,138,0.75)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // article points migrating from scatter to their cluster
+      for (const p of pts) {
+        // ambiguous points never fully settle — they keep drifting
+        const drift = p.amb && !reduced ? Math.sin(now / 900 + p.ph) * 5 * t : 0;
+        const x = p.sx + (p.tx - p.sx) * t + drift;
+        const y = p.sy + (p.ty - p.sy) * t;
+
+        ctx.beginPath();
+        ctx.fillStyle = p.amb
+          ? `rgba(216,192,138,${0.35 + 0.5 * t})`
+          : `rgba(232,222,200,${0.16 + 0.4 * t})`;
+        ctx.arc(x, y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // calibrated probability density along the bottom
+      const baseY = h - 12;
+      ctx.beginPath();
+      for (let i = 0; i <= 60; i += 1) {
+        const px = (i / 60) * w;
+        const u = i / 60;
+        // two lobes plus a shallow trough — a soft distribution, not a verdict
+        const lobe =
+          Math.exp(-Math.pow((u - 0.29) / 0.13, 2)) +
+          Math.exp(-Math.pow((u - 0.71) / 0.13, 2)) * 0.92;
+        const py = baseY - lobe * 26 * t;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = `rgba(232,222,200,${0.45 * t})`;
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
+
+      raf = requestAnimationFrame(draw);
+    };
+
+    build();
+    start = performance.now();
+    raf = requestAnimationFrame(draw);
+
+    const onResize = () => {
+      build();
+      start = performance.now();
+    };
+    window.addEventListener('resize', onResize);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [active, reduced]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-navy-900/40 p-5">
-      {/* hairline grid backdrop */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-[0.5]"
-        style={{
-          backgroundImage:
-            'linear-gradient(to right, rgba(232,222,200,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(232,222,200,0.05) 1px, transparent 1px)',
-          backgroundSize: '32px 32px',
-        }}
-      />
+    <div className="relative h-full w-full overflow-hidden bg-navy-900/40">
+      <canvas ref={canvasRef} aria-hidden className="absolute inset-0 h-full w-full" />
 
-      <div className="relative flex h-full flex-col justify-between">
-        {/* 1 — token attribution */}
-        <div>
+      {/* labels sit above the canvas */}
+      <div className="pointer-events-none relative flex h-full flex-col justify-between p-5">
+        <div className="flex items-baseline justify-between">
           <p className="font-mono text-[8.5px] uppercase tracking-metadata text-beige-500">
-            Token attribution
+            Embedding space · ~44K articles
           </p>
-          <p className="mt-2.5 text-[12.5px] leading-[1.7] text-beige-200">
-            {HEADLINE.map((seg, i) =>
-              seg.weight ? (
-                <motion.span
-                  key={i}
-                  className="rounded-[3px] px-[3px] py-[1px]"
-                  initial={false}
-                  animate={{
-                    backgroundColor: show
-                      ? `rgba(216,192,138,${0.1 + seg.weight * 0.16})`
-                      : 'rgba(216,192,138,0)',
-                    boxShadow: show
-                      ? `inset 0 0 0 1px rgba(216,192,138,${0.25 + seg.weight * 0.35})`
-                      : 'inset 0 0 0 1px rgba(216,192,138,0)',
-                    color: show ? '#F3ECDC' : '#E8DEC8',
-                  }}
-                  transition={{
-                    duration: reduced ? 0 : 0.5,
-                    delay: reduced ? 0 : i * 0.09,
-                    ease: EASE_EDITORIAL,
-                  }}
-                >
-                  {seg.text}
-                </motion.span>
-              ) : (
-                <span key={i}>{seg.text}</span>
-              ),
-            )}
+          <p className="font-mono text-[8.5px] uppercase tracking-wide2 text-gold">
+            Calibrated
           </p>
         </div>
 
-        {/* 2 — per-model confidence */}
-        <div className="mt-4 flex flex-col gap-3">
-          {MODELS.map((m, i) => (
-            <div key={m.label}>
-              <div className="flex items-baseline justify-between">
-                <span className="font-mono text-[8.5px] uppercase tracking-wide2 text-beige-400">
-                  {m.label}{' '}
-                  <span className="text-beige-500">({m.kind})</span>
-                </span>
-                <motion.span
-                  className="font-mono text-[9px] tabular-nums text-gold"
-                  animate={{ opacity: show ? 1 : 0 }}
-                  transition={{ duration: 0.4, delay: reduced ? 0 : 0.35 + i * 0.12 }}
-                >
-                  {m.value}%
-                </motion.span>
-              </div>
-              <div className="mt-1.5 h-[3px] w-full overflow-hidden bg-beige-200/10">
-                <motion.div
-                  className="h-full bg-gradient-to-r from-beige-300/70 to-gold"
-                  initial={false}
-                  animate={{ width: show ? `${m.value}%` : '0%' }}
-                  transition={{
-                    duration: reduced ? 0 : 1.05,
-                    delay: reduced ? 0 : 0.25 + i * 0.14,
-                    ease: EASE_EDITORIAL,
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* 3 — ensemble spread + calibrated verdict */}
-        <div className="mt-4">
-          <div className="flex items-baseline justify-between">
-            <span className="font-mono text-[8.5px] uppercase tracking-wide2 text-beige-400">
-              Ensemble spread
-            </span>
-            <motion.span
-              className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wide2 text-beige-100"
-              animate={{ opacity: show ? 1 : 0 }}
-              transition={{ duration: 0.5, delay: reduced ? 0 : 0.95 }}
-            >
-              <motion.span
-                className="block size-1.5 rounded-full bg-gold"
-                animate={
-                  show && !reduced
-                    ? { boxShadow: ['0 0 0px rgba(216,192,138,0.9)', '0 0 8px rgba(216,192,138,0.9)', '0 0 0px rgba(216,192,138,0.9)'] }
-                    : { boxShadow: '0 0 0px rgba(216,192,138,0)' }
-                }
-                transition={{ duration: 2, repeat: show && !reduced ? Infinity : 0 }}
-              />
-              Credible
-            </motion.span>
-          </div>
-
-          <div className="relative mt-2 h-[3px] w-full bg-beige-200/10">
-            {/* spread between the two model outputs */}
-            <motion.div
-              className="absolute inset-y-0 bg-beige-200/25"
-              initial={false}
-              animate={{ left: '71%', width: show ? '15%' : '0%' }}
-              transition={{ duration: reduced ? 0 : 0.8, delay: reduced ? 0 : 0.75, ease: EASE_EDITORIAL }}
-            />
-            {/* calibrated point estimate */}
-            <motion.span
-              className="absolute -top-[3px] size-[9px] -translate-x-1/2 rotate-45 border border-gold bg-navy-900"
-              initial={false}
-              animate={{ left: show ? '79%' : '0%', opacity: show ? 1 : 0 }}
-              transition={{ duration: reduced ? 0 : 1, delay: reduced ? 0 : 0.85, ease: EASE_EDITORIAL }}
-            />
-          </div>
-        </div>
-
-        {/* 4 — key metrics */}
-        <div className="mt-4 grid grid-cols-4 gap-2 border-t border-beige-200/10 pt-3">
-          {METRICS.map((m, i) => (
-            <motion.div
-              key={m.label}
-              initial={false}
-              animate={{ opacity: show ? 1 : 0.35, scale: show ? 1 : 0.96 }}
-              transition={{
-                duration: reduced ? 0 : 0.55,
-                delay: reduced ? 0 : 1.05 + i * 0.08,
-                ease: EASE_EDITORIAL,
-              }}
-            >
-              <p className="font-mono text-[13px] tabular-nums leading-none text-beige-100">
-                {'value' in m && typeof m.value === 'number' ? (
-                  <Count to={m.value} suffix={m.suffix ?? ''} active={show} />
-                ) : (
-                  m.text
-                )}
-              </p>
-              <p className="mt-1.5 font-mono text-[7.5px] uppercase tracking-wide2 text-beige-500">
-                {m.label}
-              </p>
-            </motion.div>
-          ))}
+        <div className="flex items-end justify-between">
+          <span className="font-mono text-[8px] uppercase tracking-wide2 text-beige-400">
+            Credible
+          </span>
+          <span className="font-mono text-[8px] uppercase tracking-wide2 text-gold">
+            Uncertain
+          </span>
+          <span className="font-mono text-[8px] uppercase tracking-wide2 text-beige-400">
+            Suspect
+          </span>
         </div>
       </div>
     </div>
