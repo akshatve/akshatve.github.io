@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Mail, Phone } from 'lucide-react';
+import { Mail, Smartphone } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { profile } from '@/data/resume';
 import { EASE_EDITORIAL, cn } from '@/lib/utils';
@@ -69,7 +69,7 @@ export function ContactMenu() {
       hint: 'Opens your mail app',
     },
     {
-      icon: Phone,
+      icon: Smartphone,
       label: 'Phone',
       value: profile.phone,
       href: `tel:${profile.phoneRaw}`,
@@ -120,9 +120,13 @@ export function ContactMenu() {
             onClick={() => setOpen(false)}
             className="group/mi flex items-center gap-4 border-b border-beige-200/10 px-5 py-4 outline-offset-[-2px] transition-colors duration-400 last:border-b-0 hover:bg-beige-200/[0.05]"
           >
+            {/* Smartphone, not Phone: lucide's handset glyph is a single path
+                of tight curves that collapses into a smudge at 16px, while the
+                smartphone rect stays crisp. Verified side by side. */}
             <o.icon
               aria-hidden
-              className="size-4 shrink-0 text-beige-400 transition-colors duration-400 group-hover/mi:text-gold"
+              strokeWidth={1.75}
+              className="size-[17px] shrink-0 text-beige-400 transition-colors duration-400 group-hover/mi:text-gold"
             />
             <span className="min-w-0">
               <span className="block font-mono text-[9px] uppercase tracking-metadata text-beige-500">
