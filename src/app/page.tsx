@@ -22,10 +22,14 @@ const Certifications = dynamic(() =>
 const Contact = dynamic(() => import('@/components/sections/contact').then((m) => m.Contact));
 const Footer = dynamic(() => import('@/components/layout/footer').then((m) => m.Footer));
 const Cursor = dynamic(() => import('@/components/layout/cursor').then((m) => m.Cursor));
+const BackgroundBubbles = dynamic(() =>
+  import('@/components/layout/background-bubbles').then((m) => m.BackgroundBubbles),
+);
 
 export default function HomePage() {
   return (
     <>
+      <BackgroundBubbles />
       <div className="grain" aria-hidden />
       <Cursor />
       <ScrollProgress />
