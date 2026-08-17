@@ -9,6 +9,7 @@ import { useSmoothScrollTo } from '@/hooks/use-smooth-scroll-to';
 import { EASE_EDITORIAL } from '@/lib/utils';
 import { Magnetic } from '@/components/shared/magnetic';
 import { Button } from '@/components/ui/button';
+import { ContactMenu } from '@/components/shared/contact-menu';
 import { SplitText } from '@/components/shared/split-text';
 import { HeroField } from '@/components/shared/hero-field';
 
@@ -120,8 +121,10 @@ export function Hero() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, delay: 2.3, ease: EASE_EDITORIAL }}
-            className="mt-10"
+            className="mt-10 flex flex-wrap items-center gap-4"
           >
+            <ContactMenu />
+
             <Magnetic strength={0.22}>
               <Button asChild variant="outline" size="md" className="group/cv">
                 {/* Explicit filename: Safari is unreliable about deriving one
