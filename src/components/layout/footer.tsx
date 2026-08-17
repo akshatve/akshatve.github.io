@@ -10,7 +10,8 @@ export function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="relative">
+    // z-[1] matches <main> so the fixed background field (z-0) stays behind it.
+    <footer className="relative z-[1]">
       {/* Rule draws itself as the footer arrives */}
       <motion.div
         initial={{ scaleX: 0 }}
