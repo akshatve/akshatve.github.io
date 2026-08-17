@@ -10,8 +10,7 @@ export function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    // z-[1] matches <main> so the fixed bubble layer (z-0) stays behind it.
-    <footer className="relative z-[1]">
+    <footer className="relative">
       {/* Rule draws itself as the footer arrives */}
       <motion.div
         initial={{ scaleX: 0 }}
