@@ -1,12 +1,14 @@
 'use client';
 
 import { motion, useMotionValue, useSpring, useScroll, useTransform } from 'framer-motion';
-import { ArrowDown } from 'lucide-react';
+import { ArrowDown, Download } from 'lucide-react';
 import { useRef } from 'react';
 import { profile } from '@/data/resume';
 import { usePointerFine } from '@/hooks/use-media-query';
 import { useSmoothScrollTo } from '@/hooks/use-smooth-scroll-to';
 import { EASE_EDITORIAL } from '@/lib/utils';
+import { Magnetic } from '@/components/shared/magnetic';
+import { Button } from '@/components/ui/button';
 import { SplitText } from '@/components/shared/split-text';
 import { HeroField } from '@/components/shared/hero-field';
 
@@ -112,6 +114,29 @@ export function Hero() {
           >
             {profile.summaryLead}
           </motion.p>
+
+          {/* 5 — résumé download. Joins last, just before the navbar at 2.4s. */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1, delay: 2.3, ease: EASE_EDITORIAL }}
+            className="mt-10"
+          >
+            <Magnetic strength={0.22}>
+              <Button asChild variant="outline" size="md" className="group/cv">
+                {/* Explicit filename: Safari is unreliable about deriving one
+                    from the URL and will otherwise open the PDF inline. */}
+                <a
+                  href={profile.resumeUrl}
+                  download="Akshat_Verma_Resume.pdf"
+                  aria-label="Download résumé (PDF)"
+                >
+                  Download résumé
+                  <Download className="transition-transform duration-500 ease-editorial group-hover/cv:translate-y-0.5" />
+                </a>
+              </Button>
+            </Magnetic>
+          </motion.div>
         </motion.div>
       </motion.div>
 

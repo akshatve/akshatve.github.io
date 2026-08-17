@@ -41,6 +41,8 @@ export const profile = {
     'As a Data Science undergraduate at UC Davis, I am passionate about building end-to-end machine learning models, exploring natural language processing, and turning complex datasets into actionable insights. My technical toolkit relies heavily on Python, R, and SQL, with hands-on experience spanning adversarial NLP pipelines, predictive logistics analytics, and optimized relational database queries.',
     'Beyond technical development, I bring real-world corporate analytics experience from industry internships, along with proven leadership as a former Marketing Director and Project Lead. I thrive at the intersection of quantitative analysis and strategic problem-solving, where I can translate technical findings into high-impact business solutions and collaborate with cross-functional teams.',
   ],
+  /** Résumé PDF in /public — replace the file to update the download. */
+  resumeUrl: '/Akshat_Verma_Resume.pdf',
   /** Hero metadata strip. */
   metadata: ['AKSHAT VERMA', 'DATA SCIENCE', 'UC DAVIS'],
 } as const;
