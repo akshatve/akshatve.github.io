@@ -1,7 +1,7 @@
 'use client';
 
 import { animate, motion, useMotionValue, useTransform } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { EASE_EDITORIAL } from '@/lib/utils';
 import { usePrefersReducedMotion } from '@/hooks/use-media-query';
 

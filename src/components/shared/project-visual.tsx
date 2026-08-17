@@ -104,37 +104,6 @@ export function ProjectVisual({ variant }: { variant: Project['visual'] }) {
         </g>
       )}
 
-      {variant === 'database' && (
-        // Relational blocks: stacked table-like groups with join lines.
-        <g>
-          {Array.from({ length: 3 }, (_, g) => (
-            <g key={g}>
-              <rect
-                x={26 + g * 100}
-                y={52}
-                width="70"
-                height="96"
-                fill="none"
-                stroke={g === 1 ? gold : stroke}
-                strokeWidth="0.9"
-              />
-              {Array.from({ length: 5 }, (_, r) => (
-                <line
-                  key={r}
-                  x1={26 + g * 100}
-                  y1={68 + r * 16}
-                  x2={96 + g * 100}
-                  y2={68 + r * 16}
-                  stroke={faint}
-                  strokeWidth="0.6"
-                />
-              ))}
-            </g>
-          ))}
-          <line x1="96" y1="84" x2="126" y2="116" stroke={stroke} strokeWidth="0.75" />
-          <line x1="196" y1="116" x2="226" y2="84" stroke={stroke} strokeWidth="0.75" />
-        </g>
-      )}
     </svg>
   );
 }

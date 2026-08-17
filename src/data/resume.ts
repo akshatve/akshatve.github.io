@@ -188,16 +188,6 @@ export const projects: Project[] = [
     ],
     visual: 'finance',
   },
-  {
-    number: '04',
-    title: 'Stack Exchange Relational Data Analysis',
-    period: '05/2026',
-    points: [
-      'Optimized SQL workflows on a 2.4+ GB SQLite Cross Validated dataset using RSQLite and DBI; modeled response times, tag frequencies, and the impact of bounties on community engagement in R.',
-    ],
-    skills: ['R', 'SQL', 'SQLite', 'RSQLite', 'DBI'],
-    visual: 'database',
-  },
 ];
 
 /** Titles/issuers from the résumé; `description` written by Akshat. */
