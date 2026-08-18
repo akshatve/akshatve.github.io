@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, useMotionValue, useSpring, useScroll, useTransform } from 'framer-motion';
-import { ArrowDown, Download } from 'lucide-react';
+import { ArrowDown, Download, Mail } from 'lucide-react';
 import { useRef } from 'react';
 import { profile } from '@/data/resume';
 import { usePointerFine } from '@/hooks/use-media-query';
@@ -9,9 +9,9 @@ import { useSmoothScrollTo } from '@/hooks/use-smooth-scroll-to';
 import { EASE_EDITORIAL } from '@/lib/utils';
 import { Magnetic } from '@/components/shared/magnetic';
 import { Button } from '@/components/ui/button';
-import { ContactMenu } from '@/components/shared/contact-menu';
 import { SplitText } from '@/components/shared/split-text';
 import { HeroField } from '@/components/shared/hero-field';
+import { DataField } from '@/components/layout/data-field';
 
 /**
  * Staged opening. Timings are deliberately slow and sequential:
@@ -59,6 +59,7 @@ export function Hero() {
           : undefined
       }
     >
+      <DataField />
       <div className="blueprint" />
       <HeroField />
 
@@ -123,7 +124,17 @@ export function Hero() {
             transition={{ duration: 1, delay: 2.3, ease: EASE_EDITORIAL }}
             className="mt-10 flex flex-wrap items-center gap-4"
           >
-            <ContactMenu />
+            {/* Email only here — the phone number lives in the Contact
+                section. With one option left a dropdown would just add a click
+                before the same mailto. */}
+            <Magnetic strength={0.22}>
+              <Button asChild variant="outline" size="md" className="group/ct">
+                <a href={`mailto:${profile.email}`} aria-label={`Email ${profile.name}`}>
+                  Get in touch
+                  <Mail className="transition-transform duration-500 ease-editorial group-hover/ct:translate-x-0.5" />
+                </a>
+              </Button>
+            </Magnetic>
 
             <Magnetic strength={0.22}>
               <Button asChild variant="outline" size="md" className="group/cv">

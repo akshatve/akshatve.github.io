@@ -81,8 +81,11 @@ export function DataField() {
 
     const build = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      w = window.innerWidth;
-      h = window.innerHeight;
+      // Sized from its own box, not the viewport: it now lives inside the
+      // hero rather than spanning the page.
+      const rect = canvas.getBoundingClientRect();
+      w = rect.width;
+      h = rect.height;
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -260,7 +263,7 @@ export function DataField() {
     <canvas
       ref={canvasRef}
       aria-hidden
-      className="pointer-events-none fixed inset-0 z-0 h-full w-full"
+      className="pointer-events-none absolute inset-0 z-0 h-full w-full"
     />
   );
 }
