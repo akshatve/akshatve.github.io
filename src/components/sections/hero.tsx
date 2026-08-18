@@ -64,13 +64,13 @@ export function Hero() {
       <HeroField />
 
       <motion.div style={{ y, opacity }} className="shell relative z-10 w-full">
-        <motion.div style={fine ? { x: sx, y: sy } : undefined}>
+        <motion.div style={fine ? { x: sx, y: sy } : undefined} className="text-center">
           {/* 1 — metadata strip */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 1.2, delay: 0.3, ease: EASE_EDITORIAL }}
-            className="flex flex-wrap items-center gap-x-3 gap-y-1"
+            className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1"
           >
             {profile.metadata.map((m, i) => (
               <span key={m} className="meta flex items-center gap-3">
@@ -104,7 +104,7 @@ export function Hero() {
             initial={{ scaleX: 0 }}
             animate={{ scaleX: 1 }}
             transition={{ duration: 1.4, delay: 1.9, ease: EASE_EDITORIAL }}
-            className="mt-10 h-px w-full max-w-md origin-left bg-beige-200/20"
+            className="mx-auto mt-10 h-px w-full max-w-md origin-center bg-beige-200/20"
           />
 
           {/* 4 — introduction */}
@@ -112,7 +112,7 @@ export function Hero() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1.2, delay: 2.1, ease: EASE_EDITORIAL }}
-            className="mt-8 max-w-xl text-[15px] leading-[1.75] text-beige-300 text-pretty sm:text-base"
+            className="mx-auto mt-8 max-w-xl text-[15px] leading-[1.75] text-beige-300 text-pretty sm:text-base"
           >
             {profile.summaryLead}
           </motion.p>
@@ -122,7 +122,7 @@ export function Hero() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, delay: 2.3, ease: EASE_EDITORIAL }}
-            className="mt-10 flex flex-wrap items-center gap-4"
+            className="mt-10 flex flex-wrap items-center justify-center gap-4"
           >
             {/* Email only here — the phone number lives in the Contact
                 section. With one option left a dropdown would just add a click
