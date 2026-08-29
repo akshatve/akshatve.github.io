@@ -1,68 +1,116 @@
 # Akshat Verma — Portfolio
 
-Editorial single-page portfolio. Navy `#07111F` ground, warm beige `#E8DEC8` ink,
-gold `#D8C08A` accent used sparingly.
+Editorial single-page portfolio. Deep navy ground, warm beige type, one gold
+accent used sparingly.
 
-All professional content lives in **`src/data/resume.ts`** and is taken verbatim
-from the résumé. Nothing on this site is invented — no fabricated metrics,
-dates, employers, links, or outcomes. Edit that one file to update the site.
+**Live:** https://akshat-verma-portfolio-topaz.vercel.app
 
-## Run locally
+---
+
+## Quick start
 
 ```bash
 npm install
 npm run dev
 ```
 
-Then open http://localhost:3000
+Open http://localhost:3000
+
+Requires **Node 18.18+** (built and verified on Node 24).
+
+## Scripts
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Dev server with hot reload on :3000 |
+| `npm run build` | Production build |
+| `npm start` | Serve the production build (run `build` first) |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | TypeScript, no emit |
+
+> If a build ever behaves oddly, delete the cache first: `rm -rf .next && npm run build`.
 
 ## Stack
 
 | Library | Where it's used |
 | --- | --- |
 | Next.js 15 (App Router) + React 19 + TypeScript | Framework |
-| Tailwind CSS | Styling, custom navy/beige tokens in `tailwind.config.ts` |
-| Framer Motion | Section reveals, split-text, timeline draw, cursor springs |
-| GSAP ScrollTrigger | Horizontal project rail scrub (desktop) |
+| Tailwind CSS | Styling; navy/beige tokens in `tailwind.config.ts` |
+| Framer Motion | Section reveals, split-text, timeline draw, cursor springs, project panel |
 | Lenis | Inertial smooth scrolling |
-| Embla Carousel | Draggable project carousel (tablet) |
-| Lucide | Icons — used sparingly (5 total) |
-| shadcn/ui | `Button` + `Badge` primitives, restyled for the editorial system |
+| Lucide | Icons, used sparingly |
+| shadcn/ui | `Button` + `Badge` primitives, restyled |
 
-## Projects section — three modes
+No database, no API routes, no third-party services, no credentials.
 
-- **Desktop (≥1024px):** CSS `position: sticky` pins the rail; GSAP ScrollTrigger
-  scrubs it horizontally. The pin is CSS-only *by design* — if GSAP fails to
-  load or its ticker is throttled, the layout still holds and the cards simply
-  don't slide.
-- **Tablet (640–1023px):** Embla drag carousel.
-- **Mobile / reduced motion:** plain vertical stack.
+## Project layout
 
-## Deploy
-
-The site is fully static. Any host works; Vercel is the least friction:
-
-```bash
-npx vercel --prod
+```
+src/
+  app/            layout, page, robots.txt + sitemap.xml route handlers
+  components/
+    layout/       navbar, cursor, scroll progress, smooth scroll, footer, data field
+    sections/     hero, about, experience, leadership, projects, skills,
+                  certifications, contact
+    shared/       split-text, magnetic, section-label, project visuals
+    ui/           shadcn primitives
+  data/resume.ts  ← ALL site content lives here
+  hooks/          media query, active section, smooth scroll
+  lib/            utils, site-url
+public/           résumé PDF
+prototypes/       standalone HTML demos, not part of the Next app
 ```
 
-First run will prompt you to log in and link the project. After the first
-deploy, set the real domain so `sitemap.xml` and `robots.txt` are correct:
+**To edit any content on the site, edit `src/data/resume.ts`.** Nothing is
+hard-coded in components.
+
+To replace the résumé, drop a new PDF at `public/Akshat_Verma_Resume.pdf`
+(or change `profile.resumeUrl`).
+
+## Environment variables
+
+All optional — see `.env.example`. The site builds and runs with none set.
+
+`NEXT_PUBLIC_SITE_URL` only affects `<meta>` / Open Graph URLs.
+`robots.txt` and `sitemap.xml` read the origin from the request, so they are
+correct on any host without configuration.
+
+## Deploying
+
+The app is a standard Next.js server build and runs anywhere Node runs.
+It is **not** tied to Vercel — no Vercel-only APIs, middleware, image loader
+or edge functions are used.
+
+**Any Node host** (Render, Railway, Fly.io, a VPS, Docker):
 
 ```bash
-npx vercel env add NEXT_PUBLIC_SITE_URL production
+npm ci
+npm run build
+npm start          # serves on $PORT, default 3000
 ```
 
-Enter your live URL (e.g. `https://akshatverma.com`), then redeploy.
+**Netlify** — install `@netlify/plugin-nextjs`, build command `npm run build`,
+publish directory `.next`.
 
-Nothing else is environment-dependent — no API keys, no database.
+**Cloudflare Pages** — use the Next.js preset; build `npm run build`.
+
+**Vercel** — import the repo; it is auto-detected, no configuration needed.
+
+After deploying, optionally set `NEXT_PUBLIC_SITE_URL` to your live domain
+and redeploy so Open Graph URLs are absolute.
+
+> Static export (`output: 'export'`) is **not** enabled, because `robots.txt`
+> and `sitemap.xml` are request-rendered. Enabling it would need those two
+> routes converted back to static files first.
 
 ## Accessibility
 
-- Semantic landmarks, single `<h1>`, ordered heading levels
+- Semantic landmarks, a single `<h1>`, ordered heading levels
 - Skip-to-content link
-- Full keyboard navigation; visible focus rings
-- Project modal: labelled dialog, focus trap, Escape to close, focus restored
-- `prefers-reduced-motion` respected throughout (Lenis bypassed, grain frozen,
-  projects fall back to the vertical stack)
+- Full keyboard navigation with visible focus rings
+- `prefers-reduced-motion` respected throughout
 - Custom cursor only on fine pointers, never on touch
+
+## Licence
+
+Personal portfolio. Content and résumé © Akshat Verma.
