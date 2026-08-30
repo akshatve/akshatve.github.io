@@ -11,7 +11,6 @@ import { Magnetic } from '@/components/shared/magnetic';
 import { Button } from '@/components/ui/button';
 import { SplitText } from '@/components/shared/split-text';
 import { HeroField } from '@/components/shared/hero-field';
-import { DataField } from '@/components/layout/data-field';
 
 /**
  * Staged opening. Timings are deliberately slow and sequential:
@@ -59,7 +58,6 @@ export function Hero() {
           : undefined
       }
     >
-      <DataField />
       <div className="blueprint" />
       <HeroField />
 
