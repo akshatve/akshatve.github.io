@@ -3,7 +3,7 @@
 Editorial single-page portfolio. Deep navy ground, warm beige type, one gold
 accent used sparingly.
 
-**Live:** https://akshat-verma-portfolio-topaz.vercel.app
+**Live:** https://akshatve.github.io
 
 ---
 
@@ -76,6 +76,24 @@ All optional — see `.env.example`. The site builds and runs with none set.
 correct on any host without configuration.
 
 ## Deploying
+
+### GitHub Pages (current)
+
+`main` holds the source; the built site lives on the `gh-pages` branch, which
+is what Pages serves. To publish a change:
+
+```bash
+NEXT_PUBLIC_SITE_URL="https://akshatve.github.io" npm run build
+npx gh-pages -d out --dotfiles          # --dotfiles keeps .nojekyll
+```
+
+`.nojekyll` is essential — without it Pages runs Jekyll, which strips the
+`_next/` directory and takes all the CSS and JS with it.
+
+To make this automatic on every push, grant the workflow scope once
+(`gh auth refresh -s workflow`) and commit `.github/workflows/deploy.yml`.
+
+### Other hosts
 
 The app is a standard Next.js server build and runs anywhere Node runs.
 It is **not** tied to Vercel — no Vercel-only APIs, middleware, image loader
