@@ -172,7 +172,7 @@ export const projects: Project[] = [
   },
   {
     number: '03',
-    title: 'Applied Financial Analytics for Business Insights',
+    title: 'FinLens',
     period: '01/2026 – 03/2026',
     // Description supplied directly by Akshat.
     points: [
