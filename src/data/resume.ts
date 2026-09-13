@@ -138,40 +138,6 @@ export const leadership: Leadership[] = [
 export const projects: Project[] = [
   {
     number: '01',
-    title: 'Fake News Classifier',
-    period: '05/2026 – 06/2026',
-    // Description and skills supplied directly by Akshat.
-    points: [
-      'Engineered an end-to-end NLP credibility pipeline using a corpus of ~44K real-world news articles to evaluate news authenticity beyond simple binary labels.',
-      'Built and benchmarked a classical lexical model (TF-IDF + Logistic Regression) against a fine-tuned contextual Transformer (DistilBERT), achieving 99% test accuracy on held-out data.',
-      'Designed a probabilistic output framework featuring token attribution highlighting and calibrated confidence scoring to prioritize ethical, non-binary credibility assessments over false certainty.',
-    ],
-    skills: [
-      'Python',
-      'TF-IDF + Logistic Regression',
-      'DistilBERT (Transformers)',
-      'Model Benchmarking',
-      'Token Attribution',
-      'Confidence Calibration',
-    ],
-    visual: 'fakenews',
-  },
-  {
-    number: '02',
-    title: 'GoodsFlow — Inventory & Shortage Analytics Platform',
-    period: '04/2026',
-    // Reworded from the résumé's single sentence so the opening no longer
-    // echoes project 01. Facts are unchanged — nothing added or dropped.
-    points: [
-      'Designed a predictive logistics pipeline in Python, with data seeding for edge cases.',
-      'Developed a localized shortage scorer and a demand trend analyzer.',
-      'Emitted JSON datasets for downstream dashboards.',
-    ],
-    skills: ['Python', 'JSON'],
-    visual: 'flow',
-  },
-  {
-    number: '03',
     title: 'FinLens',
     period: '01/2026 – 03/2026',
     // Description supplied directly by Akshat.
@@ -193,6 +159,40 @@ export const projects: Project[] = [
       'Data Visualisation',
     ],
     visual: 'finance',
+  },
+  {
+    number: '02',
+    title: 'Fake News Classifier',
+    period: '05/2026 – 06/2026',
+    // Description and skills supplied directly by Akshat.
+    points: [
+      'Engineered an end-to-end NLP credibility pipeline using a corpus of ~44K real-world news articles to evaluate news authenticity beyond simple binary labels.',
+      'Built and benchmarked a classical lexical model (TF-IDF + Logistic Regression) against a fine-tuned contextual Transformer (DistilBERT), achieving 99% test accuracy on held-out data.',
+      'Designed a probabilistic output framework featuring token attribution highlighting and calibrated confidence scoring to prioritize ethical, non-binary credibility assessments over false certainty.',
+    ],
+    skills: [
+      'Python',
+      'TF-IDF + Logistic Regression',
+      'DistilBERT (Transformers)',
+      'Model Benchmarking',
+      'Token Attribution',
+      'Confidence Calibration',
+    ],
+    visual: 'fakenews',
+  },
+  {
+    number: '03',
+    title: 'GoodsFlow — Inventory & Shortage Analytics Platform',
+    period: '04/2026',
+    // Reworded from the résumé's single sentence so the opening no longer
+    // echoes project 01. Facts are unchanged — nothing added or dropped.
+    points: [
+      'Designed a predictive logistics pipeline in Python, with data seeding for edge cases.',
+      'Developed a localized shortage scorer and a demand trend analyzer.',
+      'Emitted JSON datasets for downstream dashboards.',
+    ],
+    skills: ['Python', 'JSON'],
+    visual: 'flow',
   },
 ];
 
