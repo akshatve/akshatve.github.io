@@ -3,7 +3,7 @@
 Editorial single-page portfolio. Deep navy ground, warm beige type, one gold
 accent used sparingly.
 
-**Live:** https://akshatve.github.io
+**Live:** https://vermakshat.com
 
 ---
 
@@ -83,9 +83,13 @@ correct on any host without configuration.
 is what Pages serves. To publish a change:
 
 ```bash
-NEXT_PUBLIC_SITE_URL="https://akshatve.github.io" npm run build
+NEXT_PUBLIC_SITE_URL="https://vermakshat.com" npm run build
 npx gh-pages -d out --dotfiles          # --dotfiles keeps .nojekyll
 ```
+
+`public/CNAME` holds the custom domain (`vermakshat.com`). It must stay — every
+publish replaces the whole `gh-pages` branch, so without it GitHub would drop
+the domain setting.
 
 `.nojekyll` is essential — without it Pages runs Jekyll, which strips the
 `_next/` directory and takes all the CSS and JS with it.
