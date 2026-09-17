@@ -59,18 +59,12 @@ export function Navbar() {
       >
         <div
           className={cn(
-            'shell flex items-center justify-between transition-all duration-700 ease-editorial',
+            // Centres the nav capsule on desktop; on mobile only the Menu
+            // button remains, so it stays in the right corner.
+            'shell flex items-center justify-end transition-all duration-700 ease-editorial lg:justify-center',
             scrolled ? 'py-4' : 'py-7',
           )}
         >
-          <button
-            type="button"
-            onClick={() => scrollTo('hero', 0)}
-            className="meta text-beige-200 transition-colors duration-500 hover:text-gold"
-          >
-            {profile.name}
-          </button>
-
           {/* Desktop nav */}
           <GlassNav active={active} onSelect={go} />
 
