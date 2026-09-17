@@ -1,42 +1,50 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import { useEffect, useMemo, useState } from 'react';
-import { EASE_EDITORIAL } from '@/lib/utils';
+import { useEffect, useRef } from 'react';
 import { usePrefersReducedMotion } from '@/hooks/use-media-query';
 
 /**
  * Interactive panel for GoodsFlow.
  *
- * A localized shortage map: a grid of locations sweeps in, each cell shaded by
- * its shortage score, with the seeded edge cases outlined. A focus ring then
- * steps between flagged locations — for each one the demand trend analyzer
- * draws its history and a dashed forecast, and the emitted JSON record types
- * out for the downstream dashboards.
+ * A live supply network. Two hubs dispatch goods along curved routes to five
+ * stores; each store's inventory ring drains with its own demand and refills
+ * as packets arrive. When a ring falls under the threshold the store turns
+ * gold and ripples — the shortage scorer firing — and the routes feeding it
+ * brighten as dispatch shifts toward it. Every few seconds a seeded edge case
+ * (a sudden demand spike) hits one store. Underneath, the demand trend scrolls
+ * past a "now" line into a dashed forecast with a widening confidence band.
  *
- * Decorative. Scores, trends and location codes come from a fixed seed; the
- * résumé states no values, so nothing here asserts a result.
+ * Decorative. The simulation is a fixed-seed toy — the résumé states no
+ * values, so nothing here asserts a result. Canvas so dozens of moving
+ * packets cost one paint per frame.
  */
 
-const COLS = 10;
-const ROWS = 5;
-const CELL = 16;
-const GAP = 3;
-const GRID_W = COLS * (CELL + GAP) - GAP;
-const GRID_H = ROWS * (CELL + GAP) - GAP;
+const GOLD = (a: number) => `rgba(216,192,138,${a})`;
+const BEIGE = (a: number) => `rgba(232,222,200,${a})`;
+const IVORY = (a: number) => `rgba(243,236,220,${a})`;
+const MONO = '7px ui-monospace, SFMono-Regular, Menlo, monospace';
 
-/** Cells seeded as edge cases (index = row * COLS + col). */
-const SEEDED = new Set([7, 21, 42]);
+/** Hysteresis: a store turns short below ENTER and recovers above EXIT. */
+const SHORT_ENTER = 0.25;
+const SHORT_EXIT = 0.4;
+const EDGE_EVERY = 6.5; // seconds between seeded edge cases
+const EMIT_EVERY = 2.2; // seconds between JSON emits
 
-/**
- * Flagged cells the focus ring visits, in order. Chosen by hand from the seeded
- * layout so the ring crosses the whole grid and lands on every edge case.
- */
-const FOCUS_ORDER = [7, 38, 21, 16, 42, 45];
+/** Positions are fractions of the network area. */
+const HUBS = [
+  { x: 0.07, y: 0.26 },
+  { x: 0.07, y: 0.78 },
+];
 
-const FOCUS_MS = 2600;
+const STORES = [
+  { x: 0.5, y: 0.12, hubs: [0], base: 0.05, amp: 0.07, freq: 0.9, ph: 0.4 },
+  { x: 0.7, y: 0.42, hubs: [0, 1], base: 0.06, amp: 0.08, freq: 0.6, ph: 2.1 },
+  { x: 0.92, y: 0.16, hubs: [0], base: 0.045, amp: 0.06, freq: 1.1, ph: 4.2 },
+  { x: 0.55, y: 0.86, hubs: [1], base: 0.05, amp: 0.08, freq: 0.75, ph: 1.2 },
+  { x: 0.9, y: 0.76, hubs: [0, 1], base: 0.055, amp: 0.07, freq: 0.5, ph: 3.3 },
+];
 
-/** Deterministic PRNG — identical output every render, no hydration risk. */
+/** Deterministic PRNG — the toy plays out the same way every time. */
 function rng(seed: number) {
   let s = seed;
   return () => {
@@ -45,249 +53,389 @@ function rng(seed: number) {
   };
 }
 
-interface Cell {
-  i: number;
-  col: number;
-  row: number;
-  risk: number; // 0..1
-  seeded: boolean;
+interface Pt {
+  x: number;
+  y: number;
 }
 
-function buildCells(): Cell[] {
-  const rand = rng(20260404);
-  return Array.from({ length: COLS * ROWS }, (_, i) => {
-    const seeded = SEEDED.has(i);
-    // most locations sit low; a handful run hot
-    const base = Math.pow(rand(), 2.2);
-    return {
-      i,
-      col: i % COLS,
-      row: Math.floor(i / COLS),
-      risk: seeded ? 0.95 : base,
-      seeded,
-    };
-  });
-}
-
-/** Demand history + forecast for one location, in a 120×64 box. */
-function buildTrend(cell: Cell) {
-  const rand = rng(1000 + cell.i * 7919);
-  const n = 9;
-  const rising = cell.risk > 0.55;
-  let v = 0.35 + rand() * 0.2;
-  const ys = Array.from({ length: n }, (_, k) => {
-    if (k > 0) v += (rising ? 0.05 : -0.01) + (rand() - 0.5) * 0.12;
-    v = Math.max(0.08, Math.min(0.94, v));
-    return v;
-  });
-  const pts = ys.map((y, k) => [4 + (k * 112) / (n - 1), 60 - y * 52] as const);
-  const toPath = (p: readonly (readonly [number, number])[]) =>
-    p.map(([x, y], k) => `${k ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+function bezier(p0: Pt, c1: Pt, c2: Pt, p3: Pt, t: number): Pt {
+  const u = 1 - t;
   return {
-    history: toPath(pts.slice(0, 6)),
-    forecast: toPath(pts.slice(5)),
-    end: pts[n - 1],
-    rising,
+    x: u * u * u * p0.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * p3.x,
+    y: u * u * u * p0.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * p3.y,
   };
 }
 
-const locationCode = (c: Cell) => `R${c.row + 1}-${String(c.col + 1).padStart(2, '0')}`;
-
-function cellFill(c: Cell) {
-  if (c.risk > 0.7) return 'rgba(216,192,138,0.85)';
-  if (c.risk > 0.4) return 'rgba(216,192,138,0.35)';
-  if (c.risk > 0.18) return 'rgba(232,222,200,0.16)';
-  return 'rgba(232,222,200,0.07)';
-}
-
 export function FlowVisual({ active }: { active: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const emitRef = useRef<HTMLSpanElement>(null);
   const reduced = usePrefersReducedMotion();
-  const d = (s: number) => (reduced ? 0 : s);
-
-  const cells = useMemo(buildCells, []);
-  const focusList = useMemo(() => FOCUS_ORDER.map((i) => cells[i]), [cells]);
-  const [f, setF] = useState(0);
 
   useEffect(() => {
-    if (!active || reduced) return;
-    const id = window.setTimeout(
-      () => setF((n) => (n + 1) % focusList.length),
-      f === 0 ? FOCUS_MS + 900 : FOCUS_MS,
-    );
-    return () => window.clearTimeout(id);
-  }, [active, reduced, f, focusList.length]);
+    const canvas = canvasRef.current;
+    if (!canvas || !active) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-  const focus = focusList[f];
-  const trend = useMemo(() => buildTrend(focus), [focus]);
-  const fx = focus.col * (CELL + GAP);
-  const fy = focus.row * (CELL + GAP);
+    const rand = rng(20260404);
 
-  const json = `{"loc":"${locationCode(focus)}","risk":"high","trend":"${
-    trend.rising ? 'up' : 'down'
-  }"${focus.seeded ? ',"seeded":true' : ''}}`;
+    // ── simulation state ──
+    const routes = STORES.flatMap((s, si) => s.hubs.map((hi) => ({ si, hi, spawn: rand() })));
+    const level = STORES.map(() => 0.55 + rand() * 0.35);
+    const short = STORES.map(() => false);
+    const edgeUntil = STORES.map(() => -1);
+    let packets: { r: number; t: number; speed: number }[] = [];
+    let time = 0;
+    let nextEdge = 4.2;
+    let edgeIdx = 0;
+    let nextEmit = 3.2;
+
+    const step = (dt: number) => {
+      time += dt;
+
+      STORES.forEach((s, i) => {
+        const demand = s.base + s.amp * (0.5 + 0.5 * Math.sin(time * s.freq + s.ph));
+        level[i] = Math.max(0, level[i] - demand * dt);
+        short[i] = short[i] ? level[i] < SHORT_EXIT : level[i] < SHORT_ENTER;
+      });
+
+      // dispatch leans toward the stores that need it most
+      routes.forEach((r, ri) => {
+        const need = Math.min(1, Math.max(0, (0.8 - level[r.si]) / 0.8));
+        const rate = (0.6 + 3 * need) / STORES[r.si].hubs.length;
+        r.spawn += rate * dt;
+        while (r.spawn >= 1) {
+          r.spawn -= 1;
+          packets.push({ r: ri, t: 0, speed: 0.42 + rand() * 0.18 });
+        }
+      });
+
+      packets = packets.filter((p) => {
+        p.t += p.speed * dt;
+        if (p.t < 1) return true;
+        const si = routes[p.r].si;
+        level[si] = Math.min(1, level[si] + 0.06);
+        return false;
+      });
+
+      if (time >= nextEdge) {
+        const si = [1, 3, 0, 4, 2][edgeIdx % 5];
+        level[si] = Math.max(0, level[si] - 0.42);
+        edgeUntil[si] = time + 2;
+        edgeIdx += 1;
+        nextEdge += EDGE_EVERY;
+      }
+
+      if (time >= nextEmit) {
+        nextEmit += EMIT_EVERY;
+        emitRef.current?.animate(
+          [
+            { opacity: 1, transform: 'scale(1.6)' },
+            { opacity: 0.35, transform: 'scale(1)' },
+          ],
+          { duration: 700, easing: 'ease-out' },
+        );
+      }
+    };
+
+    // ── layout ──
+    let w = 0;
+    let h = 0;
+    const fit = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const r = canvas.getBoundingClientRect();
+      w = r.width;
+      h = r.height;
+      canvas.width = Math.max(1, Math.floor(w * dpr));
+      canvas.height = Math.max(1, Math.floor(h * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const geometry = () => {
+      const top = 40;
+      const bottom = h * 0.62;
+      const left = 26;
+      const right = w - 30;
+      const map = (p: Pt) => ({
+        x: left + (right - left) * p.x,
+        y: top + (bottom - top) * p.y,
+      });
+      const hubs = HUBS.map(map);
+      const stores = STORES.map(map);
+      const curves = routes.map(({ si, hi }) => {
+        const p0 = hubs[hi];
+        const p3 = stores[si];
+        const mx = p0.x + (p3.x - p0.x) * 0.55;
+        return { p0, c1: { x: mx, y: p0.y }, c2: { x: mx, y: p3.y }, p3 };
+      });
+      return { hubs, stores, curves };
+    };
+
+    // ── drawing ──
+    const draw = (intro: number) => {
+      const g = geometry();
+      ctx.clearRect(0, 0, w, h);
+
+      // routes, drawn in on intro; brighter when feeding a short store
+      g.curves.forEach((c, ri) => {
+        const hot = short[routes[ri].si];
+        ctx.beginPath();
+        const n = 40;
+        const upto = Math.max(1, Math.round(n * intro));
+        for (let k = 0; k <= upto; k += 1) {
+          const p = bezier(c.p0, c.c1, c.c2, c.p3, k / n);
+          if (k === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        }
+        ctx.strokeStyle = hot ? GOLD(0.42) : BEIGE(0.13);
+        ctx.lineWidth = hot ? 1.2 : 1;
+        ctx.stroke();
+      });
+
+      // packets with short fading trails
+      if (intro >= 1) {
+        packets.forEach((p) => {
+          const c = g.curves[p.r];
+          const hot = short[routes[p.r].si];
+          for (let k = 3; k >= 0; k -= 1) {
+            const tt = p.t - k * 0.018;
+            if (tt < 0) continue;
+            const q = bezier(c.p0, c.c1, c.c2, c.p3, tt);
+            const a = (1 - k / 4) * Math.min(1, p.t * 6);
+            ctx.beginPath();
+            ctx.fillStyle = hot ? GOLD(0.95 * a) : IVORY(0.75 * a);
+            ctx.arc(q.x, q.y, k === 0 ? 1.9 : 1.3, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        });
+      }
+
+      // hubs
+      g.hubs.forEach((p, i) => {
+        const s = 8;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.globalAlpha = intro;
+        ctx.fillStyle = 'rgba(5,11,20,0.95)';
+        ctx.fillRect(-s, -s, s * 2, s * 2);
+        ctx.strokeStyle = BEIGE(0.6);
+        ctx.lineWidth = 1;
+        ctx.strokeRect(-s, -s, s * 2, s * 2);
+        // slow rotating dispatch marker
+        ctx.rotate(time * 0.8 + i);
+        ctx.strokeStyle = GOLD(0.55);
+        ctx.setLineDash([2, 3]);
+        ctx.strokeRect(-s - 4, -s - 4, (s + 4) * 2, (s + 4) * 2);
+        ctx.setLineDash([]);
+        ctx.restore();
+        ctx.fillStyle = BEIGE(0.5 * intro);
+        ctx.font = MONO;
+        ctx.textAlign = 'center';
+        ctx.fillText(`HUB ${i + 1}`, p.x, p.y + 25);
+      });
+
+      // stores: inventory ring, shortage ripple, edge-case marker
+      g.stores.forEach((p, i) => {
+        const pop = Math.max(0, Math.min(1, intro * 1.6 - 0.4 - i * 0.08));
+        if (pop <= 0) return;
+        const hot = short[i];
+        const R = 11;
+
+        if (hot) {
+          for (let k = 0; k < 2; k += 1) {
+            const ph = (time * 0.9 + k * 0.5) % 1;
+            ctx.beginPath();
+            ctx.strokeStyle = GOLD(0.5 * (1 - ph));
+            ctx.lineWidth = 1;
+            ctx.arc(p.x, p.y, R + 4 + ph * 18, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
+
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(5,11,20,0.95)';
+        ctx.arc(p.x, p.y, R * pop, 0, Math.PI * 2);
+        ctx.fill();
+
+        // ring track + level
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.strokeStyle = BEIGE(0.12 * pop);
+        ctx.arc(p.x, p.y, R * pop, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.strokeStyle = hot ? GOLD(pop) : IVORY(0.75 * pop);
+        ctx.arc(p.x, p.y, R * pop, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * level[i] * pop);
+        ctx.stroke();
+
+        // core
+        ctx.beginPath();
+        ctx.fillStyle = hot ? GOLD(pop) : BEIGE(0.35 * pop);
+        ctx.arc(p.x, p.y, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.font = MONO;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = hot ? GOLD(0.95 * pop) : BEIGE(0.45 * pop);
+        ctx.fillText(hot ? 'SHORTAGE' : `S${i + 1}`, p.x, p.y + R + 12);
+
+        if (time < edgeUntil[i]) {
+          const life = (edgeUntil[i] - time) / 2;
+          const s = R + 7;
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(-time * 1.4);
+          ctx.strokeStyle = IVORY(0.8 * life);
+          ctx.setLineDash([3, 2.5]);
+          ctx.lineWidth = 1;
+          ctx.strokeRect(-s, -s, s * 2, s * 2);
+          ctx.restore();
+          ctx.setLineDash([]);
+          ctx.fillStyle = IVORY(0.85 * life);
+          // left of the node, clear of the header and the store label
+          ctx.textAlign = 'right';
+          ctx.fillText('EDGE CASE', p.x - s - 5, p.y + 2.5);
+        }
+      });
+
+      // ── demand trend strip ──
+      const x0 = 26;
+      const x1 = w - 30;
+      const top = h * 0.74;
+      const bot = h - 22;
+      const mid = (top + bot) / 2;
+      const amp = (bot - top) / 2;
+      const nowX = x0 + (x1 - x0) * 0.68;
+
+      ctx.strokeStyle = BEIGE(0.06);
+      ctx.lineWidth = 1;
+      [top, mid, bot].forEach((y) => {
+        ctx.beginPath();
+        ctx.moveTo(x0, y);
+        ctx.lineTo(x1, y);
+        ctx.stroke();
+      });
+
+      const slow = (u: number) => 0.55 * Math.sin(u * 1.3) + 0.25 * Math.sin(u * 0.55 + 1.7);
+      const fast = (u: number) => 0.18 * Math.sin(u * 4.1 + 0.6) + 0.08 * Math.sin(u * 9.3);
+      const uOf = (x: number) => time * 0.45 + ((x - nowX) / (x1 - x0)) * 6;
+      const yOf = (v: number) => mid - v * amp * 0.9;
+
+      const reveal = x0 + (x1 - x0) * intro;
+
+      // confidence band, widening into the future
+      if (reveal > nowX) {
+        const end = Math.min(x1, reveal);
+        ctx.beginPath();
+        for (let x = nowX; x <= end; x += 3) {
+          const spread = 0.06 + ((x - nowX) / (x1 - nowX)) * 0.35;
+          ctx.lineTo(x, yOf(slow(uOf(x)) + spread));
+        }
+        for (let x = end; x >= nowX; x -= 3) {
+          const spread = 0.06 + ((x - nowX) / (x1 - nowX)) * 0.35;
+          ctx.lineTo(x, yOf(slow(uOf(x)) - spread));
+        }
+        ctx.closePath();
+        ctx.fillStyle = GOLD(0.1);
+        ctx.fill();
+      }
+
+      // history
+      ctx.beginPath();
+      for (let x = x0; x <= Math.min(nowX, reveal); x += 2) {
+        const y = yOf(slow(uOf(x)) + fast(uOf(x)));
+        if (x === x0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = IVORY(0.75);
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      // forecast
+      if (reveal > nowX) {
+        ctx.beginPath();
+        for (let x = nowX; x <= Math.min(x1, reveal); x += 2) {
+          const y = yOf(slow(uOf(x)));
+          if (x === nowX) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.setLineDash([4, 3]);
+        ctx.strokeStyle = GOLD(0.9);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // now marker
+      ctx.beginPath();
+      ctx.setLineDash([1.5, 2.5]);
+      ctx.moveTo(nowX, top - 4);
+      ctx.lineTo(nowX, bot + 4);
+      ctx.strokeStyle = BEIGE(0.35);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (reveal >= nowX) {
+        ctx.beginPath();
+        ctx.fillStyle = GOLD(1);
+        ctx.arc(nowX, yOf(slow(uOf(nowX)) + fast(uOf(nowX))), 2.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.font = MONO;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = BEIGE(0.45);
+      ctx.fillText('DEMAND TREND', x0, h - 8);
+      ctx.textAlign = 'center';
+      ctx.fillText('NOW', nowX, h - 8);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = GOLD(0.8);
+      ctx.fillText('FORECAST', x1, h - 8);
+    };
+
+    fit();
+
+    // Pre-run so goods are already in transit when the panel opens.
+    for (let k = 0; k < 50; k += 1) step(0.05);
+
+    if (reduced) {
+      for (let k = 0; k < 40; k += 1) step(0.05);
+      draw(1);
+      return;
+    }
+
+    let raf = 0;
+    const start = performance.now();
+    let last = start;
+    const loop = (now: number) => {
+      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+      last = now;
+      const intro = Math.min(1, (now - start) / 1100);
+      step(dt);
+      draw(1 - Math.pow(1 - intro, 3));
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+
+    const ro = new ResizeObserver(fit);
+    ro.observe(canvas);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [active, reduced]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-navy-900/40 p-5">
-      <div className="flex h-full flex-col">
-        <div className="flex items-baseline justify-between">
-          <p className="font-mono text-[8.5px] uppercase tracking-metadata text-beige-500">
-            Localized shortage scorer
-          </p>
-          <p className="font-mono text-[8.5px] uppercase tracking-wide2 text-gold">
-            JSON → dashboards
-          </p>
-        </div>
+    <div className="relative h-full w-full overflow-hidden bg-navy-900/40">
+      <canvas ref={canvasRef} aria-hidden className="absolute inset-0 h-full w-full" />
 
-        <div className="mt-3 grid min-h-0 flex-1 grid-cols-12 gap-5">
-          {/* ── location grid ── */}
-          <div className="col-span-7 flex min-h-0 flex-col">
-            <svg
-              viewBox={`-3 -3 ${GRID_W + 6} ${GRID_H + 6}`}
-              className="min-h-0 w-full flex-1"
-              aria-hidden
-            >
-              {cells.map((c) => (
-                <motion.rect
-                  key={c.i}
-                  x={c.col * (CELL + GAP)}
-                  y={c.row * (CELL + GAP)}
-                  width={CELL}
-                  height={CELL}
-                  fill={cellFill(c)}
-                  stroke={c.seeded ? 'rgba(243,236,220,0.75)' : 'none'}
-                  strokeWidth={c.seeded ? 0.8 : 0}
-                  strokeDasharray={c.seeded ? '2 1.5' : undefined}
-                  initial={false}
-                  animate={{ opacity: active ? 1 : 0 }}
-                  // column-by-column sweep, rows offset slightly
-                  transition={{ duration: d(0.35), delay: d(0.1 + c.col * 0.07 + c.row * 0.02) }}
-                />
-              ))}
-
-              {/* sweep line */}
-              {active && !reduced && (
-                <motion.line
-                  y1={-3}
-                  y2={GRID_H + 3}
-                  stroke="#D8C08A"
-                  strokeWidth="0.8"
-                  initial={{ x1: -2, x2: -2, opacity: 1 }}
-                  animate={{ x1: GRID_W + 2, x2: GRID_W + 2, opacity: [1, 1, 0] }}
-                  transition={{ duration: 0.85, delay: 0.1, ease: 'linear' }}
-                />
-              )}
-
-              {/* focus ring */}
-              <motion.rect
-                width={CELL + 5}
-                height={CELL + 5}
-                fill="none"
-                stroke="#D8C08A"
-                strokeWidth="1"
-                initial={{ x: fx - 2.5, y: fy - 2.5, opacity: 0 }}
-                animate={{ x: fx - 2.5, y: fy - 2.5, opacity: active ? 1 : 0 }}
-                transition={{
-                  x: { duration: d(0.7), ease: EASE_EDITORIAL },
-                  y: { duration: d(0.7), ease: EASE_EDITORIAL },
-                  opacity: { duration: d(0.4), delay: d(0.95) },
-                }}
-              />
-            </svg>
-
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[7.5px] uppercase tracking-wide2 text-beige-500">
-              <span className="flex items-center gap-1">
-                <span className="block size-2 bg-beige-200/15" /> Low
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="block size-2 bg-gold/35" /> Elevated
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="block size-2 bg-gold/85" /> Shortage
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="block size-2 border border-dashed border-beige-100/75" /> Seeded
-                edge case
-              </span>
-            </div>
-          </div>
-
-          {/* ── demand trend for the focused location ── */}
-          <div className="col-span-5 flex min-h-0 flex-col">
-            <p className="font-mono text-[8px] uppercase tracking-wide2 text-beige-500">
-              Demand trend
-            </p>
-            <svg viewBox="0 0 120 64" className="mt-1 min-h-0 w-full flex-1" aria-hidden>
-              {[12, 36, 60].map((y) => (
-                <line key={y} x1="0" x2="120" y1={y} y2={y} stroke="rgba(232,222,200,0.06)" />
-              ))}
-              {/* history / forecast divider */}
-              <line
-                x1="74"
-                x2="74"
-                y1="4"
-                y2="62"
-                stroke="rgba(232,222,200,0.18)"
-                strokeDasharray="1.5 2"
-              />
-              <g key={focus.i}>
-                <motion.path
-                  d={trend.history}
-                  fill="none"
-                  stroke="rgba(243,236,220,0.8)"
-                  strokeWidth="1.1"
-                  initial={{ pathLength: reduced ? 1 : 0 }}
-                  animate={{ pathLength: active ? 1 : 0 }}
-                  transition={{ duration: d(0.8), delay: d(f === 0 ? 1 : 0.15), ease: EASE_EDITORIAL }}
-                />
-                <motion.path
-                  d={trend.forecast}
-                  fill="none"
-                  stroke="#D8C08A"
-                  strokeWidth="1.2"
-                  strokeDasharray="3 2"
-                  initial={{ opacity: reduced ? 1 : 0 }}
-                  animate={{ opacity: active ? 1 : 0 }}
-                  transition={{ duration: d(0.5), delay: d(f === 0 ? 1.7 : 0.85) }}
-                />
-                <motion.circle
-                  cx={trend.end[0]}
-                  cy={trend.end[1]}
-                  r="2.2"
-                  fill="#D8C08A"
-                  initial={{ opacity: reduced ? 1 : 0 }}
-                  animate={{ opacity: active ? 1 : 0 }}
-                  transition={{ duration: d(0.4), delay: d(f === 0 ? 2 : 1.15) }}
-                />
-              </g>
-            </svg>
-            <div className="mt-1 flex justify-between font-mono text-[7.5px] uppercase tracking-wide2 text-beige-500">
-              <span>History</span>
-              <span className="text-gold">Forecast</span>
-            </div>
-          </div>
-        </div>
-
-        {/* ── emitted JSON record ── */}
-        <div className="mt-3 flex items-center gap-3 border-t border-beige-200/10 pt-2.5">
-          <span className="shrink-0 font-mono text-[7.5px] uppercase tracking-wide2 text-beige-500">
-            Emit
-          </span>
-          <div className="min-w-0 flex-1 overflow-hidden">
-            <motion.p
-              key={json}
-              className="overflow-hidden whitespace-nowrap font-mono text-[9px] text-beige-200"
-              initial={{ width: reduced ? '100%' : '0%' }}
-              animate={{ width: active ? '100%' : '0%' }}
-              transition={{
-                duration: d(0.9),
-                delay: d(f === 0 ? 1.9 : 1),
-                ease: 'linear',
-              }}
-            >
-              {json}
-            </motion.p>
-          </div>
-        </div>
+      <div className="pointer-events-none relative flex items-baseline justify-between p-4">
+        <p className="font-mono text-[8.5px] uppercase tracking-metadata text-beige-500">
+          Predictive logistics network
+        </p>
+        <p className="flex items-center gap-1.5 font-mono text-[8.5px] uppercase tracking-wide2 text-gold">
+          <span ref={emitRef} className="block size-1.5 rounded-full bg-gold opacity-35" />
+          JSON → dashboards
+        </p>
       </div>
     </div>
   );
