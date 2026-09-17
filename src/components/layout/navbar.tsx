@@ -260,7 +260,7 @@ function GlassNav({ active, onSelect }: { active: string | null; onSelect: (id: 
                 <span
                   className={cn(
                     'font-mono text-[9px] transition-colors duration-500',
-                    isActive ? 'text-gold' : isLit ? 'text-beige-300' : 'text-beige-500',
+                    isActive ? 'text-gold' : isLit ? 'text-beige-400' : 'text-beige-500/70',
                   )}
                 >
                   {item.index}
@@ -268,7 +268,7 @@ function GlassNav({ active, onSelect }: { active: string | null; onSelect: (id: 
                 <span
                   className={cn(
                     'text-[11px] uppercase tracking-wide2 transition-colors duration-500',
-                    isActive || isLit ? 'text-beige-100' : 'text-beige-400',
+                    isActive || isLit ? 'text-beige-300' : 'text-beige-500',
                   )}
                 >
                   {item.label}
