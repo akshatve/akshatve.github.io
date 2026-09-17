@@ -76,7 +76,8 @@ export const experiences: Experience[] = [
     company: 'Biocipher Technologies Private Limited',
     // Title as stated on the Biocipher completion certificate.
     role: 'Data Engineering and Research Intern',
-    period: '06/2024 – 08/2024',
+    // Dates as stated on the completion certificate (June 25 – August 31, 2026).
+    period: '06/2026 – 08/2026',
     points: [
       'Engineered data extraction, cleaning, and modeling of corporate datasets to identify operational trends and generate actionable business intelligence.',
       'Built automated workflows and contributed visualizations to research reports used in executive decision-making.',
