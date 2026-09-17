@@ -11,6 +11,7 @@ import { Magnetic } from '@/components/shared/magnetic';
 import { Button } from '@/components/ui/button';
 import { SplitText } from '@/components/shared/split-text';
 import { HeroField } from '@/components/shared/hero-field';
+import { ShootingStars } from '@/components/shared/shooting-stars';
 
 /**
  * Staged opening. Timings are deliberately slow and sequential:
@@ -60,6 +61,8 @@ export function Hero() {
     >
       <div className="blueprint" />
       <HeroField />
+      {/* Behind the content (z-10), in front of the grid and point field. */}
+      <ShootingStars />
 
       <motion.div style={{ y, opacity }} className="shell relative z-10 w-full">
         <motion.div style={fine ? { x: sx, y: sy } : undefined} className="text-center">
