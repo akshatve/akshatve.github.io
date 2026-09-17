@@ -21,6 +21,8 @@ export interface Experience {
   period: string;
   /** Verbatim bullets from the résumé. Never paraphrase or extend these. */
   points: string[];
+  /** Completion certificate image in /public. When set, a button opens it. */
+  certificate?: string;
 }
 
 export interface Leadership {

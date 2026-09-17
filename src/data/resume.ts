@@ -74,12 +74,14 @@ export const disciplines = [
 export const experiences: Experience[] = [
   {
     company: 'Biocipher Technologies Private Limited',
-    role: 'Data Scientist Intern',
+    // Title as stated on the Biocipher completion certificate.
+    role: 'Data Engineering and Research Intern',
     period: '06/2024 – 08/2024',
     points: [
       'Extracted, cleaned, and modeled corporate datasets to identify operational trends and generate actionable business intelligence.',
       'Built automated workflows and contributed visualizations to research reports used in executive decision-making.',
     ],
+    certificate: '/certificates/biocipher-internship.jpg',
   },
   {
     company: 'Wealth Clinic',

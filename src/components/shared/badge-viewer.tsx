@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 
 interface BadgeViewerProps {
   /** The badge being shown, or null when closed. */
-  badge: { src: string; title: string; issuer: string } | null;
+  badge: { src: string; title: string; issuer: string; wide?: boolean } | null;
   onClose: () => void;
 }
 
@@ -74,7 +74,11 @@ export function BadgeViewer({ badge, onClose }: BadgeViewerProps) {
           aria-modal="true"
           aria-label={`${shown.title} certificate`}
           className={cn(
-            'relative w-full max-w-[34rem] transition-all duration-500 ease-editorial',
+            'relative w-full transition-all duration-500 ease-editorial',
+            // Width is also bounded by viewport height so the whole image fits.
+            shown.wide
+              ? 'max-w-[min(56rem,calc((100dvh-7rem)*1.33))]'
+              : 'max-w-[min(34rem,calc(100dvh-7rem))]',
             open ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-3 scale-[0.98] opacity-0',
           )}
         >
@@ -97,7 +101,7 @@ export function BadgeViewer({ badge, onClose }: BadgeViewerProps) {
           {/* eslint-disable-next-line @next/next/no-img-element -- static export, no image optimiser */}
           <img
             src={shown.src}
-            alt={`${shown.title} certificate badge issued with ${shown.issuer}`}
+            alt={`${shown.title} certificate from ${shown.issuer}`}
             className="block h-auto w-full border border-beige-200/15"
           />
         </figure>

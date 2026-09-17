@@ -1,9 +1,11 @@
 'use client';
 
 import { motion, useScroll, useSpring, useTransform } from 'framer-motion';
-import { useRef } from 'react';
+import { Award } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
 import { experiences } from '@/data/resume';
 import { EASE_EDITORIAL } from '@/lib/utils';
+import { BadgeViewer } from '@/components/shared/badge-viewer';
 import { SectionLabel } from '@/components/shared/section-label';
 
 /**
@@ -12,6 +14,13 @@ import { SectionLabel } from '@/components/shared/section-label';
  */
 export function Experience() {
   const ref = useRef<HTMLDivElement>(null);
+  const [viewing, setViewing] = useState<{
+    src: string;
+    title: string;
+    issuer: string;
+    wide: boolean;
+  } | null>(null);
+  const close = useCallback(() => setViewing(null), []);
 
   const { scrollYProgress } = useScroll({
     target: ref,
@@ -85,16 +94,34 @@ export function Experience() {
                   {exp.company}
                 </motion.h3>
 
-                <motion.p
+                <motion.div
                   variants={{
                     hidden: { opacity: 0, y: 14 },
                     visible: { opacity: 1, y: 0 },
                   }}
                   transition={{ duration: 0.8, ease: EASE_EDITORIAL }}
-                  className="mt-3 text-[11px] uppercase tracking-metadata text-gold"
+                  className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2"
                 >
-                  {exp.role}
-                </motion.p>
+                  <p className="text-[11px] uppercase tracking-metadata text-gold">{exp.role}</p>
+                  {exp.certificate && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setViewing({
+                          src: exp.certificate!,
+                          title: exp.role,
+                          issuer: exp.company,
+                          wide: true,
+                        })
+                      }
+                      aria-label={`View ${exp.company} internship certificate`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-beige-200/25 px-3 py-1 font-mono text-[10px] uppercase tracking-wide2 text-beige-200 transition-all duration-500 ease-editorial hover:-translate-y-0.5 hover:border-gold/70 hover:bg-gold/10 hover:text-gold"
+                    >
+                      <Award aria-hidden className="size-3.5" />
+                      Certificate
+                    </button>
+                  )}
+                </motion.div>
 
                 {/* Bullets reveal one at a time */}
                 <motion.ul
@@ -124,6 +151,8 @@ export function Experience() {
           </div>
         </div>
       </div>
+
+      <BadgeViewer badge={viewing} onClose={close} />
     </section>
   );
 }
