@@ -202,6 +202,7 @@ export const certifications: Certification[] = [
     title: 'AI Professional Skills',
     detail: 'AI for real-world projects',
     issuer: 'OpenAI',
+    badge: '/certificates/openai.png',
     description:
       'I applied OpenAI frameworks to solve complex challenges by building and evaluating scalable, intelligent AI solutions.',
   },
@@ -209,6 +210,7 @@ export const certifications: Certification[] = [
     title: 'Data Analysis',
     detail: 'Excel-based recommendations',
     issuer: 'GRAMMY Awards',
+    badge: '/certificates/grammy.png',
     description:
       'I performed quantitative analysis on GRAMMY Awards media datasets using advanced Excel modeling to deliver strategic recommendations.',
   },
@@ -216,6 +218,7 @@ export const certifications: Certification[] = [
     title: 'Data Visualization',
     detail: 'Tableau dashboards',
     issuer: 'Intel',
+    badge: '/certificates/intel.png',
     description:
       'I designed interactive Tableau dashboards using Intel corporate datasets to transform multi-variable data into executive-ready visual insights.',
   },
@@ -223,6 +226,7 @@ export const certifications: Certification[] = [
     title: 'Intercultural Skills',
     detail: 'Global team collaboration',
     issuer: 'UNESCO',
+    badge: '/certificates/unesco.png',
     description:
       'I developed cross-cultural communication strategies and emotional intelligence frameworks to collaborate effectively across international teams.',
   },

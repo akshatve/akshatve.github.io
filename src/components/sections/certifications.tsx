@@ -1,15 +1,23 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { Award } from 'lucide-react';
+import { useCallback, useState } from 'react';
 import { certifications } from '@/data/resume';
 import { EASE_EDITORIAL } from '@/lib/utils';
 import { SectionLabel } from '@/components/shared/section-label';
+import { BadgeViewer } from '@/components/shared/badge-viewer';
 
 /**
  * Minimal vertical list — no cards. Each row reveals its issuer detail on
  * hover. The résumé provides no dates or credential IDs, so none are shown.
  */
 export function Certifications() {
+  const [viewing, setViewing] = useState<{ src: string; title: string; issuer: string } | null>(
+    null,
+  );
+  const close = useCallback(() => setViewing(null), []);
+
   return (
     <section id="certifications" className="relative scroll-mt-24 py-16 sm:py-20 lg:py-24">
       <div className="shell">
@@ -31,9 +39,24 @@ export function Certifications() {
                 </span>
 
                 <div className="sm:col-span-7">
-                  <h3 className="font-serif text-[clamp(1.4rem,2.8vw,2.1rem)] leading-tight tracking-[-0.015em] text-beige-100 transition-transform duration-700 ease-editorial sm:group-hover:translate-x-2">
-                    {cert.title}
-                  </h3>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <h3 className="font-serif text-[clamp(1.4rem,2.8vw,2.1rem)] leading-tight tracking-[-0.015em] text-beige-100 transition-transform duration-700 ease-editorial sm:group-hover:translate-x-2">
+                      {cert.title}
+                    </h3>
+                    {cert.badge && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setViewing({ src: cert.badge!, title: cert.title, issuer: cert.issuer })
+                        }
+                        aria-label={`View ${cert.title} certificate`}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-beige-200/25 px-3 py-1 font-mono text-[10px] uppercase tracking-wide2 text-beige-200 transition-all duration-500 ease-editorial hover:-translate-y-0.5 hover:border-gold/70 hover:bg-gold/10 hover:text-gold"
+                      >
+                        <Award aria-hidden className="size-3.5" />
+                        View
+                      </button>
+                    )}
+                  </div>
 
                   <p className="mt-2.5 text-[11px] uppercase tracking-metadata text-beige-400">
                     {cert.detail}
@@ -60,6 +83,8 @@ export function Certifications() {
           ))}
         </ul>
       </div>
+
+      <BadgeViewer badge={viewing} onClose={close} />
     </section>
   );
 }

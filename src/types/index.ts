@@ -55,6 +55,8 @@ export interface Certification {
   issuer: string;
   /** Fuller description of the work, written by Akshat. */
   description: string;
+  /** Badge image in /public. When set, a "View" button opens it. */
+  badge?: string;
 }
 
 export interface SkillGroup {
