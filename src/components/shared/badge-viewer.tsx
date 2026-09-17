@@ -74,15 +74,15 @@ export function BadgeViewer({ badge, onClose }: BadgeViewerProps) {
           aria-modal="true"
           aria-label={`${shown.title} certificate`}
           className={cn(
-            'relative w-full transition-all duration-500 ease-editorial',
-            // Width is also bounded by viewport height so the whole image fits.
-            shown.wide
-              ? 'max-w-[min(56rem,calc((100dvh-7rem)*1.33))]'
-              : 'max-w-[min(34rem,calc(100dvh-7rem))]',
+            // Shrink-wraps the image, so the caption row always spans exactly
+            // the image's width and Close lines up with its right edge.
+            'relative mx-auto w-fit max-w-full transition-all duration-500 ease-editorial',
             open ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-3 scale-[0.98] opacity-0',
           )}
         >
-          <div className="mb-3 flex items-center justify-between gap-4">
+          {/* w-0 + min-w-full: fills the figure without contributing to its
+              width, so a long caption wraps instead of widening the frame. */}
+          <div className="mb-3 flex w-0 min-w-full items-center justify-between gap-4">
             <figcaption className="font-mono text-[11px] uppercase tracking-metadata text-beige-300">
               {shown.title} · {shown.issuer}
             </figcaption>
@@ -102,7 +102,16 @@ export function BadgeViewer({ badge, onClose }: BadgeViewerProps) {
           <img
             src={shown.src}
             alt={`${shown.title} certificate from ${shown.issuer}`}
-            className="block h-auto w-full border border-beige-200/15"
+            className={cn(
+              'block h-auto max-h-[calc(100dvh-7rem)] w-auto border border-beige-200/15',
+              // Bounded by height AND width directly, rather than deriving
+              // width from a fixed aspect ratio. The old width cap assumed a
+              // 1.33 image; a proportionally taller certificate overflowed the
+              // viewport and covered its own Close button.
+              shown.wide
+                ? 'max-w-[min(56rem,calc(100vw-2.5rem))]'
+                : 'max-w-[min(34rem,calc(100vw-2.5rem))]',
+            )}
           />
         </figure>
       )}

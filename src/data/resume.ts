@@ -86,13 +86,16 @@ export const experiences: Experience[] = [
   },
   {
     company: 'Wealth Clinic',
+    // Title as stated on the Wealth Clinic internship certificate.
     role: 'Research and Financial Data Analyst Intern',
-    period: '04/2023 – 06/2023',
+    // Dates as stated on the internship certificate (15 Jan 2023 – 16 June 2023).
+    period: '01/2023 – 06/2023',
     // Supplied directly by Akshat (not present in the PDF résumé).
     points: [
       'Developed Python and SQL workflows to query and clean Tally ERP 9 ledgers, transforming raw financial data into structured datasets for analysis.',
       'Designed statistical scripts to detect transaction anomalies and discrepancies across balance sheets, improving auditing accuracy and data integrity.',
     ],
+    certificate: '/certificates/wealth-clinic-internship.jpg',
   },
 ];
 
