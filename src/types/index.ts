@@ -48,6 +48,12 @@ export interface Project {
    * others are abstract decorative motifs carrying no data.
    */
   visual: 'fakenews' | 'text' | 'flow' | 'finance' | 'adversarial';
+  /**
+   * Optional live demo. A site-relative path to a page in /public (served as
+   * a static file) or an absolute URL. Renders a "Live Demo" button under
+   * the date when present.
+   */
+  demo?: string;
 }
 
 export interface Certification {

@@ -1,11 +1,13 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { ArrowUpRight } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { projects } from '@/data/resume';
 import type { Project } from '@/types';
 import { EASE_EDITORIAL, cn } from '@/lib/utils';
 import { usePointerFine } from '@/hooks/use-media-query';
+import { Button } from '@/components/ui/button';
 import { SectionLabel } from '@/components/shared/section-label';
 import { ProjectVisual } from '@/components/shared/project-visual';
 import { FakeNewsVisual } from '@/components/shared/fake-news-visual';
@@ -234,9 +236,12 @@ function Showcase() {
                   <span className="font-mono text-[10px] tracking-wide2 text-gold">
                     {active.number}
                   </span>
-                  <span className="font-mono text-[10px] tracking-wide2 text-beige-400">
-                    {active.period}
-                  </span>
+                  <div className="flex flex-col items-end gap-3">
+                    <span className="font-mono text-[10px] tracking-wide2 text-beige-400">
+                      {active.period}
+                    </span>
+                    {active.demo && <DemoLink href={active.demo} title={active.title} />}
+                  </div>
                 </div>
 
                 <h3 className="mt-4 font-serif text-[clamp(1.5rem,2.6vw,2.1rem)] leading-[1.15] tracking-[-0.015em] text-beige-100">
@@ -309,9 +314,12 @@ function StackedCard({ project }: { project: Project }) {
     >
       <div className="flex items-baseline justify-between gap-4">
         <span className="font-mono text-[10px] text-gold">{project.number}</span>
-        <span className="font-mono text-[10px] tracking-wide2 text-beige-400">
-          {project.period}
-        </span>
+        <div className="flex flex-col items-end gap-3">
+          <span className="font-mono text-[10px] tracking-wide2 text-beige-400">
+            {project.period}
+          </span>
+          {project.demo && <DemoLink href={project.demo} title={project.title} />}
+        </div>
       </div>
 
       <h3 className="mt-3 font-serif text-2xl leading-tight tracking-[-0.015em] text-beige-100">
@@ -337,5 +345,30 @@ function StackedCard({ project }: { project: Project }) {
         ))}
       </ul>
     </motion.article>
+  );
+}
+
+/**
+ * "Live Demo" button for projects that have a published demo.
+ *
+ * Opens in a new tab: the demo is a standalone app, and replacing the portfolio
+ * with it would lose the visitor's place in the page.
+ */
+function DemoLink({ href, title }: { href: string; title: string }) {
+  return (
+    <Button asChild variant="outline" size="sm" className="group/demo">
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`${title} live demo (opens in a new tab)`}
+      >
+        Live Demo
+        <ArrowUpRight
+          aria-hidden
+          className="transition-transform duration-500 ease-editorial group-hover/demo:-translate-y-0.5 group-hover/demo:translate-x-0.5"
+        />
+      </a>
+    </Button>
   );
 }

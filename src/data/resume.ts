@@ -143,6 +143,9 @@ export const projects: Project[] = [
     number: '01',
     title: 'FinLens',
     period: '01/2026 – 03/2026',
+    // Interactive dashboard, published as a static page from
+    // public/demos/finlens/index.html.
+    demo: '/demos/finlens/',
     // Description supplied directly by Akshat.
     points: [
       'The Applied Financial Analytics Dashboard is an interactive Python-based platform engineered to execute automated quantitative evaluations and linear predictive modeling across fundamental enterprise data. Built using Python data engineering and visualization tools, the application translates multi-year financial disclosures into dynamic visual indicators and statistical metrics.',
