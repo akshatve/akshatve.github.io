@@ -78,7 +78,7 @@ export const experiences: Experience[] = [
     role: 'Data Engineering and Research Intern',
     period: '06/2024 – 08/2024',
     points: [
-      'Extracted, cleaned, and modeled corporate datasets to identify operational trends and generate actionable business intelligence.',
+      'Engineered data extraction, cleaning, and modeling of corporate datasets to identify operational trends and generate actionable business intelligence.',
       'Built automated workflows and contributed visualizations to research reports used in executive decision-making.',
     ],
     certificate: '/certificates/biocipher-internship.jpg',
@@ -89,7 +89,7 @@ export const experiences: Experience[] = [
     period: '03/2023 – 07/2023',
     // Supplied directly by Akshat (not present in the PDF résumé).
     points: [
-      'Engineered data extraction and cleaning workflows using Python and SQL to query Tally ERP 9 ledgers, transforming raw financial data into structured datasets for analysis.',
+      'Developed Python and SQL workflows to query and clean Tally ERP 9 ledgers, transforming raw financial data into structured datasets for analysis.',
       'Designed statistical scripts to detect transaction anomalies and discrepancies across balance sheets, improving auditing accuracy and data integrity.',
     ],
   },
