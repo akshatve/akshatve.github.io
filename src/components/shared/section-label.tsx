@@ -21,14 +21,14 @@ export function SectionLabel({ index, label }: SectionLabelProps) {
       <motion.span
         variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
         transition={{ duration: 0.7 }}
-        className="font-mono text-sm text-gold sm:text-base"
+        className="font-mono text-[20px] leading-none text-gold"
       >
         {index}
       </motion.span>
       <motion.span
         variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
         transition={{ duration: 0.7 }}
-        className="meta text-sm tracking-[0.24em] text-beige-200 sm:text-base"
+        className="font-mono text-[20px] uppercase leading-none tracking-[0.22em] text-beige-200"
       >
         {label}
       </motion.span>
