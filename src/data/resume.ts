@@ -87,7 +87,7 @@ export const experiences: Experience[] = [
   {
     company: 'Wealth Clinic',
     role: 'Research and Financial Data Analyst Intern',
-    period: '03/2023 – 07/2023',
+    period: '04/2023 – 06/2023',
     // Supplied directly by Akshat (not present in the PDF résumé).
     points: [
       'Developed Python and SQL workflows to query and clean Tally ERP 9 ledgers, transforming raw financial data into structured datasets for analysis.',
