@@ -11,6 +11,7 @@ import { ProjectVisual } from '@/components/shared/project-visual';
 import { FakeNewsVisual } from '@/components/shared/fake-news-visual';
 import { FinanceVisual } from '@/components/shared/finance-visual';
 import { FlowVisual } from '@/components/shared/flow-visual';
+import { AdversarialVisual } from '@/components/shared/adversarial-visual';
 
 /** Grace period before an un-hovered preview releases. */
 const CLOSE_DELAY = 220;
@@ -281,6 +282,7 @@ function Visual({ project }: { project: Project }) {
   if (project.visual === 'fakenews') return <FakeNewsVisual active />;
   if (project.visual === 'finance') return <FinanceVisual active />;
   if (project.visual === 'flow') return <FlowVisual active />;
+  if (project.visual === 'adversarial') return <AdversarialVisual active />;
   return (
     <>
       <span className="absolute inset-0 opacity-60">

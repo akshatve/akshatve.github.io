@@ -47,7 +47,7 @@ export interface Project {
    * Visual treatment. 'fakenews' renders a bespoke interactive panel; the
    * others are abstract decorative motifs carrying no data.
    */
-  visual: 'fakenews' | 'text' | 'flow' | 'finance';
+  visual: 'fakenews' | 'text' | 'flow' | 'finance' | 'adversarial';
 }
 
 export interface Certification {

@@ -197,6 +197,30 @@ export const projects: Project[] = [
     skills: ['Python', 'JSON'],
     visual: 'flow',
   },
+  {
+    number: '04',
+    title: 'Fake Review Detection Pipeline',
+    period: '05/2026 – 06/2026',
+    // Paragraphs 1 and 3 are Akshat's résumé bullets, verbatim. Paragraphs 2
+    // and 4 only explain those bullets — no models, metrics or results added.
+    points: [
+      'Co-authored a detection pipeline on a 40,000-instance dataset using TF-IDF and stylometric features to flag fake reviews.',
+      'The pipeline reads each review in two complementary ways: TF-IDF weighting captures what a review says through the terms it relies on, while stylometric features capture how it is written. Combining content and writing style gives the detector more than one signal to separate fabricated reviews from genuine ones.',
+      'Built a TextAttack framework measuring classifier degradation under adversarial attacks to expose robustness gaps.',
+      'Rather than stopping at performance on clean data, the framework uses TextAttack to generate deliberately perturbed versions of reviews and measures how far the classifier degrades when its inputs are manipulated — surfacing where a detector that looks strong under normal conditions can be evaded.',
+    ],
+    // Drawn only from the techniques named in the résumé bullets.
+    skills: [
+      'NLP',
+      'TF-IDF',
+      'Stylometric Features',
+      'TextAttack',
+      'Adversarial Attacks',
+      'Robustness Evaluation',
+      'Fake Review Detection',
+    ],
+    visual: 'adversarial',
+  },
 ];
 
 /** Titles/issuers from the résumé; `description` written by Akshat. */
