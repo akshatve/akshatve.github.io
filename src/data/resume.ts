@@ -96,6 +96,7 @@ export const experiences: Experience[] = [
       'Designed statistical scripts to detect transaction anomalies and discrepancies across balance sheets, improving auditing accuracy and data integrity.',
     ],
     certificate: '/certificates/wealth-clinic-internship.jpg',
+    recommendation: '/certificates/wealth-clinic-lor.jpg',
   },
 ];
 

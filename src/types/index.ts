@@ -23,6 +23,8 @@ export interface Experience {
   points: string[];
   /** Completion certificate image in /public. When set, a button opens it. */
   certificate?: string;
+  /** Letter of recommendation image in /public. When set, an LOR button opens it. */
+  recommendation?: string;
 }
 
 export interface Leadership {

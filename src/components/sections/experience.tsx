@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, useScroll, useSpring, useTransform } from 'framer-motion';
-import { Award } from 'lucide-react';
+import { Award, FileText } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import { experiences } from '@/data/resume';
 import { EASE_EDITORIAL } from '@/lib/utils';
@@ -119,6 +119,24 @@ export function Experience() {
                     >
                       <Award aria-hidden className="size-3.5" />
                       Certificate
+                    </button>
+                  )}
+                  {exp.recommendation && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setViewing({
+                          src: exp.recommendation!,
+                          title: 'Letter of Recommendation',
+                          issuer: exp.company,
+                          wide: true,
+                        })
+                      }
+                      aria-label={`View ${exp.company} letter of recommendation`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-beige-200/25 px-3 py-1 font-mono text-[10px] uppercase tracking-wide2 text-beige-200 transition-all duration-500 ease-editorial hover:-translate-y-0.5 hover:border-gold/70 hover:bg-gold/10 hover:text-gold"
+                    >
+                      <FileText aria-hidden className="size-3.5" />
+                      LOR
                     </button>
                   )}
                 </motion.div>
