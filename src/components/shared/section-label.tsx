@@ -16,19 +16,19 @@ export function SectionLabel({ index, label }: SectionLabelProps) {
       whileInView="visible"
       viewport={{ once: true, margin: '-10%' }}
       transition={{ staggerChildren: 0.08 }}
-      className="flex items-center gap-5"
+      className="flex items-center gap-5 sm:gap-6"
     >
       <motion.span
         variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
         transition={{ duration: 0.7 }}
-        className="font-mono text-[10px] text-gold"
+        className="font-mono text-sm text-gold sm:text-base"
       >
         {index}
       </motion.span>
       <motion.span
         variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
         transition={{ duration: 0.7 }}
-        className="meta text-beige-300"
+        className="meta text-sm tracking-[0.24em] text-beige-200 sm:text-base"
       >
         {label}
       </motion.span>
