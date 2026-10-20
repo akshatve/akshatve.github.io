@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Nutvique</title>
+<meta name="theme-color" content="#1F2A44">
+<meta name="description" content="Nutvique billing, prices and stock – Nutzy Foods Pvt Ltd">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Nutvique">
+<style>
+  :root { --navy:#1F2A44; --gold:#C9A24A; --cream:#F7F1DE; --bg:#F4F2EC; }
+  html, body { margin:0; height:100%; background:var(--navy); overflow:hidden; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+  /* the app itself – kept inside the phone's safe area (notch / home bar) */
+  #app { position:fixed; left:env(safe-area-inset-left); right:env(safe-area-inset-right);
+         top:env(safe-area-inset-top); bottom:env(safe-area-inset-bottom);
+         width:calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right));
+         height:calc(100% - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+         border:0; background:var(--bg); }
+  #splash { position:fixed; inset:0; background:var(--navy); display:flex; flex-direction:column; align-items:center; justify-content:center;
+            gap:18px; color:var(--cream); z-index:5; transition:opacity .35s; }
+  #splash img { width:132px; height:132px; border-radius:28px; box-shadow:0 8px 30px rgba(0,0,0,.35); }
+  #splash .t { font-size:13px; letter-spacing:.25em; color:var(--gold); font-weight:700; }
+  #splash .s { font-size:13px; opacity:.75; min-height:18px; text-align:center; padding:0 24px; }
+  #splash button { display:none; margin-top:6px; background:var(--gold); color:var(--navy); border:0; border-radius:10px; padding:11px 22px; font-weight:700; font-size:15px; }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--gold); display:inline-block; margin:0 3px; animation:b 1s infinite ease-in-out; }
+  .dot:nth-child(2) { animation-delay:.15s } .dot:nth-child(3) { animation-delay:.3s }
+  @keyframes b { 0%,80%,100% { opacity:.25 } 40% { opacity:1 } }
+  #inst { position:fixed; left:12px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom)); z-index:6; display:none;
+          background:#fff; color:#1F2A44; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,.3); padding:14px; font-size:14px; line-height:1.4; }
+  #inst b { display:block; font-size:15px; margin-bottom:4px; }
+  #inst .r { display:flex; gap:8px; margin-top:10px; justify-content:flex-end; }
+  #inst button { border:0; border-radius:9px; padding:9px 14px; font-weight:700; font-size:14px; }
+  #inst .go { background:var(--navy); color:#fff; } #inst .no { background:#eee; color:#333; }
+  .share { display:inline-block; width:16px; height:16px; vertical-align:-3px; }
+</style>
+</head>
+<body>
+<div id="splash">
+  <img src="icon-512.png" alt="">
+  <div class="t">NUTVIQUE</div>
+  <div class="s" id="msg"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  <button id="retry">Try again</button>
+</div>
+<iframe id="app" title="Nutvique" allow="bluetooth; clipboard-read; clipboard-write; camera; fullscreen; web-share; geolocation"></iframe>
+<div id="inst"></div>
+<script>
+  // The live app (Google Apps Script web app). Every change made there shows here at once – nothing to re-install.
+  var APP_URL = 'https://script.google.com/macros/s/AKfycbzzWrQoosUFIlSWu4-jvlaG7j2CYpWTcgw6wByaY2aQD6vZ5tWIOJ36wyk1XMT8sM3RHQ/exec';
+  var frame = document.getElementById('app'), splash = document.getElementById('splash'), msg = document.getElementById('msg'), retry = document.getElementById('retry');
+  var loaded = false;
+  function hideSplash() { if (loaded) return; loaded = true; splash.style.opacity = 0; setTimeout(function () { splash.style.display = 'none'; }, 400); }
+  function load() {
+    retry.style.display = 'none';
+    if (!navigator.onLine) { msg.textContent = 'No internet connection. Connect to Wi-Fi or mobile data.'; retry.style.display = 'block'; return; }
+    msg.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+    loaded = false; splash.style.display = 'flex'; splash.style.opacity = 1;
+    frame.onload = function () { setTimeout(hideSplash, 600); };
+    frame.src = APP_URL + (location.search.indexOf('b=') >= 0 ? location.search : '');
+    setTimeout(function () { if (!loaded) msg.textContent = 'Still loading… slow connection?'; }, 12000);
+  }
+  retry.onclick = load;
+  window.addEventListener('online', function () { if (!loaded) load(); });
+  load();
+
+  // Offline support for the shell itself (icon, splash) – the app data always comes live from the server.
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () { });
+
+  // "Install the app" hint – only when opened in a normal browser tab, not once installed.
+  var standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  var inst = document.getElementById('inst'), deferred = null;
+  function seen() { try { return localStorage.getItem('nv_inst_no') === '1'; } catch (e) { return false; } }
+  function never() { try { localStorage.setItem('nv_inst_no', '1'); } catch (e) { } inst.style.display = 'none'; }
+  var ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault(); deferred = e;
+    if (standalone || seen()) return;
+    inst.innerHTML = '<b>Install the Nutvique app</b>Adds the app icon to this phone. It opens full screen, like any other app.' +
+      '<div class="r"><button class="no" id="i_no">Not now</button><button class="go" id="i_go">Install</button></div>';
+    inst.style.display = 'block';
+    document.getElementById('i_no').onclick = never;
+    document.getElementById('i_go').onclick = function () { inst.style.display = 'none'; deferred.prompt(); deferred.userChoice.finally(function () { deferred = null; }); };
+  });
+  if (ios && !standalone && !seen()) setTimeout(function () {
+    var safari = !/crios|fxios|edgios/i.test(navigator.userAgent);
+    inst.innerHTML = '<b>Install the Nutvique app</b>' + (safari
+      ? 'Tap <svg class="share" viewBox="0 0 24 24" fill="none" stroke="#1F2A44" stroke-width="2"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v8h14v-8"/></svg> <b style="display:inline">Share</b> at the bottom of Safari, then <b style="display:inline">Add to Home Screen</b>.'
+      : 'Open this page in <b style="display:inline">Safari</b>, tap Share, then <b style="display:inline">Add to Home Screen</b>.') +
+      '<div class="r"><button class="no" id="i_no">OK</button></div>';
+    inst.style.display = 'block'; document.getElementById('i_no').onclick = never;
+  }, 2500);
+  window.addEventListener('appinstalled', function () { inst.style.display = 'none'; });
+</script>
+</body>
+</html>
