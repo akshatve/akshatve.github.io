@@ -1177,6 +1177,7 @@ async function customersScreen() {
     let r; try { r = await call('customersReport', { q: q || '' }); } catch (e) { $('#cu_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
     const s = r.stats, R = r.rules;
     $('#cu_b', m).innerHTML = '<div class="small mute">Rule: a customer shares their code; when the friend\'s first bill of ₹' + R.refMin + '+ is saved, the customer gets a ' + R.pct + '% coupon, valid ' + R.months + ' month on a bill of ₹' + R.min + '+. One coupon per friend; not combined with other discounts.</div>' +
+      (r.lucky ? '<div class="small" style="margin-top:6px">🍀 Lucky draw: ' + r.lucky.issued + ' coupons given (' + r.lucky.p10 + ' × 10%, ' + (r.lucky.issued - r.lucky.p10) + ' × 5%) · ' + r.lucky.used + ' used · chance of 10% = ' + r.luckyRules.p10 + ' in 100</div>' : '') +
       '<div class="bigp"><div><span>Customers</span><b>' + s.customers + '</b></div><div><span>Came by referral</span><b>' + s.referred + '</b></div><div><span>Coupons earned</span><b>' + Object.keys(s.coupons).reduce((a, k) => a + s.coupons[k], 0) + '</b><span>' + Object.keys(s.coupons).map(k => k + ' ' + s.coupons[k]).join(' · ') + '</span></div></div>' +
       (q ? '<h3>Search: ' + esc(q) + '</h3><div class="card" style="padding:6px"><div class="tscroll">' + (r.found.length ? head + r.found.map(custRow).join('') + '</table>' : '<div class="empty small">No customer found.</div>') + '</div></div>' : '') +
       '<h3>Top referrers</h3><div class="card" style="padding:6px"><div class="tscroll">' + (r.top.length ? head + r.top.map(custRow).join('') + '</table>' : '<div class="empty small">No referrals yet.</div>') + '</div></div>' +
@@ -1218,7 +1219,12 @@ async function viewMore() {
     f('Markup (selling = cost ×)', 'inputmode="decimal"') + f('Round selling price up to', 'inputmode="decimal"') + f('MRP = selling ×', 'inputmode="decimal"') + f('Minimum margin %', 'inputmode="decimal"') +
     fld('Cost includes GST', '<select class="i" data-s="Cost includes GST"><option' + (s['Cost includes GST'] !== 'Yes' ? ' selected' : '') + '>No</option><option' + (s['Cost includes GST'] === 'Yes' ? ' selected' : '') + '>Yes</option></select>') +
     fld('Spread charges by', '<select class="i" data-s="Spread charges by"><option' + (s['Spread charges by'] !== 'Quantity' ? ' selected' : '') + '>Value</option><option' + (s['Spread charges by'] === 'Quantity' ? ' selected' : '') + '>Quantity</option></select>') +
-    f('Gemini model') + f('Last GTIN used on DataKart') + '</div><button class="btn" id="ss" style="margin-top:12px">Save settings</button>' +
+    f('Gemini model') + f('Last GTIN used on DataKart') + '</div>' +
+    '<h3 style="margin-top:18px">🍀 Lucky draw (store bills)</h3><div class="grid2">' + f('Lucky draw: bill of at least ₹', 'inputmode="decimal" placeholder="1000"') + f('Lucky draw: chance of 10% coupon (out of 100)', 'inputmode="decimal" placeholder="25 – the rest get 5%"') +
+    f('Lucky draw: coupon valid (days)', 'inputmode="numeric" placeholder="30"') + f('Lucky draw: coupon needs bill of ₹', 'inputmode="decimal" placeholder="1000"') + '</div>' +
+    '<h3 style="margin-top:18px">Referral coupons</h3><div class="grid2">' + f("Referral: friend's bill at least ₹", 'inputmode="decimal" placeholder="1000"') + f('Referral: coupon %', 'inputmode="decimal" placeholder="10"') +
+    f('Referral: coupon needs bill of ₹', 'inputmode="decimal" placeholder="1000"') + f('Referral: coupon valid (months)', 'inputmode="numeric" placeholder="1"') + '</div>' +
+    '<button class="btn" id="ss" style="margin-top:12px">Save settings</button>' +
     '<h3 style="margin-top:18px">Upload templates (once)</h3><div class="small mute">Pick the blank GS1_DATAKART_PRODUCT_LIST.xlsx and QUEBUSTER_PRODUCTS_MASTER.xlsx from your NUTVIQUE PRODUCT SYSTEM folder.</div>' +
     '<div class="grid2" style="margin-top:8px">' + fld('DataKart template ' + (s.gs1Template ? '<span class="pill p-ok">uploaded</span>' : ''), '<input class="i" type="file" accept=".xlsx" id="t_g">') + fld('QueueBuster template ' + (s.qbTemplate ? '<span class="pill p-ok">uploaded</span>' : ''), '<input class="i" type="file" accept=".xlsx" id="t_q">') + '</div>' +
     '<div class="small" style="margin-top:12px"><a href="' + esc(s.sheetUrl) + '" target="_blank">Open the Inventory Google Sheet</a></div>';
@@ -1256,6 +1262,10 @@ start();
 #sc_log div{padding:3px 0;border-bottom:1px solid #eee}
 #b_scale.on{background:#fff7e3}#b_scale.stable{background:#e3f4e6;color:#1d6b33;font-weight:700}.qk .sw{background:var(--navy);color:#fff;border-color:var(--navy)}
 .cpn{display:flex;gap:8px;align-items:center;border:1px dashed var(--gold);border-radius:10px;padding:8px 10px;margin-top:6px;background:#fffaf0}.cpn.on{background:#e3f4e6;border-style:solid;border-color:#1d6b33}
+.ldbox{margin-top:10px;background:#1F2A44;color:#F7F1DE;border-radius:14px;padding:12px}.ldcards{display:flex;gap:10px;justify-content:center;margin-top:10px}
+.ldcards button{width:76px;height:100px;border-radius:12px;border:2px solid #C9A24A;background:repeating-linear-gradient(45deg,#2B3A5E,#2B3A5E 8px,#24324f 8px,#24324f 16px);color:#C9A24A;font-size:30px;font-weight:800;cursor:pointer;transition:transform .5s}
+.ldcards button.pick{transform:scale(1.08)}.ldcards button.flip{background:#C9A24A;color:#1F2A44;transform:rotateY(360deg) scale(1.12);font-size:24px;display:flex;flex-direction:column;align-items:center;justify-content:center}.ldcards button small{font-size:12px}
+.ldwin{background:#fff7e3;border:2px dashed #C9A24A;border-radius:14px;padding:12px;color:#1F2A44}.ldpct{font-size:30px;font-weight:800;color:#b07d10;margin:2px 0}
 .seg{display:flex;border:1px solid #cfcab9;border-radius:10px;overflow:hidden}.seg button{flex:1;border:0;background:#fff;padding:9px 4px;cursor:pointer;font-weight:600;font-size:14px}
 .seg button.on{background:var(--navy);color:#fff}
 .btot{font-size:14px}.btot div{display:flex;justify-content:space-between;padding:2px 0}.btot .g{font-size:22px;font-weight:800;border-top:2px solid var(--navy);margin-top:6px;padding-top:6px}
@@ -1362,7 +1372,8 @@ function drawCust() {
     h += '<div class="tiny"><span class="pill p-ok">' + (c.bills ? c.bills + ' earlier bill' + (c.bills === 1 ? '' : 's') : 'Known customer') + '</span>' + (c.code ? ' Referral code <b>' + esc(c.code) + '</b>' : '') + (c.referredBy && /^Waiting/.test(c.referral) ? ' · referred by ' + esc(c.referredBy) + ' (' + esc(c.referral.toLowerCase()) + ')' : '') + '</div>';
   }
   if (c.coupons.length) h += '<div style="margin-top:8px">' + c.coupons.map(cp => { const on = B.coupon && B.coupon.code === cp.code;
-    return '<div class="cpn' + (on ? ' on' : '') + '"><div class="grow"><b>' + esc(cp.code) + ' · ' + cp.pct + '% off</b><div class="tiny mute">on a bill of ₹' + cp.min + '+ · valid till ' + esc(cp.till.split('-').reverse().join('-')) + (cp.from ? ' · for referring ' + esc(cp.from) : '') + '</div></div><button class="btn sm ' + (on ? 'ghost' : 'gold') + '" data-cp="' + esc(cp.code) + '">' + (on ? 'Remove' : 'Use') + '</button></div>'; }).join('') + '</div>';
+    return '<div class="cpn' + (on ? ' on' : '') + '"><div class="grow"><b>' + (cp.lucky ? '🍀 ' : '') + esc(cp.code) + ' · ' + cp.pct + '% off</b><div class="tiny mute">on a bill of ₹' + cp.min + '+ · valid till ' + esc(cp.till.split('-').reverse().join('-')) + (cp.lucky ? ' · lucky draw' : cp.from ? ' · for referring ' + esc(cp.from) : '') + '</div></div>' +
+      (cp.next ? '<span class="tiny mute" style="text-align:right">From the<br>next visit</span>' : '<button class="btn sm ' + (on ? 'ghost' : 'gold') + '" data-cp="' + esc(cp.code) + '">' + (on ? 'Remove' : 'Use') + '</button>') + '</div>'; }).join('') + '</div>';
   box.innerHTML = h;
   if ($('#b_ref')) { $('#b_ref').oninput = e => { B.refBy = e.target.value.trim(); }; $('#b_refc').onclick = () => custLookup(true); $('#b_ref').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); custLookup(true); } }; }
   $$('[data-cp]', box).forEach(b => b.onclick = () => {
@@ -1456,7 +1467,8 @@ function totHtml(t) {
     '<div class="mute"><span>Taxable value</span><span>₹' + money(t.taxable) + '</span></div>' +
     (inter ? '<div class="mute"><span>IGST</span><span>₹' + money(t.igst) + '</span></div>' : '<div class="mute"><span>CGST + SGST</span><span>₹' + money(t.cgst) + ' + ₹' + money(t.sgst) + '</span></div>') +
     (t.roundOff ? '<div class="mute"><span>Round off</span><span>' + (t.roundOff > 0 ? '+' : '−') + ' ₹' + money(Math.abs(t.roundOff)) + '</span></div>' : '') +
-    '<div class="g"><span>To pay</span><span>₹' + money(t.total) + '</span></div>';
+    '<div class="g"><span>To pay</span><span>₹' + money(t.total) + '</span></div>' +
+    (luckyOn() && t.total >= luckyR().min ? '<div class="tiny" style="margin-top:6px">🍀 ' + (B.cust.phone && !B.noDetails ? 'Lucky draw after saving – the customer picks a card.' : '<span class="neg">Add the customer\'s mobile so they can play the lucky draw.</span>') + '</div>' : '');
 }
 function lineCard(l, i, c) {
   const p = l.sku ? S.bySku[l.sku] : null;
@@ -1613,6 +1625,37 @@ function waLink(b) {
   const ref = b.customer.refCode ? '\n\nYour referral code: *' + b.customer.refCode + '*\nShare it with friends – when a friend shops for ₹' + money(R.refMin).replace(/\.00$/, '') + ' or more with your code, you get a ' + R.pct + '% coupon.' : '';
   return 'https://wa.me/91' + b.customer.phone + '?text=' + encodeURIComponent(msg + ref);
 }
+/* ───── lucky draw: store bill ₹1,000+ → customer picks one of three cards → 5% or 10% coupon for the next visit ───── */
+function luckyR() { return (B.boot && B.boot.lucky) || { min: 1000, use: 1000, days: 30 }; }
+function luckyOn() { return B.loc && B.loc !== 'Event'; }
+function luckyOk(b) { return b.status !== 'Cancelled' && b.loc !== 'Event' && b.customer.phone && b.totals.total >= luckyR().min && b.date === today(); }
+function luckyWon(L) {
+  return '<div class="ldwin"><div class="tiny">🍀 Lucky draw coupon</div><div class="ldpct">' + L.pct + '% OFF</div><div><b>' + esc(L.code) + '</b></div>' +
+    '<div class="tiny">on the next visit · bill of ₹' + money(L.use).replace(/\.00$/, '') + '+ · valid till ' + esc(L.till.split('-').reverse().join('-')) + (L.status && L.status !== 'Active' ? ' · ' + esc(L.status) : '') + '</div></div>';
+}
+function luckyBox(b) {
+  if (b.lucky) return '<div id="ld_box" style="margin-top:10px">' + luckyWon(b.lucky) + '</div>';
+  if (!luckyOk(b)) return '';
+  return '<div id="ld_box" class="ldbox"><b>🍀 Lucky draw!</b><div class="tiny">Hand the phone to the customer – pick one card.</div>' +
+    '<div class="ldcards">' + [1, 2, 3].map(i => '<button data-ld="' + i + '">?</button>').join('') + '</div></div>';
+}
+function luckyWa(b, L) {
+  const msg = 'Congratulations' + (b.customer.name ? ' ' + b.customer.name : '') + '! 🍀 You won *' + L.pct + '% OFF* in the ' + (b.seller.brand || 'Nutvique') + ' lucky draw.\n\nCoupon: *' + L.code + '*\n' +
+    'Use it on your next visit on a purchase of ₹' + money(L.use).replace(/\.00$/, '') + ' or more, valid till ' + L.till.split('-').reverse().join('-') + '. Just give your mobile number at the counter.';
+  return 'https://wa.me/91' + b.customer.phone + '?text=' + encodeURIComponent(msg);
+}
+function bindLucky(b, m) {
+  const box = $('#ld_box', m); if (!box) return;
+  const done = L => { box.className = ''; box.style.marginTop = '10px'; box.innerHTML = luckyWon(L) + '<a class="btn wa block" target="_blank" rel="noopener" style="margin-top:8px" href="' + esc(luckyWa(b, L)) + '">Send the coupon on WhatsApp</a>'; };
+  if (b.lucky) { if (b.lucky.status === 'Active') done(b.lucky); return; }
+  $$('[data-ld]', box).forEach(btn => btn.onclick = async () => {
+    $$('[data-ld]', box).forEach(x => x.disabled = true); btn.classList.add('pick'); btn.textContent = '…';
+    let L; try { L = await call('luckyDraw', { no: b.no }); } catch (e) { toast(e.message, true); $$('[data-ld]', box).forEach(x => { x.disabled = false; x.textContent = '?'; }); btn.classList.remove('pick'); return; }
+    btn.classList.add('flip'); btn.innerHTML = L.pct + '%<small>OFF</small>';
+    if (navigator.vibrate) try { navigator.vibrate([80, 40, 160]); } catch (e) { }
+    b.lucky = L; setTimeout(() => done(L), 1300);
+  });
+}
 function couponWa(i, brand) {
   const msg = 'Hi' + (i.name ? ' ' + i.name : '') + '! Thank you for referring ' + (i.friend || 'a friend') + ' to ' + (brand || 'Nutvique') + '.\n\nHere is your *' + i.pct + '% coupon: ' + i.code + '*\n' +
     'Use it on a purchase of ₹' + money(i.min).replace(/\.00$/, '') + ' or more at any Nutvique store, valid till ' + i.till.split('-').reverse().join('-') + '. Just tell us your mobile number at billing.';
@@ -1630,6 +1673,7 @@ function billDone(b, fresh) {
     (b.customer.refCode ? '<div class="tiny" style="margin-top:4px">Customer\'s referral code: <b>' + esc(b.customer.refCode) + '</b></div>' : '') +
     (b.coupon ? '<div class="tiny">Coupon ' + esc(b.coupon.code) + ' used (' + b.coupon.pct + '%)</div>' : '') +
     (fresh && b.ref && b.ref.referredBy ? '<div class="tiny">Referred by ' + esc(b.ref.referredBy.label) + '</div>' : '') +
+    luckyBox(b) +
     (fresh && b.ref && b.ref.issued ? '<div class="okbox" style="margin-top:8px">🎁 ' + esc(b.ref.issued.name || 'The referrer') + ' earned coupon <b>' + esc(b.ref.issued.code) + '</b> (' + b.ref.issued.pct + '% off, valid till ' + esc(b.ref.issued.till.split('-').reverse().join('-')) + ')' +
       '<a class="btn wa block" style="margin-top:8px" target="_blank" rel="noopener" href="' + esc(couponWa(b.ref.issued, b.seller.brand)) + '">Send the coupon to ' + esc(b.ref.issued.name || 'them') + ' on WhatsApp</a></div>' : '') +
     '<div class="bact">' +
@@ -1640,6 +1684,7 @@ function billDone(b, fresh) {
     (fresh ? '<button class="btn gold block" id="bd_new">New bill</button>' : '') + '</div></div>');
   if ($('#bd_wa', m)) $('#bd_wa', m).onclick = () => { call('markBillSent', { no: b.no }).then(() => { B.today = null; loadToday(); }).catch(() => { }); };
   $('#bd_pr', m).onclick = () => printBill(b);
+  bindLucky(b, m);
   if ($('#bd_new', m)) $('#bd_new', m).onclick = () => { m.close(); $('#bq') && $('#bq').focus(); };
   if ($('#bd_cx', m)) $('#bd_cx', m).onclick = () => { m.close(); cancelSheet(b); };
 }
