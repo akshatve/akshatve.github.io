@@ -44,7 +44,7 @@ input.num{text-align:right}
 .btn{border:0;border-radius:10px;padding:10px 14px;background:var(--navy);color:#fff;font-weight:600;cursor:pointer;min-height:40px}
 .btn.gold{background:var(--gold);color:var(--navy)}.btn.ghost{background:#fff;color:var(--navy);border:1px solid #cfcab9}.btn.red{background:var(--bad)}
 .btn.sm{padding:6px 10px;min-height:32px;font-size:13px;border-radius:8px}.btn:disabled{opacity:.5;cursor:default}
-.btn.block{width:100%}
+.btn.block{width:100%;display:block;text-align:center}a.btn{display:inline-block;text-decoration:none;text-align:center;line-height:1.3}
 .pill{display:inline-block;border-radius:20px;padding:2px 9px;font-size:12px;font-weight:600;white-space:nowrap}
 .p-ok{background:var(--okbg);color:var(--ok)}.p-warn{background:var(--warnbg);color:var(--warn)}.p-bad{background:var(--badbg);color:var(--bad)}.p-new{background:var(--newbg);color:var(--new)}.p-mute{background:#eee;color:#555}
 .neg{color:var(--bad);font-weight:700}
@@ -142,8 +142,9 @@ function call(action, data) {
     return new Error(m);
   };
   if (window.NV_API) {
-    return fetch(window.NV_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
-      .then(r => r.json(), () => { throw new Error('No internet connection – check Wi-Fi / mobile data and try again.'); })
+    const post = () => fetch(window.NV_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) }).then(r => r.json());
+    return post().catch(() => new Promise(r => setTimeout(r, 1500)).then(post))           // one quiet retry for a network blip
+      .catch(() => { throw new Error('No internet connection – check Wi-Fi / mobile data and try again.'); })
       .then(j => { if (!j || !j.ok) throw fail((j && j.e) || 'Server error'); return j.r; });
   }
   return new Promise((res, rej) => {
@@ -229,7 +230,9 @@ function firstPin() {
 }
 async function signOut() {
   try { await call('logout'); } catch (e) { }
-  S.token = ''; S.user = null; store.set('token', null); lockScreen();
+  S.token = ''; S.user = null; store.set('token', null);
+  if (typeof B !== 'undefined') { B.boot = null; B.loc = ''; B.today = null; B.lines = []; store.set('bloc', null); }
+  SK.boot = null; S.stock = {}; S.trWait = 0; lockScreen();
 }
 function changePinSheet() {
   const m = modal('Change my PIN', '<label class="f">Current PIN</label><input class="i" id="cp_o" type="password" inputmode="numeric" maxlength="8" autocomplete="off">' +
@@ -270,6 +273,7 @@ async function pingVer() {
     if (S.lv != null && v.lv !== S.lv && typeof refreshLists === 'function') refreshLists(true);
     S.lv = v.lv;
     if (can('approve') && v.av !== S.av) { S.av = v.av; checkApprovals(); }
+    if (can('stockView') && v.sv !== S.sv) { const first = S.sv == null; S.sv = v.sv; if (!first) { try { const x = await call('stock'); S.stock = x.stock; } catch (e) { } SK.boot = null; if (S.view === 'stock' && !$('.modal')) viewStock(); } trWaitCount(); }
     if (S.pv != null && v.pv !== S.pv) {
       const b = await call('boot'); applyBoot(b); renderNav();
       const a = document.activeElement, typing = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.value;
@@ -304,10 +308,11 @@ function shell() {
     document.addEventListener('visibilitychange', () => { if (!document.hidden) pingVer(); });
   }
   if (can('approve')) checkApprovals();
+  trWaitCount();
 }
 function renderNav() {
   const tabs = [can('bill') && ['bill', 'Bill'], can('sales') && ['sales', 'Sales'], ['search', 'Search'], can('invoices') && ['invoices', 'Invoices', S.drafts],
-    ['stock', 'Stock'], can('gs1') && ['gs1', 'GS1', S.gs1Pending], ['more', 'More']].filter(Boolean);
+    can('stockView') && ['stock', 'Stock', S.trWait], can('gs1') && ['gs1', 'GS1', S.gs1Pending], ['more', 'More']].filter(Boolean);
   if (!tabs.some(t => t[0] === S.view)) S.view = tabs[0][0];
   $('#nav').innerHTML = tabs.map(t => '<button data-v="' + t[0] + '" class="' + (S.view === t[0] ? 'on' : '') + '">' + ICONS[t[0]] + t[1] + (t[2] ? '<span class="badge">' + t[2] + '</span>' : '') + '</button>').join('');
   $$('#nav button').forEach(b => b.onclick = () => go(b.dataset.v));
@@ -749,17 +754,167 @@ async function downloadExport(kind, skus) {
 }
 
 /* ───────────── STOCK ───────────── */
-function viewStock() {
+async function trWaitCount() {
+  if (!can('checkTransfer')) return;
+  try { const t = await call('transfers'); const n = t.waiting.filter(x => x.canCheck).length; if (n !== S.trWait) { S.trWait = n; renderNav(); } } catch (e) { }
+}
+/* ───────────── STOCK: view · in · transfer · check · out · history ───────────── */
+const SK = { tab: 'stock', boot: null };
+async function viewStock() {
+  if (!can('stockView')) { $('#view').innerHTML = '<div class="warnbox">You do not have the right to see stock. Ask the owner.</div>'; return; }
+  const tabs = [['stock', 'Stock'], can('goodsIn') && ['in', 'Stock in'], can('transfer') && ['tr', 'Transfer'], (can('checkTransfer') || can('transfer')) && ['ck', 'Check'],
+    can('stock') && ['out', 'Stock out'], ['hist', 'History']].filter(Boolean);
+  if (!tabs.some(t => t[0] === SK.tab)) SK.tab = 'stock';
+  const wait = SK.boot ? SK.boot.transfers.waiting.filter(t => t.canCheck).length : 0;
+  $('#view').innerHTML = '<div class="chips" id="sk_t" style="margin-bottom:10px">' + tabs.map(t => '<button data-t="' + t[0] + '" class="' + (SK.tab === t[0] ? 'on' : '') + '">' + t[1] + (t[0] === 'ck' && wait ? ' <span class="badge" style="position:static">' + wait + '</span>' : '') + '</button>').join('') + '</div><div id="sk_b"></div>';
+  $$('#sk_t button').forEach(b => b.onclick = () => { SK.tab = b.dataset.t; viewStock(); });
+  if (!SK.boot || SK.tab !== 'stock') {
+    if (!SK.boot) $('#sk_b').innerHTML = '<div class="empty"><span class="spin dk"></span></div>';
+    try { SK.boot = await call('stockBoot'); } catch (e) { $('#sk_b').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+    if (S.view !== 'stock') return;
+    const w2 = SK.boot.transfers.waiting.filter(t => t.canCheck).length;
+    const ckb = $('#sk_t [data-t="ck"]'); if (ckb) ckb.innerHTML = 'Check' + (w2 ? ' <span class="badge" style="position:static">' + w2 + '</span>' : '');
+  }
+  ({ stock: stockList, in: stockIn, tr: stockTransfer, ck: stockCheck, out: stockOutForm, hist: stockHistory }[SK.tab])();
+}
+function stockList() {
   const locs = S.locations;
-  $('#view').innerHTML = '<div class="row" style="margin-bottom:8px"><h2 class="grow" style="margin:0">Stock</h2>' + (can('stock') ? '<button class="btn sm ghost" id="adj">Stock count / adjust</button><button class="btn sm ghost" id="imp">Import sales / count file</button>' : '') + '<button class="btn sm ghost" id="csv">Download CSV</button></div>' +
-    '<div class="row" style="margin-bottom:8px"><select class="i" id="sl" style="max-width:260px"><option>All</option>' + locs.map(l => '<option' + (S.stockLoc === l ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>' +
-    '<input class="i grow" id="sq" type="search" placeholder="Filter…" value="' + esc(S.stockQ) + '"></div><div id="sv"></div>';
-  $('#sl').value = S.stockLoc; $('#sl').onchange = e => { S.stockLoc = e.target.value; drawStock(); };
+  if (locs.length && locs.indexOf(S.stockLoc) < 0 && S.stockLoc !== 'All') S.stockLoc = 'All';
+  if (locs.length === 1) S.stockLoc = locs[0];
+  $('#sk_b').innerHTML = '<div class="row" style="margin-bottom:8px">' + (locs.length > 1 ? '<select class="i" id="sl" style="max-width:260px"><option>All</option>' + locs.map(l => '<option' + (S.stockLoc === l ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>' : '<b>' + esc(locs[0] || 'No location') + '</b>') +
+    '<input class="i grow" id="sq" type="search" placeholder="Filter…" value="' + esc(S.stockQ) + '">' + (IN_APP ? '<button class="btn sm ghost" id="sscan">📷</button>' : '') + '</div>' +
+    '<div class="row" style="margin-bottom:8px">' + (can('stock') ? '<button class="btn sm ghost" id="adj">Stock count / opening stock</button><button class="btn sm ghost" id="imp">Import sales / count file</button>' : '') + '<button class="btn sm ghost" id="csv">Download</button></div><div id="sv"></div>';
+  if ($('#sl')) { $('#sl').value = S.stockLoc; $('#sl').onchange = e => { S.stockLoc = e.target.value; drawStock(); }; }
   $('#sq').oninput = e => { S.stockQ = e.target.value; drawStock(); };
+  if ($('#sscan')) $('#sscan').onclick = () => scanSheet('Scan to check stock', code => { const p = findByCode(code); if (!p) return { ok: false, text: 'Not in the list: ' + code }; setTimeout(() => productSheet(p.sku), 300); return { ok: true, text: p.name }; }, { once: true });
   $('#csv').onclick = stockCsv;
   if (can('stock')) { $('#adj').onclick = () => adjustSheet(); $('#imp').onclick = importSheet; }
   drawStock();
 }
+/* product lines editor used by Stock in / Transfer / Stock out */
+function lineEditor(box, lines, opt) {
+  const draw = () => {
+    const loc = opt.loc ? opt.loc() : '';
+    box.innerHTML = (lines.length ? lines.map((l, i) => { const p = S.bySku[l.sku] || { name: l.sku, unit: '' }, have = loc ? (stockOf(l.sku).q[loc] || 0) : null;
+      return '<div class="row" style="margin-bottom:8px;flex-wrap:nowrap"><div class="grow"><b>' + esc(p.name) + '</b><div class="tiny mute">' + esc(l.sku) + (have != null ? ' · at ' + esc(LOC_SHORT[loc] || loc) + ': <span class="' + (have - num(l.qty) < 0 ? 'neg' : '') + '">' + qfmt(have) + ' ' + unitOf(p) + '</span>' : '') + '</div></div>' +
+        '<input class="i num" style="width:90px" data-q="' + i + '" inputmode="decimal" placeholder="' + unitOf(p) + '" value="' + esc(l.qty) + '">' +
+        (opt.cost ? '<input class="i num" style="width:90px" data-c="' + i + '" inputmode="decimal" placeholder="₹ cost/' + unitOf(p) + '" value="' + esc(l.cost || '') + '">' : '') +
+        '<button class="btn sm ghost" data-x="' + i + '">×</button></div>'; }).join('') : '<div class="mute small" style="margin-bottom:8px">No products yet.</div>') +
+      '<div class="row"><button class="btn sm ghost" data-add>+ Add product</button>' + (IN_APP ? '<button class="btn sm ghost" data-scan>📷 Scan</button>' : '') + '</div>';
+    $$('[data-q]', box).forEach(el => el.oninput = () => { lines[+el.dataset.q].qty = el.value; });
+    $$('[data-c]', box).forEach(el => el.oninput = () => { lines[+el.dataset.c].cost = el.value; });
+    $$('[data-x]', box).forEach(el => el.onclick = () => { lines.splice(+el.dataset.x, 1); draw(); });
+    $('[data-add]', box).onclick = async () => { const s = await pickProduct({ title: 'Add product' }); if (s && !lines.some(l => l.sku === s)) { lines.push({ sku: s, qty: '' }); draw(); } };
+    if ($('[data-scan]', box)) $('[data-scan]', box).onclick = () => scanSheet('Scan products', code => { const p = findByCode(code); if (!p) return { ok: false, text: 'Not in the list: ' + code };
+      const ex = lines.find(l => l.sku === p.sku); if (ex) ex.qty = String(num(ex.qty) + (unitOf(p) === 'kg' ? 0 : 1)); else lines.push({ sku: p.sku, qty: unitOf(p) === 'kg' ? '' : '1' }); draw(); return { ok: true, text: p.name }; });
+  };
+  draw();
+  return { draw: draw, get: () => lines.filter(l => num(l.qty) > 0).map(l => ({ sku: l.sku, qty: num(l.qty), cost: num(l.cost) || '' })) };
+}
+function stockIn() {
+  const B0 = SK.boot, lines = [];
+  $('#sk_b').innerHTML = '<div class="card"><h3>Stock in – goods received</h3><div class="small mute">Always booked into <b>Central Warehouse</b>. If it was delivered at a store, a transfer to that store is created for the store to check.</div>' +
+    '<div class="grid2" style="margin-top:10px">' + fld('Date', '<input class="i" type="date" id="gi_d" value="' + today() + '" max="' + today() + '">') + fld('Supplier', '<input class="i" id="gi_s" placeholder="e.g. Nutcraft Wholesale">') +
+    fld('Invoice / challan no.', '<input class="i" id="gi_i">') + fld('Delivered at', '<select class="i" id="gi_at">' + B0.toLocs.map(l => '<option>' + esc(l) + '</option>').join('') + '</select>') + '</div>' +
+    '<label class="chk" id="gi_tw" style="display:none"><input type="checkbox" id="gi_t" checked> Also create the transfer Central Warehouse → that store (the store checks what arrived)</label>' +
+    '<h3 style="margin-top:12px">Products</h3><div id="gi_l"></div>' + fld('Remarks', '<input class="i" id="gi_r" placeholder="optional">') +
+    '<button class="btn gold block" id="gi_go" style="margin-top:12px">Save stock in</button><div class="tiny mute" style="margin-top:6px">Tip: supplier invoices with prices are better posted in Invoices – costs and margins update too.</div></div>';
+  const ed = lineEditor($('#gi_l'), lines, { cost: can('costs') });
+  $('#gi_at').onchange = e => { $('#gi_tw').style.display = e.target.value === B0.central ? 'none' : 'flex'; };
+  $('#gi_go').onclick = async () => {
+    const d = { date: $('#gi_d').value, supplier: $('#gi_s').value.trim(), invoice: $('#gi_i').value.trim(), deliveredAt: $('#gi_at').value, makeTransfer: $('#gi_t').checked, remarks: $('#gi_r').value, lines: ed.get() };
+    if (!d.supplier) return toast('Type the supplier', true);
+    if (!d.lines.length) return toast('Add products with quantities', true);
+    const r = await run('Saving…', () => call('goodsIn', d)).catch(() => null);
+    if (!r) return;
+    SK.boot.transfers = r.transfers; await refresh(true);
+    toast('Stock in saved (' + r.id + ')' + (r.transfer ? ' · transfer ' + r.transfer + ' waiting for the store to check' : ''));
+  };
+}
+function stockTransfer() {
+  const B0 = SK.boot, lines = [], from0 = B0.locs.indexOf(B0.central) >= 0 ? B0.central : B0.locs[0];
+  if (!B0.locs.length) { $('#sk_b').innerHTML = '<div class="warnbox">No location is set for you. Ask head office to set your home store.</div>'; return; }
+  $('#sk_b').innerHTML = '<div class="card"><h3>Send stock</h3><div class="grid2">' + fld('From', '<select class="i" id="tr_f">' + B0.locs.map(l => '<option' + (l === from0 ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>') +
+    fld('To', '<select class="i" id="tr_t"></select>') + fld('Date', '<input class="i" type="date" id="tr_d" value="' + today() + '" max="' + today() + '">') + fld('Remarks', '<input class="i" id="tr_r" placeholder="optional">') + '</div>' +
+    '<h3 style="margin-top:12px">Products</h3><div id="tr_l"></div><button class="btn gold block" id="tr_go" style="margin-top:12px">Send – the receiving store checks it</button>' +
+    '<div class="tiny mute" style="margin-top:6px">Stock moves only when the receiving side checks and approves what arrived. Until then it shows as "waiting".</div></div>';
+  const toOpts = () => { const f = $('#tr_f').value; $('#tr_t').innerHTML = B0.toLocs.filter(l => l !== f).map(l => '<option>' + esc(l) + '</option>').join(''); };
+  toOpts();
+  const ed = lineEditor($('#tr_l'), lines, { loc: () => $('#tr_f').value });
+  $('#tr_f').onchange = () => { toOpts(); ed.draw(); };
+  $('#tr_go').onclick = async () => {
+    const d = { from: $('#tr_f').value, to: $('#tr_t').value, date: $('#tr_d').value, remarks: $('#tr_r').value, lines: ed.get() };
+    if (!d.lines.length) return toast('Add products with quantities', true);
+    const short = d.lines.filter(l => (stockOf(l.sku).q[d.from] || 0) < l.qty);
+    if (short.length && !confirm(short.length + ' product(s) are more than the stock recorded at ' + d.from + '. Send anyway?')) return;
+    const r = await run('Sending…', () => call('sendTransfer', d)).catch(() => null);
+    if (!r) return;
+    SK.boot.transfers = r.transfers; toast('Transfer ' + r.no + ' sent – waiting for ' + d.to + ' to check'); SK.tab = 'ck'; viewStock();
+  };
+}
+function stockCheck() {
+  const T = SK.boot.transfers;
+  const card = t => '<div class="card" style="padding:12px"><div class="row"><b class="grow">' + esc(t.no) + '</b><span class="pill ' + (t.status === 'Approved' ? 'p-ok' : t.status === 'Rejected' ? 'p-bad' : 'p-warn') + '">' + esc(t.status) + '</span></div>' +
+    '<div class="small">' + esc(LOC_SHORT[t.from] || t.from) + ' → <b>' + esc(LOC_SHORT[t.to] || t.to) + '</b> · ' + esc(t.date) + ' · sent by ' + esc(t.by) + (t.checkedBy ? ' · checked by ' + esc(t.checkedBy) : '') + '</div>' +
+    '<div class="tiny mute" style="margin-top:4px">' + t.lines.map(l => esc(l.name) + ' ' + qfmt(l.sent) + (l.got != null && l.got !== l.sent ? ' (got ' + qfmt(l.got) + ')' : '') + ' ' + esc(l.unit)).join(' · ') + '</div>' +
+    (t.remarks ? '<div class="tiny" style="margin-top:4px">' + esc(t.remarks) + '</div>' : '') +
+    (t.canCheck ? '<button class="btn gold block" data-ck="' + esc(t.no) + '" style="margin-top:10px">Check what arrived</button>' : t.status === 'Waiting for check' ? '<div class="tiny mute" style="margin-top:6px">Waiting for ' + esc(t.to) + ' to check.</div>' : '') + '</div>';
+  $('#sk_b').innerHTML = '<h3>Waiting for check (' + T.waiting.length + ')</h3>' + (T.waiting.map(card).join('') || '<div class="empty small">Nothing waiting.</div>') +
+    '<h3 style="margin-top:16px">Last 30 days</h3>' + (T.recent.map(card).join('') || '<div class="empty small">No transfers yet.</div>');
+  $$('[data-ck]').forEach(b => b.onclick = () => checkSheet(T.waiting.find(t => t.no === b.dataset.ck)));
+}
+function checkSheet(t) {
+  const m = modal('Check ' + t.no, '<div class="small">' + esc(t.from) + ' → <b>' + esc(t.to) + '</b> · sent by ' + esc(t.by) + ' on ' + esc(t.date) + '</div>' +
+    '<div class="small mute" style="margin:8px 0">Count what actually arrived. Change the number if it is different.</div>' +
+    t.lines.map(l => '<div class="row" style="margin-bottom:8px;flex-wrap:nowrap"><div class="grow"><b>' + esc(l.name) + '</b><div class="tiny mute">sent ' + qfmt(l.sent) + ' ' + esc(l.unit) + '</div></div><input class="i num" style="width:100px" data-r="' + esc(l.sku) + '" inputmode="decimal" value="' + l.sent + '"></div>').join('') +
+    fld('Remarks', '<input class="i" id="ck_r" placeholder="e.g. 1 pouch torn">') +
+    '<div class="row" style="margin-top:14px"><button class="btn ghost" id="ck_no" style="color:var(--bad)">Reject</button><div class="grow"></div><button class="btn gold" id="ck_ok">Approve – add to stock</button></div>');
+  const go = async approve => {
+    const rec = {}; $$('[data-r]', m).forEach(i => rec[i.dataset.r] = i.value);
+    const r = await run(approve ? 'Approving…' : 'Rejecting…', () => call('checkTransfer', { no: t.no, approve: approve, received: rec, remarks: $('#ck_r', m).value })).catch(() => null);
+    if (!r) return;
+    m.close(); SK.boot.transfers = r.transfers; S.stock = r.stock; toast(approve ? 'Approved – stock updated' : 'Rejected – no stock moved'); viewStock();
+  };
+  $('#ck_ok', m).onclick = () => go(true);
+  $('#ck_no', m).onclick = e => { if (confirmTwice(e.target)) go(false); };
+}
+function stockOutForm() {
+  const B0 = SK.boot, lines = [];
+  if (!B0.locs.length) { $('#sk_b').innerHTML = '<div class="warnbox">No location is set for you.</div>'; return; }
+  $('#sk_b').innerHTML = '<div class="card"><h3>Stock out</h3><div class="small mute">For goods that leave without a bill: damaged, expired, samples, own use, returned to the supplier.</div><div class="grid2" style="margin-top:10px">' +
+    fld('Location', '<select class="i" id="so_l">' + B0.locs.map(l => '<option>' + esc(l) + '</option>').join('') + '</select>') + fld('Reason', '<select class="i" id="so_r">' + B0.reasons.map(r => '<option>' + esc(r) + '</option>').join('') + '</select>') +
+    fld('Date', '<input class="i" type="date" id="so_d" value="' + today() + '" max="' + today() + '">') + fld('Note', '<input class="i" id="so_n" placeholder="what happened">') + '</div>' +
+    '<h3 style="margin-top:12px">Products</h3><div id="so_li"></div><button class="btn gold block" id="so_go" style="margin-top:12px">Take out of stock</button></div>';
+  const ed = lineEditor($('#so_li'), lines, { loc: () => $('#so_l').value });
+  $('#so_l').onchange = ed.draw;
+  $('#so_go').onclick = async e => {
+    const d = { location: $('#so_l').value, reason: $('#so_r').value, date: $('#so_d').value, note: $('#so_n').value, lines: ed.get() };
+    if (!d.lines.length) return toast('Add products with quantities', true);
+    if (!confirmTwice(e.target)) return;
+    const r = await run('Saving…', () => call('stockOut', d)).catch(() => null);
+    if (r) { S.stock = r.stock; toast(r.rows + ' product(s) taken out'); lines.length = 0; ed.draw(); }
+  };
+}
+const SH = { from: '', to: '', loc: 'All', kind: 'All', q: '' };
+async function stockHistory() {
+  if (!SH.to) { SH.to = today(); const d = new Date(); d.setDate(d.getDate() - 7); SH.from = ymd(d); }
+  const locs = S.locations;
+  $('#sk_b').innerHTML = '<div class="row" style="margin-bottom:8px"><input class="i" type="date" id="sh_f" value="' + SH.from + '" style="width:auto"><input class="i" type="date" id="sh_t" value="' + SH.to + '" style="width:auto">' +
+    (locs.length > 1 ? '<select class="i" id="sh_l" style="width:auto"><option>All</option>' + locs.map(l => '<option' + (SH.loc === l ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>' : '') +
+    '<input class="i grow" id="sh_q" type="search" placeholder="Product, ref…" value="' + esc(SH.q) + '"></div><div id="sh_b"><div class="empty"><span class="spin dk"></span></div></div>';
+  const reload = () => stockHistory();
+  $('#sh_f').onchange = e => { SH.from = e.target.value; reload(); }; $('#sh_t').onchange = e => { SH.to = e.target.value; reload(); };
+  if ($('#sh_l')) $('#sh_l').onchange = e => { SH.loc = e.target.value; reload(); };
+  let tq; $('#sh_q').oninput = e => { clearTimeout(tq); tq = setTimeout(() => { SH.q = e.target.value; reload(); }, 500); };
+  let r; try { r = await call('movements', SH); } catch (e) { $('#sh_b').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+  if (S.view !== 'stock' || SK.tab !== 'hist') return;
+  $('#sh_b').innerHTML = '<div class="chips" style="margin-bottom:8px">' + r.kinds.map(k => '<button data-k="' + esc(k) + '" class="' + (SH.kind === k ? 'on' : '') + '">' + esc(k) + (k !== 'All' && r.sum[k] ? ' ' + r.sum[k].n : '') + '</button>').join('') + '</div>' +
+    (r.list.length ? '<div class="card" style="padding:6px"><div class="tscroll"><table class="t"><tr><th>Date</th><th>Where</th><th>Product</th><th>What</th><th class="n">Qty</th></tr>' +
+      r.list.map(x => '<tr><td class="nowrap">' + esc(x.date.slice(5)) + '</td><td>' + esc(LOC_SHORT[x.loc] || x.loc) + '</td><td>' + esc(x.item) + '</td><td>' + esc(x.mv) + '<div class="tiny mute">' + esc([x.party, x.note, x.ref.replace(/^INV-/, '')].filter(Boolean).join(' · ')) + '</div></td><td class="n ' + (x.qty < 0 ? 'neg' : '') + '">' + (x.qty > 0 ? '+' : '') + qfmt(x.qty) + ' ' + esc(x.unit) + '</td></tr>').join('') +
+      '</table></div></div>' + (r.more ? '<div class="tiny mute">Showing the latest 600 – narrow the dates to see more.</div>' : '') : '<div class="empty small">No movements in these dates.</div>');
+  $$('#sh_b [data-k]').forEach(b => b.onclick = () => { SH.kind = b.dataset.k; reload(); });
+}
+
 function stockRows() {
   const loc = S.stockLoc;
   const keys = new Set(S.products.map(p => p.sku)); Object.keys(S.stock).forEach(k => keys.add(k));
@@ -926,7 +1081,8 @@ async function peopleScreen() {
     const act = D.users.filter(u => u.active), off = D.users.filter(u => !u.active);
     const row = u => '<div class="li" data-u="' + esc(u.name) + '"><div class="grow"><b>' + esc(u.name) + '</b> <span class="pill ' + (u.role === 'Manager' ? 'p-ok' : 'p-mute') + '">' + esc(u.role) + '</span>' +
       (u.initialPin ? ' <span class="pill p-new">PIN to hand over: ' + esc(u.initialPin) + '</span>' : '') +
-      '<div class="tiny mute">' + esc([u.home ? (LOC_SHORT[u.home] || u.home) : '', u.rights.length + ' right' + (u.rights.length === 1 ? '' : 's'), u.lastLogin ? 'last sign-in ' + new Date(u.lastLogin).toLocaleDateString('en-IN') : 'not signed in yet'].filter(Boolean).join(' · ')) + '</div></div><span class="mute">›</span></div>';
+      (!u.home && u.rights.indexOf('allStores') < 0 ? ' <span class="pill p-warn">no store set</span>' : '') +
+      '<div class="tiny mute">' + esc([u.home ? (LOC_SHORT[u.home] || u.home) : (u.rights.indexOf('allStores') >= 0 ? 'All stores' : ''), u.rights.length + ' right' + (u.rights.length === 1 ? '' : 's'), u.lastLogin ? 'last sign-in ' + new Date(u.lastLogin).toLocaleDateString('en-IN') : 'not signed in yet'].filter(Boolean).join(' · ')) + '</div></div><span class="mute">›</span></div>';
     $('#pp_b', m).innerHTML = '<div class="small mute">Each person signs in with their own name + PIN. A new person gets a PIN from head office (shown here in gold until they choose their own on first sign-in).</div>' +
       '<div class="card" style="margin-top:10px;padding:4px 12px">' + (act.map(row).join('') || '<div class="empty small">No one yet.</div>') + '</div>' +
       (off.length ? '<div class="small mute">Not active (cannot sign in)</div><div class="card" style="padding:4px 12px;opacity:.7">' + off.map(row).join('') + '</div>' : '') +
@@ -935,7 +1091,7 @@ async function peopleScreen() {
     $('#pp_add', m).onclick = () => editPerson(null);
   };
   const editPerson = u => {
-    const isNew = !u; u = u || { name: '', role: 'Staff', active: true, rights: D.rights.filter(r => r.key === 'bill').map(r => r.key), home: '', notes: '' };
+    const isNew = !u; u = u || { name: '', role: 'Staff', active: true, rights: ['bill', 'stockView'], home: '', notes: '' };
     const e = modal(isNew ? 'Add person' : u.name, '<div class="grid2">' + fld('Name', '<input class="i" id="pe_n" value="' + esc(u.name) + '">') +
       fld('Role', '<select class="i" id="pe_r"><option' + (u.role !== 'Manager' ? ' selected' : '') + '>Staff</option><option' + (u.role === 'Manager' ? ' selected' : '') + '>Manager</option></select>') +
       fld('Home store', '<select class="i" id="pe_h"><option value="">– Head office / all –</option>' + D.stores.map(x => '<option' + (x === u.home ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select>') +
@@ -945,10 +1101,10 @@ async function peopleScreen() {
       fld('Notes', '<input class="i" id="pe_no" value="' + esc(u.notes || '') + '">') +
       '<div class="row" style="margin-top:14px">' + (isNew ? '' : '<button class="btn ghost sm" id="pe_pin">Reset PIN</button>') + '<div class="grow"></div><button class="btn" id="pe_go">' + (isNew ? 'Add & make PIN' : 'Save') + '</button></div>');
     const preset = keys => $$('.rk', e).forEach(c => { if (!c.disabled) c.checked = keys.indexOf(c.value) >= 0; });
-    $('#pe_ps', e).onclick = () => preset(['bill']);
-    $('#pe_pm', e).onclick = () => preset(['bill', 'disc10', 'otherItem', 'events', 'sales']);
+    $('#pe_ps', e).onclick = () => preset(['bill', 'stockView']);
+    $('#pe_pm', e).onclick = () => preset(['bill', 'disc10', 'otherItem', 'events', 'sales', 'stockView', 'transfer', 'checkTransfer', 'customers']);
     $('#pe_pn', e).onclick = () => preset([]);
-    $('#pe_r', e).onchange = ev => preset(ev.target.value === 'Manager' ? ['bill', 'disc10', 'otherItem', 'events', 'sales'] : ['bill']);
+    $('#pe_r', e).onchange = ev => preset(ev.target.value === 'Manager' ? ['bill', 'disc10', 'otherItem', 'events', 'sales', 'stockView', 'transfer', 'checkTransfer', 'customers'] : ['bill', 'stockView']);
     $('#pe_go', e).onclick = async () => {
       const d = { name: isNew ? '' : u.name, newName: $('#pe_n', e).value.trim(), role: $('#pe_r', e).value, home: $('#pe_h', e).value, active: $('#pe_a', e).value,
         notes: $('#pe_no', e).value, rights: $$('.rk', e).filter(c => c.checked).map(c => c.value) };
@@ -1011,6 +1167,27 @@ async function codesSheet() {
   try { draw(await call('listCodes')); } catch (e) { $('#cd_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; }
 }
 
+/* ───────────── CUSTOMERS & REFERRALS ───────────── */
+async function customersScreen() {
+  const m = modal('Customers & referrals', '<div class="row"><input class="i grow" id="cu_q" type="search" placeholder="Search name, mobile or referral code"><button class="btn" id="cu_go">Search</button></div><div id="cu_b" style="margin-top:10px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
+  const st = { Active: 'p-ok', Used: 'p-mute', Expired: 'p-warn' };
+  const custRow = c => '<tr><td><b>' + esc(c.name || '–') + '</b><div class="tiny mute">' + esc(c.phone) + '</div></td><td>' + esc(c.code) + '</td><td class="n">' + c.bills + '</td><td class="n">' + inr(c.spent, 0) + '</td><td class="n">' + (c.referred || '') + '</td><td class="small">' + esc(c.referredBy ? 'by ' + c.referredBy + ' · ' + c.status : '') + '</td></tr>';
+  const head = '<table class="t"><tr><th>Customer</th><th>Code</th><th class="n">Bills</th><th class="n">Spent</th><th class="n">Referred</th><th>Referral</th></tr>';
+  const load = async q => {
+    let r; try { r = await call('customersReport', { q: q || '' }); } catch (e) { $('#cu_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+    const s = r.stats, R = r.rules;
+    $('#cu_b', m).innerHTML = '<div class="small mute">Rule: a customer shares their code; when the friend\'s first bill of ₹' + R.refMin + '+ is saved, the customer gets a ' + R.pct + '% coupon, valid ' + R.months + ' month on a bill of ₹' + R.min + '+. One coupon per friend; not combined with other discounts.</div>' +
+      '<div class="bigp"><div><span>Customers</span><b>' + s.customers + '</b></div><div><span>Came by referral</span><b>' + s.referred + '</b></div><div><span>Coupons earned</span><b>' + Object.keys(s.coupons).reduce((a, k) => a + s.coupons[k], 0) + '</b><span>' + Object.keys(s.coupons).map(k => k + ' ' + s.coupons[k]).join(' · ') + '</span></div></div>' +
+      (q ? '<h3>Search: ' + esc(q) + '</h3><div class="card" style="padding:6px"><div class="tscroll">' + (r.found.length ? head + r.found.map(custRow).join('') + '</table>' : '<div class="empty small">No customer found.</div>') + '</div></div>' : '') +
+      '<h3>Top referrers</h3><div class="card" style="padding:6px"><div class="tscroll">' + (r.top.length ? head + r.top.map(custRow).join('') + '</table>' : '<div class="empty small">No referrals yet.</div>') + '</div></div>' +
+      '<h3>Latest coupons</h3><div class="card" style="padding:6px"><div class="tscroll">' + (r.coupons.length ? '<table class="t"><tr><th>Coupon</th><th>For</th><th>Earned from</th><th>Valid till</th><th>Status</th></tr>' +
+        r.coupons.map(c => '<tr><td><b>' + esc(c.code) + '</b><div class="tiny mute">' + c.pct + '% · ' + esc(c.issued) + '</div></td><td>' + esc(c.name || '') + '<div class="tiny mute">' + esc(c.phone) + '</div></td><td class="small">' + esc(c.from) + '</td><td class="nowrap">' + esc(c.till) + '</td><td><span class="pill ' + (st[c.status] || 'p-mute') + '">' + esc(c.status.replace(/ \(.*/, '')) + '</span>' + (c.usedOn ? '<div class="tiny mute">' + esc(c.usedOn) + '</div>' : '') + '</td></tr>').join('') + '</table>' : '<div class="empty small">No coupons yet.</div>') + '</div></div>';
+  };
+  $('#cu_go', m).onclick = () => load($('#cu_q', m).value.trim());
+  $('#cu_q', m).onkeydown = e => { if (e.key === 'Enter') load(e.target.value.trim()); };
+  load('');
+}
+
 /* ───────────── MORE ───────────── */
 async function viewMore() {
   const u = S.user || {};
@@ -1019,6 +1196,7 @@ async function viewMore() {
     (u.home ? '<div>Home store</div><div>' + esc(u.home) + '</div>' : '') + '<div>Products</div><div>' + S.products.length + '</div><div>Last refresh</div><div>' + (S.at ? new Date(S.at).toLocaleString('en-IN') : '') + '</div></div>' +
     '<div class="row" style="margin-top:12px"><button class="btn sm ghost" id="cpin">Change my PIN</button><button class="btn sm ghost" id="lo">Sign out / switch person</button></div></div>';
   if (can('people')) h += '<div class="card"><h3>People, PINs and rights</h3><div class="small mute">Add employees, give each a PIN, choose Manager / Staff and tick exactly what each person may do.</div><button class="btn sm" id="ppl" style="margin-top:10px">Open People</button></div>';
+  if (can('customers')) h += '<div class="card"><h3>Customers &amp; referrals</h3><div class="small mute">Referral codes, who referred whom, coupons issued and used.</div><button class="btn sm" id="cust" style="margin-top:10px">Open</button></div>';
   if (can('approve')) h += '<div class="card"><h3>Discount approvals</h3><div class="small mute">Requests from managers for more than ' + 10 + '% appear on your screen within seconds. One-time codes are a back-up you can read out on the phone (each works once, up to 25%).</div>' +
     '<div class="row" style="margin-top:10px"><button class="btn sm" id="apv">Requests</button><button class="btn sm ghost" id="apc">One-time codes</button></div></div>';
   h += '<div class="card"><h3>Use it like an app</h3><div class="small">' + (IN_APP ? 'You are in the installed Nutvique app. ' : 'For the camera scanner and the Bluetooth scale, install the app: open <b>vermakshat.com/nutvique</b> in Chrome (Android) or Safari (iPhone) → Install / Add to Home Screen. ') +
@@ -1028,6 +1206,7 @@ async function viewMore() {
   $('#view').innerHTML = h;
   $('#lo').onclick = signOut; $('#cpin').onclick = changePinSheet;
   if ($('#ppl')) $('#ppl').onclick = peopleScreen;
+  if ($('#cust')) $('#cust').onclick = customersScreen;
   if ($('#apv')) $('#apv').onclick = () => approvalsSheet(true);
   if ($('#apc')) $('#apc').onclick = codesSheet;
   if (!can('settings')) return;
@@ -1076,6 +1255,7 @@ start();
 .scanline{position:absolute;left:8%;right:8%;top:50%;height:2px;background:#e53935;box-shadow:0 0 8px #e53935}
 #sc_log div{padding:3px 0;border-bottom:1px solid #eee}
 #b_scale.on{background:#fff7e3}#b_scale.stable{background:#e3f4e6;color:#1d6b33;font-weight:700}.qk .sw{background:var(--navy);color:#fff;border-color:var(--navy)}
+.cpn{display:flex;gap:8px;align-items:center;border:1px dashed var(--gold);border-radius:10px;padding:8px 10px;margin-top:6px;background:#fffaf0}.cpn.on{background:#e3f4e6;border-style:solid;border-color:#1d6b33}
 .seg{display:flex;border:1px solid #cfcab9;border-radius:10px;overflow:hidden}.seg button{flex:1;border:0;background:#fff;padding:9px 4px;cursor:pointer;font-weight:600;font-size:14px}
 .seg button.on{background:var(--navy);color:#fff}
 .btot{font-size:14px}.btot div{display:flex;justify-content:space-between;padding:2px 0}.btot .g{font-size:22px;font-weight:800;border-top:2px solid var(--navy);margin-top:6px;padding-top:6px}
@@ -1152,7 +1332,45 @@ function dfltGst() { return Number(B.boot && B.boot.setup['Default GST %']) || 5
 function lineQty(l) { return l.unit === 'kg' ? (l.inUnit === 'g' ? num(l.inQty) / 1000 : num(l.inQty)) : num(l.inQty); }
 function interState() { const g = (B.cust.gstin || '').trim().toUpperCase(); return B.biz && g.length >= 2 && g.slice(0, 2) !== ((B.boot && B.boot.setup['State code']) || '09'); }
 function calcNow() {
-  return billCalc(B.lines.map(l => ({ qty: lineQty(l), rate: l.rate, discPct: l.discPct, gst: l.gst })), B.billDisc, interState());
+  const ls = B.lines.map(l => ({ qty: lineQty(l), rate: l.rate, discPct: B.coupon ? 0 : l.discPct, gst: l.gst }));
+  if (B.coupon) { const g = billCalc(ls, 0, interState()).totals.gross; return billCalc(ls, g >= B.coupon.min ? Math.round(g * B.coupon.pct) / 100 : 0, interState()); }
+  return billCalc(ls, B.billDisc, interState());
+}
+/* ───── customer: referral code, referred-by, coupons ───── */
+let custT = null;
+function custLookup(force) {
+  const ph = (B.cust.phone || '').replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '');
+  if (!/^[6-9]\d{9}$/.test(ph)) { if (B.ci) { B.ci = null; B.coupon = null; B.refBy = ''; drawCust(); refreshTotals(); } return; }
+  if (B.ci && B.ci.phone === ph && !force) return;
+  clearTimeout(custT);
+  custT = setTimeout(async () => {
+    try { const r = await call('customerInfo', { phone: ph, ref: B.refBy || '' }); if ((B.cust.phone || '').replace(/\D/g, '').slice(-10) !== ph) return;
+      B.ci = r; if (r.name && !B.cust.name) { B.cust.name = r.name; const n = $('#b_nm'); if (n) n.value = r.name; }
+      if (B.coupon && !r.coupons.some(c => c.code === B.coupon.code)) B.coupon = null;
+      drawCust(); refreshTotals(); } catch (e) { }
+  }, force ? 0 : 350);
+}
+function drawCust() {
+  const box = $('#b_ci'); if (!box) return;
+  const c = B.ci; if (!c || B.noDetails) { box.innerHTML = ''; return; }
+  let h = '';
+  if (c.isNew) {
+    h += '<div class="tiny"><span class="pill p-new">New customer</span> Gets their own referral code with this bill.</div>' +
+      '<label class="f" style="margin-top:8px">Referred by (friend\'s referral code or mobile) – optional</label><div class="row" style="flex-wrap:nowrap"><input class="i grow" id="b_ref" value="' + esc(B.refBy || '') + '" placeholder="e.g. NV7K3PQ" style="text-transform:uppercase"><button class="btn sm ghost" id="b_refc">Check</button></div>' +
+      (c.ref ? '<div class="tiny ' + (c.ref.ok ? '' : 'neg') + '" style="margin-top:4px">' + esc(c.ref.ok ? '✓ Referred by ' + c.ref.label + ' – they get a ' + c.rules.pct + '% coupon when this customer\'s first ₹' + c.rules.refMin + '+ bill is saved.' : c.ref.msg) + '</div>' : '');
+  } else {
+    h += '<div class="tiny"><span class="pill p-ok">' + (c.bills ? c.bills + ' earlier bill' + (c.bills === 1 ? '' : 's') : 'Known customer') + '</span>' + (c.code ? ' Referral code <b>' + esc(c.code) + '</b>' : '') + (c.referredBy && /^Waiting/.test(c.referral) ? ' · referred by ' + esc(c.referredBy) + ' (' + esc(c.referral.toLowerCase()) + ')' : '') + '</div>';
+  }
+  if (c.coupons.length) h += '<div style="margin-top:8px">' + c.coupons.map(cp => { const on = B.coupon && B.coupon.code === cp.code;
+    return '<div class="cpn' + (on ? ' on' : '') + '"><div class="grow"><b>' + esc(cp.code) + ' · ' + cp.pct + '% off</b><div class="tiny mute">on a bill of ₹' + cp.min + '+ · valid till ' + esc(cp.till.split('-').reverse().join('-')) + (cp.from ? ' · for referring ' + esc(cp.from) : '') + '</div></div><button class="btn sm ' + (on ? 'ghost' : 'gold') + '" data-cp="' + esc(cp.code) + '">' + (on ? 'Remove' : 'Use') + '</button></div>'; }).join('') + '</div>';
+  box.innerHTML = h;
+  if ($('#b_ref')) { $('#b_ref').oninput = e => { B.refBy = e.target.value.trim(); }; $('#b_refc').onclick = () => custLookup(true); $('#b_ref').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); custLookup(true); } }; }
+  $$('[data-cp]', box).forEach(b => b.onclick = () => {
+    const cp = c.coupons.find(x => x.code === b.dataset.cp);
+    if (B.coupon && B.coupon.code === cp.code) B.coupon = null;
+    else { B.coupon = cp; B.billDisc = 0; B.lines.forEach(l => l.discPct = ''); }
+    drawBill();
+  });
 }
 
 async function viewBill() {
@@ -1161,7 +1379,8 @@ async function viewBill() {
     try { B.boot = await call('billBoot', { loc: B.loc }); if (B.boot.today) { B.today = B.boot.today; B.todayDate = today(); } }
     catch (e) { $('#view').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
   }
-  if (!B.loc && S.user && S.user.home) { B.loc = S.user.home; store.set('bloc', B.loc); }
+  if (B.loc && !B.boot.locs.some(l => l.name === B.loc)) { B.loc = ''; B.today = null; }
+  if (!B.loc && S.user && S.user.home && B.boot.locs.some(l => l.name === S.user.home)) { B.loc = S.user.home; store.set('bloc', B.loc); }
   if (!B.loc) return pickBillLoc();
   listsOk();
   drawBill();
@@ -1196,6 +1415,7 @@ function drawBill() {
     '<div class="card"><h3>Customer</h3>' +
     '<div class="grid2"><div><label class="f">Mobile (for WhatsApp bill)</label><input class="i" id="b_ph" type="tel" inputmode="numeric" maxlength="14" value="' + esc(B.cust.phone) + '" placeholder="10-digit mobile"' + (B.noDetails ? ' disabled' : '') + '></div>' +
     '<div><label class="f">Name (optional)</label><input class="i" id="b_nm" value="' + esc(B.cust.name) + '" placeholder="Customer name"></div></div>' +
+    '<div id="b_ci"></div>' +
     '<label class="chk"><input type="checkbox" id="b_nd"' + (B.noDetails ? ' checked' : '') + '>Customer does not want to share – print the bill only</label>' +
     '<label class="chk"><input type="checkbox" id="b_biz"' + (B.biz ? ' checked' : '') + '>Business customer – GST bill with their GSTIN</label>' +
     (B.biz ? '<div class="grid2"><div><label class="f">Customer GSTIN</label><input class="i" id="b_gst" maxlength="15" style="text-transform:uppercase" value="' + esc(B.cust.gstin) + '"></div>' +
@@ -1206,9 +1426,9 @@ function drawBill() {
     (B.pay.mode === 'Split' ? '<div class="grid3" style="margin-top:8px">' + [['cash', 'Cash'], ['upi', 'UPI'], ['card', 'Card']].map(k => '<div><label class="f">' + k[1] + ' ₹</label><input class="i num" data-sp="' + k[0] + '" inputmode="decimal" value="' + esc(B.pay[k[0]]) + '"></div>').join('') + '</div>' +
       '<div class="tiny mute" id="b_spl" style="margin-top:4px"></div>' : '') +
     (B.pay.mode === 'Cash' ? '<div class="row" style="margin-top:8px"><div class="grow"><label class="f">Cash received ₹ (optional)</label><input class="i num" id="b_got" inputmode="decimal" value="' + esc(B.pay.got) + '"></div><div class="grow"><label class="f">Give back</label><div class="qty" id="b_chg">–</div></div></div>' : '') +
-    '<div class="row" style="margin-top:8px">' + (noDisc() ? '' : '<div class="grow"><label class="f">Bill discount ₹</label><input class="i num" id="b_bd" inputmode="decimal" value="' + (B.billDisc || '') + '"></div>') +
+    '<div class="row" style="margin-top:8px">' + (noDisc() || B.coupon ? '' : '<div class="grow"><label class="f">Bill discount ₹</label><input class="i num" id="b_bd" inputmode="decimal" value="' + (B.billDisc || '') + '"></div>') +
     '<div class="grow"><label class="f">Billed by</label><div class="i" style="background:#f4f2ec">' + esc(S.user ? S.user.name : '') + '</div></div></div>' +
-    (noDisc() ? '<div class="tiny mute" style="margin-top:6px">Discounts: only managers can give them.</div>' : '<div class="tiny mute" style="margin-top:6px" id="b_dh"></div>') +
+    (B.coupon ? '<div class="tiny" style="margin-top:6px">Coupon ' + esc(B.coupon.code) + ' applied – ' + B.coupon.pct + '% off (no other discount with a coupon).</div>' : noDisc() ? '<div class="tiny mute" style="margin-top:6px">Discounts: only managers can give them.</div>' : '<div class="tiny mute" style="margin-top:6px" id="b_dh"></div>') +
     '</div>' +
     '<div class="card btot" id="b_tot">' + totHtml(t) + '</div>' +
     '<button class="btn gold block" id="b_save" style="min-height:52px;font-size:17px"' + (B.lines.length ? '' : ' disabled') + '>Save bill · ₹' + money(t.total) + '</button>' +
@@ -1222,7 +1442,7 @@ function drawBill() {
 }
 function discInfo(t) {
   const pct = t.gross ? Math.round(t.disc / t.gross * 10000) / 100 : 0, L = discLimits();
-  if (!(t.disc > 0)) return { pct: 0, need: '' };
+  if (!(t.disc > 0) || B.coupon) return { pct: 0, need: '' };
   if (isOwner()) return { pct: pct, need: '' };
   if (pct > L.max + 0.01) return { pct: pct, need: 'max' };
   if (pct > L.self + 0.01 && !can('approve')) return { pct: pct, need: 'approval' };
@@ -1231,7 +1451,8 @@ function discInfo(t) {
 function totHtml(t) {
   const inter = interState();
   return '<div><span>Items total (incl. GST)</span><span>₹' + money(t.gross) + '</span></div>' +
-    (t.disc ? '<div><span>Discount (' + (t.gross ? Math.round(t.disc / t.gross * 1000) / 10 : 0) + '%)</span><span>− ₹' + money(t.disc) + '</span></div>' : '') +
+    (B.coupon && !t.disc ? '<div class="neg"><span>Coupon needs a bill of ₹' + B.coupon.min + '+</span><span></span></div>' : '') +
+    (t.disc ? '<div><span>' + (B.coupon ? 'Coupon ' + esc(B.coupon.code) : 'Discount') + ' (' + (t.gross ? Math.round(t.disc / t.gross * 1000) / 10 : 0) + '%)</span><span>− ₹' + money(t.disc) + '</span></div>' : '') +
     '<div class="mute"><span>Taxable value</span><span>₹' + money(t.taxable) + '</span></div>' +
     (inter ? '<div class="mute"><span>IGST</span><span>₹' + money(t.igst) + '</span></div>' : '<div class="mute"><span>CGST + SGST</span><span>₹' + money(t.cgst) + ' + ₹' + money(t.sgst) + '</span></div>') +
     (t.roundOff ? '<div class="mute"><span>Round off</span><span>' + (t.roundOff > 0 ? '+' : '−') + ' ₹' + money(Math.abs(t.roundOff)) + '</span></div>' : '') +
@@ -1247,7 +1468,7 @@ function lineCard(l, i, c) {
     (l.unit === 'kg' ? '<select class="i" data-f="inUnit"><option value="g"' + (l.inUnit === 'g' ? ' selected' : '') + '>g</option><option value="kg"' + (l.inUnit === 'kg' ? ' selected' : '') + '>kg</option></select>' :
       (l.sku ? '<span class="mute">pcs</span>' : '<select class="i" data-f="unit"><option value="pcs">pcs</option><option value="kg"' + (l.unit === 'kg' ? ' selected' : '') + '>kg</option></select>')) +
     '<span class="mute small">× ₹' + money(l.rate) + (l.unit === 'kg' ? '/kg' : '') + '</span>' +
-    (noDisc() ? '' : '<input class="i dsc" data-f="discPct" inputmode="decimal" placeholder="Disc %" value="' + (l.discPct || '') + '">') +
+    (noDisc() || B.coupon ? '' : '<input class="i dsc" data-f="discPct" inputmode="decimal" placeholder="Disc %" value="' + (l.discPct || '') + '">') +
     '<span class="amt">₹' + money(c ? c.amount : 0) + '</span></div>';
   if (l.unit === 'kg') h += '<div class="qk">' + (IN_APP ? '<button data-w="' + i + '" class="sw">⚖ Scale</button>' : '') + [100, 200, 250, 500, 1000].map(g => '<button data-g="' + g + '">' + (g >= 1000 ? g / 1000 + ' kg' : g + ' g') + '</button>').join('') + '</div>';
   h += '<div class="tiny mute" style="margin-top:4px">' + (l.sku ? esc(l.sku) + ' · ' : '') + 'HSN ' + esc(l.hsn || '–') + ' · GST ' + (l.gst || dfltGst()) + '%' +
@@ -1298,9 +1519,10 @@ function bindBill() {
     $$('[data-g]', el).forEach(b => b.onclick = () => { l.inUnit = 'g'; l.inQty = b.dataset.g; if (+b.dataset.g >= 1000) { l.inUnit = 'kg'; l.inQty = String(+b.dataset.g / 1000); } drawBill(); });
   });
   $$('[data-del]').forEach(b => b.onclick = () => { B.lines.splice(+b.dataset.del, 1); drawBill(); });
-  $('#b_ph').oninput = e => { B.cust.phone = e.target.value.replace(/[^\d+ ]/g, ''); };
+  $('#b_ph').oninput = e => { B.cust.phone = e.target.value.replace(/[^\d+ ]/g, ''); custLookup(); };
+  drawCust(); custLookup();
   $('#b_nm').oninput = e => { B.cust.name = e.target.value; };
-  $('#b_nd').onchange = e => { B.noDetails = e.target.checked; if (B.noDetails) B.cust.phone = ''; drawBill(); };
+  $('#b_nd').onchange = e => { B.noDetails = e.target.checked; if (B.noDetails) { B.cust.phone = ''; B.ci = null; B.coupon = null; B.refBy = ''; } drawBill(); };
   $('#b_biz').onchange = e => { B.biz = e.target.checked; drawBill(); };
   if ($('#b_gst')) $('#b_gst').oninput = e => { const was = interState(); B.cust.gstin = e.target.value.toUpperCase(); if (was !== interState()) drawBill(); else refreshTotals(); };
   if ($('#b_ad')) $('#b_ad').oninput = e => { B.cust.address = e.target.value; };
@@ -1346,7 +1568,7 @@ function addItem(sku, scanning) {
 }
 function resetBill() {
   B.lines = []; B.cust = { name: '', phone: '', gstin: '', address: '' }; B.noDetails = false; B.biz = false; B.billDisc = 0;
-  B.pay = { mode: 'Cash', cash: '', upi: '', card: '', other: '', got: '' }; B.cid = newCid(); B.search = ''; B.approval = null;
+  B.pay = { mode: 'Cash', cash: '', upi: '', card: '', other: '', got: '' }; B.cid = newCid(); B.search = ''; B.approval = null; B.coupon = null; B.refBy = ''; B.ci = null;
 }
 
 async function saveBill() {
@@ -1356,6 +1578,7 @@ async function saveBill() {
   if (B.lines.some(l => !(lineQty(l) > 0))) return toast('Enter the quantity for every item', true);
   if (!B.noDetails && !/^[6-9]\d{9}$/.test(ph)) return toast('Enter the customer\'s 10-digit mobile, or tick “does not want to share”', true);
   if (B.loc === 'Event' && !B.event) return toast('Pick the event first', true);
+  if (B.coupon && !c.totals.disc) return toast('The coupon needs a bill of ₹' + B.coupon.min + ' or more', true);
   if (noDisc() && (B.billDisc || B.lines.some(l => num(l.discPct)))) return toast('Only managers can give discounts', true);
   const di = discInfo(c.totals);
   if (di.need === 'max') return toast('The maximum discount is ' + discLimits().max + '%', true);
@@ -1365,6 +1588,7 @@ async function saveBill() {
   }
   const req = { clientId: B.cid, loc: B.loc, event: B.event, noDetails: B.noDetails, billDisc: B.billDisc,
     approvalId: B.approval && B.approval.id || '', approvalCode: B.approval && B.approval.code || '',
+    coupon: B.coupon ? B.coupon.code : '', refBy: B.ci && B.ci.isNew && B.refBy ? B.refBy : '',
     customer: { name: B.cust.name, phone: B.noDetails ? '' : ph, gstin: B.biz ? B.cust.gstin : '', address: B.biz ? B.cust.address : '' },
     lines: B.lines.map(l => ({ sku: l.sku, name: l.name, hsn: l.hsn, unit: l.unit, qty: r3(lineQty(l)), rate: l.rate, gst: l.gst, discPct: num(l.discPct) })),
     pay: { mode: B.pay.mode, cash: num(B.pay.cash), upi: num(B.pay.upi), card: num(B.pay.card), other: 0 } };
@@ -1385,7 +1609,14 @@ function waLink(b) {
   const msg = tpl.replace(/\{brand\}/g, b.seller.brand || 'Nutvique').replace(/\{store\}/g, b.loc === 'Event' ? (b.event || 'our stall') : b.loc)
     .replace(/\{no\}/g, b.no).replace(/\{date\}/g, b.date.split('-').reverse().join('-')).replace(/\{total\}/g, money(b.totals.total))
     .replace(/\{link\}/g, b.url).replace(/\{name\}/g, b.customer.name || '');
-  return 'https://wa.me/91' + b.customer.phone + '?text=' + encodeURIComponent(msg);
+  const R = (B.boot && B.boot.ref) || { pct: 10, refMin: 1000 };
+  const ref = b.customer.refCode ? '\n\nYour referral code: *' + b.customer.refCode + '*\nShare it with friends – when a friend shops for ₹' + money(R.refMin).replace(/\.00$/, '') + ' or more with your code, you get a ' + R.pct + '% coupon.' : '';
+  return 'https://wa.me/91' + b.customer.phone + '?text=' + encodeURIComponent(msg + ref);
+}
+function couponWa(i, brand) {
+  const msg = 'Hi' + (i.name ? ' ' + i.name : '') + '! Thank you for referring ' + (i.friend || 'a friend') + ' to ' + (brand || 'Nutvique') + '.\n\nHere is your *' + i.pct + '% coupon: ' + i.code + '*\n' +
+    'Use it on a purchase of ₹' + money(i.min).replace(/\.00$/, '') + ' or more at any Nutvique store, valid till ' + i.till.split('-').reverse().join('-') + '. Just tell us your mobile number at billing.';
+  return 'https://wa.me/91' + i.phone + '?text=' + encodeURIComponent(msg);
 }
 function billDone(b, fresh) {
   const live = b.status !== 'Cancelled';
@@ -1396,6 +1627,11 @@ function billDone(b, fresh) {
     '<div style="font-size:28px;font-weight:800;margin:8px 0">₹' + money(b.totals.total) + '</div>' +
     '<div class="mute small">' + esc(b.customer.name || '') + (b.customer.phone ? ' · +91 ' + esc(b.customer.phone) : (b.customer.name ? '' : 'No customer details')) + ' · ' + esc(b.pay.mode) + '</div>' +
     (b.sent ? '<div class="tiny mute">WhatsApp opened: ' + esc(b.sent) + '</div>' : '') +
+    (b.customer.refCode ? '<div class="tiny" style="margin-top:4px">Customer\'s referral code: <b>' + esc(b.customer.refCode) + '</b></div>' : '') +
+    (b.coupon ? '<div class="tiny">Coupon ' + esc(b.coupon.code) + ' used (' + b.coupon.pct + '%)</div>' : '') +
+    (fresh && b.ref && b.ref.referredBy ? '<div class="tiny">Referred by ' + esc(b.ref.referredBy.label) + '</div>' : '') +
+    (fresh && b.ref && b.ref.issued ? '<div class="okbox" style="margin-top:8px">🎁 ' + esc(b.ref.issued.name || 'The referrer') + ' earned coupon <b>' + esc(b.ref.issued.code) + '</b> (' + b.ref.issued.pct + '% off, valid till ' + esc(b.ref.issued.till.split('-').reverse().join('-')) + ')' +
+      '<a class="btn wa block" style="margin-top:8px" target="_blank" rel="noopener" href="' + esc(couponWa(b.ref.issued, b.seller.brand)) + '">Send the coupon to ' + esc(b.ref.issued.name || 'them') + ' on WhatsApp</a></div>' : '') +
     '<div class="bact">' +
     (b.customer.phone && live ? '<a class="btn wa block" id="bd_wa" target="_blank" rel="noopener" href="' + esc(waLink(b)) + '">Send bill on WhatsApp</a>' : '') +
     '<button class="btn block" id="bd_pr">Print bill</button>' +
@@ -1676,7 +1912,8 @@ async function viewSales() {
   const P = [['today', 'Today'], ['yday', 'Yesterday'], ['week', 'This week'], ['month', 'This month'], ['lmonth', 'Last month'], ['fy', 'This FY'], ['custom', 'Dates…']];
   const [from, to] = srRange(SR.period);
   SR.from = from; SR.to = to;
-  const locs = ['All'].concat((B.boot && B.boot.locs ? B.boot.locs.map(l => l.name) : ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120', 'Event']));
+  if (!can('allStores')) SR.loc = (S.user && S.user.home) || SR.loc;
+  const locs = !can('allStores') ? [SR.loc] : ['All'].concat((B.boot && B.boot.locs ? B.boot.locs.map(l => l.name) : ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120', 'Event']));
   $('#view').innerHTML = '<div class="row" style="margin-bottom:8px"><h2 class="grow" style="margin:0">Sales</h2>' +
     '<select class="i" id="sr_loc" style="width:auto">' + locs.map(l => '<option value="' + esc(l) + '"' + (l === SR.loc ? ' selected' : '') + '>' + esc(l === 'All' ? 'All stores + events' : l === 'Event' ? 'Event stalls' : (LOC_SHORT[l] || l)) + '</option>').join('') + '</select></div>' +
     '<div class="chips" id="sr_p" style="margin-bottom:8px">' + P.map(p => '<button data-p="' + p[0] + '" class="' + (SR.period === p[0] ? 'on' : '') + '">' + p[1] + '</button>').join('') + '</div>' +
@@ -1865,6 +2102,7 @@ function billCanvas(b, mm) {
   const pay = b.pay.mode === 'Split' ? ['cash', 'upi', 'card', 'other'].filter(q => b.pay[q]).map(q => q.toUpperCase() + ' ' + money(b.pay[q])).join(' + ') : b.pay.mode + ' ' + money(t.total);
   text('Paid: ' + pay + '   Billed by: ' + b.by, 18, false, 'left', 6);
   rule(1);
+  if (b.customer && b.customer.refCode) text('Your referral code: ' + b.customer.refCode + ' – a friend shops for Rs 1,000+, you get a 10% coupon', 17, true, 'center');
   text(s.footer, 18, false, 'center');
   text('Computer-generated invoice. ' + (c.phone ? 'Digital copy sent on WhatsApp.' : ''), 16, false, 'center');
   y += Math.round(30 * k);
