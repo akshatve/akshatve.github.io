@@ -1482,7 +1482,7 @@ function lineCard(l, i, c) {
   let h = '<div class="bl" data-i="' + i + '"><div class="t"><b>' + (l.sku ? esc(l.name) : '<input class="i" data-f="name" placeholder="Item name" value="' + esc(l.name) + '">') + '</b><button class="btn sm ghost" data-del="' + i + '" aria-label="Remove">×</button></div>';
   if (!l.sku) h += '<div class="grid3" style="margin-top:6px"><div><label class="f">Rate ₹ incl. GST</label><input class="i num" data-f="rate" inputmode="decimal" value="' + (l.rate || '') + '"></div>' +
     '<div><label class="f">HSN</label><input class="i" data-f="hsn" inputmode="numeric" value="' + esc(l.hsn || '') + '"></div><div><label class="f">GST %</label><input class="i num" data-f="gst" inputmode="decimal" value="' + (l.gst || '') + '"></div></div>';
-  h += '<div class="q"><input class="i" data-f="inQty" inputmode="decimal" value="' + esc(l.inQty) + '">' +
+  h += '<div class="q"><input class="i" data-f="inQty" inputmode="' + (l.unit === 'kg' ? 'decimal' : 'numeric') + '" value="' + esc(l.inQty) + '">' +
     (l.unit === 'kg' ? '<select class="i" data-f="inUnit"><option value="g"' + (l.inUnit === 'g' ? ' selected' : '') + '>g</option><option value="kg"' + (l.inUnit === 'kg' ? ' selected' : '') + '>kg</option></select>' :
       (l.sku ? '<span class="mute">pcs</span>' : '<select class="i" data-f="unit"><option value="pcs">pcs</option><option value="kg"' + (l.unit === 'kg' ? ' selected' : '') + '>kg</option></select>')) +
     '<span class="mute small">× ₹' + money(l.rate) + (l.unit === 'kg' ? '/kg' : '') + '</span>' +
@@ -1528,6 +1528,7 @@ function bindBill() {
       const f = inp.dataset.f;
       const upd = () => {
         if (f === 'unit') { l.unit = inp.value; l.inUnit = inp.value === 'kg' ? 'kg' : 'pcs'; return drawBill(); }
+        if (f === 'inQty' && l.unit !== 'kg' && /[.,]/.test(inp.value)) { inp.value = inp.value.replace(/[.,].*$/, ''); toast('Pieces are whole numbers – sold by the piece, not by weight', true); }
         l[f] = (f === 'rate' || f === 'gst') ? num(inp.value) : inp.value;
         if (f === 'inUnit') { const q0 = num(l.inQty); if (q0) l.inQty = String(inp.value === 'g' ? r3(q0 * 1000) : r3(q0 / 1000)); return drawBill(); }
         refreshTotals();
@@ -1628,6 +1629,7 @@ async function saveBill() {
   const ph = (B.cust.phone || '').replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '');
   if (!B.lines.length) return toast('Add an item first', true);
   if (B.lines.some(l => !(lineQty(l) > 0))) return toast('Enter the quantity for every item', true);
+  const frac = B.lines.find(l => l.unit !== 'kg' && lineQty(l) % 1); if (frac) return toast('"' + (frac.name || 'Item') + '" is sold by the piece – use a whole number', true);
   if (!B.noDetails && !/^[6-9]\d{9}$/.test(ph)) return toast('Enter the customer\'s 10-digit mobile, or tick “does not want to share”', true);
   if (B.loc === 'Event' && !B.event) return toast('Pick the event first', true);
   if (B.coupon && !c.totals.disc) return toast('The coupon needs a bill of ₹' + B.coupon.min + ' or more', true);
