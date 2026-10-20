@@ -857,6 +857,7 @@ function stockCheck() {
   const card = t => '<div class="card" style="padding:12px"><div class="row"><b class="grow">' + esc(t.no) + '</b><span class="pill ' + (t.status === 'Approved' ? 'p-ok' : t.status === 'Rejected' ? 'p-bad' : 'p-warn') + '">' + esc(t.status) + '</span></div>' +
     '<div class="small">' + esc(LOC_SHORT[t.from] || t.from) + ' → <b>' + esc(LOC_SHORT[t.to] || t.to) + '</b> · ' + esc(t.date) + ' · sent by ' + esc(t.by) + (t.checkedBy ? ' · checked by ' + esc(t.checkedBy) : '') + '</div>' +
     '<div class="tiny mute" style="margin-top:4px">' + t.lines.map(l => esc(l.name) + ' ' + qfmt(l.sent) + (l.got != null && l.got !== l.sent ? ' (got ' + qfmt(l.got) + ')' : '') + ' ' + esc(l.unit)).join(' · ') + '</div>' +
+    (t.status === 'Approved' && t.lines.some(l => l.got != null && l.got < l.sent) ? '<div class="tiny neg" style="margin-top:4px">⚠ Short: ' + t.lines.filter(l => l.got != null && l.got < l.sent).map(l => esc(l.name) + ' ' + qfmt(r3(l.sent - l.got)) + ' ' + esc(l.unit)).join(', ') + ' · received and approved by <b>' + esc(t.checkedBy) + '</b></div>' : '') +
     (t.remarks ? '<div class="tiny" style="margin-top:4px">' + esc(t.remarks) + '</div>' : '') +
     (t.canCheck ? '<button class="btn gold block" data-ck="' + esc(t.no) + '" style="margin-top:10px">Check what arrived</button>' : t.status === 'Waiting for check' ? '<div class="tiny mute" style="margin-top:6px">Waiting for ' + esc(t.to) + ' to check.</div>' : '') + '</div>';
   $('#sk_b').innerHTML = '<h3>Waiting for check (' + T.waiting.length + ')</h3>' + (T.waiting.map(card).join('') || '<div class="empty small">Nothing waiting.</div>') +
@@ -865,7 +866,7 @@ function stockCheck() {
 }
 function checkSheet(t) {
   const m = modal('Check ' + t.no, '<div class="small">' + esc(t.from) + ' → <b>' + esc(t.to) + '</b> · sent by ' + esc(t.by) + ' on ' + esc(t.date) + '</div>' +
-    '<div class="small mute" style="margin:8px 0">Count what actually arrived. Change the number if it is different.</div>' +
+    '<div class="small mute" style="margin:8px 0">Count what actually arrived and change the number if it is different. This check is saved in <b>your name (' + esc(S.user ? S.user.name : '') + ')</b> – you are responsible for what you approve.</div>' +
     t.lines.map(l => '<div class="row" style="margin-bottom:8px;flex-wrap:nowrap"><div class="grow"><b>' + esc(l.name) + '</b><div class="tiny mute">sent ' + qfmt(l.sent) + ' ' + esc(l.unit) + '</div></div><input class="i num" style="width:100px" data-r="' + esc(l.sku) + '" inputmode="decimal" value="' + l.sent + '"></div>').join('') +
     fld('Remarks', '<input class="i" id="ck_r" placeholder="e.g. 1 pouch torn">') +
     '<div class="row" style="margin-top:14px"><button class="btn ghost" id="ck_no" style="color:var(--bad)">Reject</button><div class="grow"></div><button class="btn gold" id="ck_ok">Approve – add to stock</button></div>');
@@ -1091,7 +1092,7 @@ async function peopleScreen() {
     $('#pp_add', m).onclick = () => editPerson(null);
   };
   const editPerson = u => {
-    const isNew = !u; u = u || { name: '', role: 'Staff', active: true, rights: ['bill', 'stockView'], home: '', notes: '' };
+    const isNew = !u; u = u || { name: '', role: 'Staff', active: true, rights: ['bill', 'stockView', 'events', 'transfer', 'checkTransfer'], home: '', notes: '' };
     const e = modal(isNew ? 'Add person' : u.name, '<div class="grid2">' + fld('Name', '<input class="i" id="pe_n" value="' + esc(u.name) + '">') +
       fld('Role', '<select class="i" id="pe_r"><option' + (u.role !== 'Manager' ? ' selected' : '') + '>Staff</option><option' + (u.role === 'Manager' ? ' selected' : '') + '>Manager</option></select>') +
       fld('Home store', '<select class="i" id="pe_h"><option value="">– Head office / all –</option>' + D.stores.map(x => '<option' + (x === u.home ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select>') +
@@ -1101,10 +1102,10 @@ async function peopleScreen() {
       fld('Notes', '<input class="i" id="pe_no" value="' + esc(u.notes || '') + '">') +
       '<div class="row" style="margin-top:14px">' + (isNew ? '' : '<button class="btn ghost sm" id="pe_pin">Reset PIN</button>') + '<div class="grow"></div><button class="btn" id="pe_go">' + (isNew ? 'Add & make PIN' : 'Save') + '</button></div>');
     const preset = keys => $$('.rk', e).forEach(c => { if (!c.disabled) c.checked = keys.indexOf(c.value) >= 0; });
-    $('#pe_ps', e).onclick = () => preset(['bill', 'stockView']);
+    $('#pe_ps', e).onclick = () => preset(['bill', 'stockView', 'events', 'transfer', 'checkTransfer']);
     $('#pe_pm', e).onclick = () => preset(['bill', 'disc10', 'otherItem', 'events', 'sales', 'stockView', 'transfer', 'checkTransfer', 'customers']);
     $('#pe_pn', e).onclick = () => preset([]);
-    $('#pe_r', e).onchange = ev => preset(ev.target.value === 'Manager' ? ['bill', 'disc10', 'otherItem', 'events', 'sales', 'stockView', 'transfer', 'checkTransfer', 'customers'] : ['bill', 'stockView']);
+    $('#pe_r', e).onchange = ev => preset(ev.target.value === 'Manager' ? ['bill', 'disc10', 'otherItem', 'events', 'sales', 'stockView', 'transfer', 'checkTransfer', 'customers'] : ['bill', 'stockView', 'events', 'transfer', 'checkTransfer']);
     $('#pe_go', e).onclick = async () => {
       const d = { name: isNew ? '' : u.name, newName: $('#pe_n', e).value.trim(), role: $('#pe_r', e).value, home: $('#pe_h', e).value, active: $('#pe_a', e).value,
         notes: $('#pe_no', e).value, rights: $$('.rk', e).filter(c => c.checked).map(c => c.value) };
@@ -1267,6 +1268,8 @@ start();
 .ldcards button.pick{transform:scale(1.08)}.ldcards button.flip{background:#C9A24A;color:#1F2A44;transform:rotateY(360deg) scale(1.12);font-size:24px;display:flex;flex-direction:column;align-items:center;justify-content:center}.ldcards button small{font-size:12px}
 .ldwin{background:#fff7e3;border:2px dashed #C9A24A;border-radius:14px;padding:12px;color:#1F2A44}.ldpct{font-size:30px;font-weight:800;color:#b07d10;margin:2px 0}
 .upiq{text-align:center}.upiamt{font-size:34px;font-weight:800;color:var(--navy);margin:4px 0 8px}.upibox{max-width:300px;margin:0 auto 10px;padding:10px;background:#fff;border:2px solid var(--navy);border-radius:16px}
+.held{display:flex;gap:6px;align-items:center;overflow-x:auto;margin:0 0 8px;padding-bottom:2px}.held button{flex:none;border:1px solid var(--gold);background:#fff7e3;border-radius:20px;padding:6px 10px 6px 12px;font-size:13px;cursor:pointer;white-space:nowrap}
+.held button i{font-style:normal;margin-left:8px;color:#999;padding:0 2px}
 .seg{display:flex;border:1px solid #cfcab9;border-radius:10px;overflow:hidden}.seg button{flex:1;border:0;background:#fff;padding:9px 4px;cursor:pointer;font-weight:600;font-size:14px}
 .seg button.on{background:var(--navy);color:#fff}
 .btot{font-size:14px}.btot div{display:flex;justify-content:space-between;padding:2px 0}.btot .g{font-size:22px;font-weight:800;border-top:2px solid var(--navy);margin-top:6px;padding-top:6px}
@@ -1420,6 +1423,7 @@ function drawBill() {
         : '<div class="warnbox" style="margin:0">No event is open. ' + (can('events') ? 'Add the event with the button below – it shows for every employee at once.' : 'Ask the owner to add the event.') + '</div>') +
       (can('events') ? '<button class="btn sm" id="b_addev" style="margin-top:8px">+ Add event</button>' : '') + '</div>' : '') +
     '<div class="bwrap"><div>' +
+    heldBar() +
     '<div class="bsrch"><input id="bq" type="search" placeholder="Type item name, SKU or scan barcode…" autocomplete="off" value="' + esc(B.search) + '"><div id="bres"></div></div>' +
     '<div id="blines">' + (B.lines.length ? B.lines.map((l, i) => lineCard(l, i, c.lines[i])).join('') : '<div class="empty small">No items yet. Search above' + (IN_APP ? ', tap 📷 to scan barcodes' : '') + (can('otherItem') ? ', or <a href="#" id="b_oth0">add an item that is not in the list</a>.' : '.') + '</div>') + '</div>' +
     (B.lines.length && can('otherItem') ? '<div style="margin-top:8px"><button class="btn sm ghost" id="b_oth">+ Item not in the list</button></div>' : '') +
@@ -1445,7 +1449,7 @@ function drawBill() {
     '</div>' +
     '<div class="card btot" id="b_tot">' + totHtml(t) + '</div>' +
     '<button class="btn gold block" id="b_save" style="min-height:52px;font-size:17px"' + (B.lines.length ? '' : ' disabled') + '>Save bill · ₹' + money(t.total) + '</button>' +
-    (B.lines.length ? '<button class="btn ghost block" id="b_clr" style="margin-top:8px">Clear</button>' : '') +
+    (B.lines.length ? '<div class="row" style="margin-top:8px;flex-wrap:nowrap"><button class="btn ghost grow" id="b_hold">⏸ Hold bill</button><button class="btn ghost grow" id="b_clr">Clear</button></div>' : '') +
     '</div></div>' +
     '<div class="card" style="margin-top:16px" id="b_today"><div class="empty small"><span class="spin dk"></span></div></div>';
   bindBill();
@@ -1550,6 +1554,9 @@ function bindBill() {
   $$('[data-w]').forEach(b => b.onclick = () => useScale(+b.dataset.w));
   $('#b_save').onclick = saveBill;
   if ($('#b_clr')) $('#b_clr').onclick = e => { if (!confirmTwice(e.target)) return; resetBill(); drawBill(); };
+  if ($('#b_hold')) $('#b_hold').onclick = () => holdBill();
+  $$('[data-hold]').forEach(b => b.onclick = () => takeHeld(b.dataset.hold));
+  $$('[data-hx]').forEach(b => b.onclick = e => { e.stopPropagation(); if (!confirmTwice(b)) return; setHolds(getHolds().filter(h => h.id !== b.dataset.hx)); drawBill(); });
   refreshTotals();
   scaleShow();
 }
@@ -1580,6 +1587,36 @@ function addItem(sku, scanning) {
   const idx = B.lines.findIndex(l => l.sku === sku);
   const el = $('#blines .bl[data-i="' + idx + '"] [data-f="inQty"]');
   if (el && unitOf(p) === 'kg') { el.focus(); el.select(); } else $('#bq').focus();
+}
+/* ───── hold / retrieve: kept on this phone, instant, works without internet ───── */
+function getHolds() { try { const a = JSON.parse(store.get('holds') || '[]'); const cut = Date.now() - 2 * 864e5; return a.filter(h => h.t > cut); } catch (e) { return []; } }
+function setHolds(a) { store.set('holds', a.length ? JSON.stringify(a.slice(-20)) : null); }
+function holdBill(quiet) {
+  if (!B.lines.length) return;
+  const c = calcNow(), n = getHolds();
+  const label = (B.cust.name || '').trim() || (B.cust.phone && B.cust.phone.length >= 4 ? '…' + B.cust.phone.replace(/\D/g, '').slice(-4) : 'Customer ' + (n.filter(h => h.loc === B.loc).length + 1));
+  n.push({ id: 'H' + Date.now().toString(36), t: Date.now(), by: S.user ? S.user.name : '', loc: B.loc, event: B.event, label: label, total: c.totals.total,
+    lines: B.lines, cust: B.cust, noDetails: B.noDetails, biz: B.biz, billDisc: B.billDisc, pay: { mode: B.pay.mode }, refBy: B.refBy || '', coupon: B.coupon || null });
+  setHolds(n); resetBill(); drawBill();
+  if (!quiet) toast('⏸ Held: ' + label + ' – tap it above the search to continue');
+}
+function takeHeld(id) {
+  const all = getHolds(), h = all.find(x => x.id === id); if (!h) return;
+  if (B.lines.length) holdBill(true);                      // swap: the bill on screen is held first
+  setHolds(getHolds().filter(x => x.id !== id));
+  B.lines = h.lines.map(l => { const p = l.sku && S.bySku[l.sku]; return Object.assign({}, l, p && p.sell ? { rate: p.sell, name: p.name } : {}); });
+  B.cust = h.cust || { name: '', phone: '', gstin: '', address: '' }; B.noDetails = !!h.noDetails; B.biz = !!h.biz; B.billDisc = h.billDisc || 0;
+  B.pay = { mode: (h.pay && h.pay.mode) || 'Cash', cash: '', upi: '', card: '', other: '', got: '' }; B.refBy = h.refBy || ''; B.coupon = h.coupon || null;
+  if (h.loc === 'Event' && h.event) B.event = h.event;
+  B.cid = newCid(); B.approval = null; B.ci = null;
+  drawBill(); toast('▶ ' + h.label + ' is back');
+}
+function heldBar() {
+  const hs = getHolds().filter(h => h.loc === B.loc);
+  if (!hs.length) return '';
+  const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'now' : m < 60 ? m + ' min' : Math.round(m / 60) + ' h'; };
+  return '<div class="held"><span class="tiny mute">⏸ On hold:</span>' + hs.map(h => '<button data-hold="' + h.id + '"><b>' + esc(h.label) + '</b> ₹' + money(h.total).replace(/\.00$/, '') +
+    '<span class="tiny"> · ' + h.lines.length + ' item' + (h.lines.length === 1 ? '' : 's') + ' · ' + ago(h.t) + '</span><i data-hx="' + h.id + '" title="Delete">×</i></button>').join('') + '</div>';
 }
 function resetBill() {
   B.lines = []; B.cust = { name: '', phone: '', gstin: '', address: '' }; B.noDetails = false; B.biz = false; B.billDisc = 0;
