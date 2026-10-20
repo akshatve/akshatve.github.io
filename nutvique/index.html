@@ -1266,6 +1266,7 @@ start();
 .ldcards button{width:76px;height:100px;border-radius:12px;border:2px solid #C9A24A;background:repeating-linear-gradient(45deg,#2B3A5E,#2B3A5E 8px,#24324f 8px,#24324f 16px);color:#C9A24A;font-size:30px;font-weight:800;cursor:pointer;transition:transform .5s}
 .ldcards button.pick{transform:scale(1.08)}.ldcards button.flip{background:#C9A24A;color:#1F2A44;transform:rotateY(360deg) scale(1.12);font-size:24px;display:flex;flex-direction:column;align-items:center;justify-content:center}.ldcards button small{font-size:12px}
 .ldwin{background:#fff7e3;border:2px dashed #C9A24A;border-radius:14px;padding:12px;color:#1F2A44}.ldpct{font-size:30px;font-weight:800;color:#b07d10;margin:2px 0}
+.upiq{text-align:center}.upiamt{font-size:34px;font-weight:800;color:var(--navy);margin:4px 0 8px}.upibox{max-width:300px;margin:0 auto 10px;padding:10px;background:#fff;border:2px solid var(--navy);border-radius:16px}
 .seg{display:flex;border:1px solid #cfcab9;border-radius:10px;overflow:hidden}.seg button{flex:1;border:0;background:#fff;padding:9px 4px;cursor:pointer;font-weight:600;font-size:14px}
 .seg button.on{background:var(--navy);color:#fff}
 .btot{font-size:14px}.btot div{display:flex;justify-content:space-between;padding:2px 0}.btot .g{font-size:22px;font-weight:800;border-top:2px solid var(--navy);margin-top:6px;padding-top:6px}
@@ -1436,6 +1437,7 @@ function drawBill() {
     '<div class="card"><h3>Payment</h3><div class="seg" id="b_pm">' + ['Cash', 'UPI', 'Card', 'Split'].map(m => '<button data-m="' + m + '" class="' + (B.pay.mode === m ? 'on' : '') + '">' + m + '</button>').join('') + '</div>' +
     (B.pay.mode === 'Split' ? '<div class="grid3" style="margin-top:8px">' + [['cash', 'Cash'], ['upi', 'UPI'], ['card', 'Card']].map(k => '<div><label class="f">' + k[1] + ' ₹</label><input class="i num" data-sp="' + k[0] + '" inputmode="decimal" value="' + esc(B.pay[k[0]]) + '"></div>').join('') + '</div>' +
       '<div class="tiny mute" id="b_spl" style="margin-top:4px"></div>' : '') +
+    (B.pay.mode === 'UPI' || B.pay.mode === 'Split' ? '<button class="btn gold block" id="b_qr" style="margin-top:8px"' + (B.lines.length ? '' : ' disabled') + '>Show UPI QR' + (B.pay.mode === 'Split' ? ' for the UPI part' : '') + '</button>' : '') +
     (B.pay.mode === 'Cash' ? '<div class="row" style="margin-top:8px"><div class="grow"><label class="f">Cash received ₹ (optional)</label><input class="i num" id="b_got" inputmode="decimal" value="' + esc(B.pay.got) + '"></div><div class="grow"><label class="f">Give back</label><div class="qty" id="b_chg">–</div></div></div>' : '') +
     '<div class="row" style="margin-top:8px">' + (noDisc() || B.coupon ? '' : '<div class="grow"><label class="f">Bill discount ₹</label><input class="i num" id="b_bd" inputmode="decimal" value="' + (B.billDisc || '') + '"></div>') +
     '<div class="grow"><label class="f">Billed by</label><div class="i" style="background:#f4f2ec">' + esc(S.user ? S.user.name : '') + '</div></div></div>' +
@@ -1538,7 +1540,8 @@ function bindBill() {
   $('#b_biz').onchange = e => { B.biz = e.target.checked; drawBill(); };
   if ($('#b_gst')) $('#b_gst').oninput = e => { const was = interState(); B.cust.gstin = e.target.value.toUpperCase(); if (was !== interState()) drawBill(); else refreshTotals(); };
   if ($('#b_ad')) $('#b_ad').oninput = e => { B.cust.address = e.target.value; };
-  $$('#b_pm button').forEach(b => b.onclick = () => { B.pay.mode = b.dataset.m; drawBill(); });
+  $$('#b_pm button').forEach(b => b.onclick = () => { const was = B.pay.mode; B.pay.mode = b.dataset.m; drawBill(); if (b.dataset.m === 'UPI' && was !== 'UPI' && B.lines.length) showUpi(); });
+  if ($('#b_qr')) $('#b_qr').onclick = () => showUpi();
   $$('[data-sp]').forEach(i => i.oninput = () => { B.pay[i.dataset.sp] = i.value; refreshTotals(); });
   if ($('#b_got')) $('#b_got').oninput = e => { B.pay.got = e.target.value; refreshTotals(); };
   if ($('#b_bd')) $('#b_bd').oninput = e => { B.billDisc = num(e.target.value); refreshTotals(); };
@@ -1655,6 +1658,45 @@ function bindLucky(b, m) {
     if (navigator.vibrate) try { navigator.vibrate([80, 40, 160]); } catch (e) { }
     b.lucky = L; setTimeout(() => done(L), 1300);
   });
+}
+/* ───── UPI: QR with the exact amount (customer's UPI app opens with the amount filled in) ───── */
+let qrLoad = null;
+function loadQr() {
+  if (window.qrcode) return Promise.resolve();
+  return qrLoad = qrLoad || new Promise((res, rej) => { const s = document.createElement('script');
+    s.src = IN_APP ? 'qrcode.min.js' : 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+    s.onload = res; s.onerror = () => { qrLoad = null; rej(new Error('Could not load the QR maker – check internet.')); }; document.head.appendChild(s); });
+}
+function upiUri(amount, note) {
+  const st = (B.boot && B.boot.setup) || {};
+  const pa = st['UPI ID'] || 'MSNUTZYFOODSPRIVATELIMITED.eazypay@icici', pn = (st['UPI name'] || 'M/S.NUTZY FOODS PRIVATE LIMITED').trim(), tr = st['UPI ref'] || '';
+  const e = v => String(v).replace(/[^A-Za-z0-9@._\-\/ ]/g, '').trim().replace(/ /g, '%20');   // same style as the bank's own QR
+  return 'upi://pay?pa=' + e(pa) + '&pn=' + e(pn) + (tr ? '&tr=' + e(tr) : '') + '&am=' + (Math.round(amount * 100) / 100).toFixed(2) + '&cu=INR&tn=' + e(String(note || '').slice(0, 40));
+}
+function qrSvg(text) {
+  const q = qrcode(0, 'M'); q.addData(text); q.make();
+  const n = q.getModuleCount(), m = 4; let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += 'M' + (c + m) + ' ' + (r + m) + 'h1v1h-1z';
+  return '<svg viewBox="0 0 ' + (n + 2 * m) + ' ' + (n + 2 * m) + '" shape-rendering="crispEdges" style="width:100%;height:auto;display:block;background:#fff"><path d="' + d + '" fill="#000"/></svg>';
+}
+async function showUpi() {
+  const c = calcNow(), t = c.totals;
+  const amt = B.pay.mode === 'Split' ? num(B.pay.upi) : t.total;
+  if (!(amt > 0)) return toast(B.pay.mode === 'Split' ? 'Type the UPI amount first' : 'Add items first', true);
+  const st = (B.boot && B.boot.setup) || {};
+  const note = (st['Brand name'] || 'Nutvique') + ' ' + (LOC_SHORT[B.loc] || B.loc || '') + (B.cust.name ? ' ' + B.cust.name : '');
+  const m = modal('Pay by UPI', '<div class="upiq"><div class="tiny mute">' + esc(st['UPI name'] || 'M/S.NUTZY FOODS PRIVATE LIMITED') + '</div>' +
+    '<div class="upiamt">₹' + money(amt) + '</div><div id="upi_qr" class="upibox"><div class="empty"><span class="spin dk"></span></div></div>' +
+    '<div class="small">Scan with any UPI app – GPay, PhonePe, Paytm, BHIM or a bank app. The amount is filled in.</div>' +
+    '<div class="tiny mute" style="margin-top:4px">' + esc(st['UPI ID'] || '') + '</div></div>' +
+    '<div class="warnbox" style="margin-top:12px">Save the bill only after the customer shows the <b>payment successful</b> screen (or your bank SMS / soundbox confirms it).</div>' +
+    (B.pay.mode === 'UPI' ? '<button class="btn gold block" id="upi_ok" style="margin-top:12px">Payment received – save bill</button>' : '<button class="btn block" id="upi_ok" style="margin-top:12px">UPI part received – back to the bill</button>') +
+    '<button class="btn ghost block" id="upi_x" style="margin-top:8px">Customer will pay another way</button>');
+  try { await loadQr(); $('#upi_qr', m).innerHTML = qrSvg(upiUri(amt, note)); }
+  catch (e) { $('#upi_qr', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; }
+  $('#upi_ok', m).onclick = () => { m.close(); if (B.pay.mode === 'UPI') saveBill(); };
+  $('#upi_x', m).onclick = () => { m.close(); B.pay.mode = 'Cash'; drawBill(); };
+  try { if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => { }); } catch (e) { }
 }
 function couponWa(i, brand) {
   const msg = 'Hi' + (i.name ? ' ' + i.name : '') + '! Thank you for referring ' + (i.friend || 'a friend') + ' to ' + (brand || 'Nutvique') + '.\n\nHere is your *' + i.pct + '% coupon: ' + i.code + '*\n' +
