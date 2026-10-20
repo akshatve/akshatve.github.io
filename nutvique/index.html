@@ -142,8 +142,9 @@ function call(action, data) {
     return new Error(m);
   };
   if (window.NV_API) {
-    return fetch(window.NV_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
-      .then(r => r.json(), () => { throw new Error('No internet connection – check Wi-Fi / mobile data and try again.'); })
+    const post = () => fetch(window.NV_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) }).then(r => r.json());
+    return post().catch(() => new Promise(r => setTimeout(r, 1500)).then(post))           // one quiet retry for a network blip
+      .catch(() => { throw new Error('No internet connection – check Wi-Fi / mobile data and try again.'); })
       .then(j => { if (!j || !j.ok) throw fail((j && j.e) || 'Server error'); return j.r; });
   }
   return new Promise((res, rej) => {
