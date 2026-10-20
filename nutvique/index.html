@@ -1686,14 +1686,19 @@ function luckyWa(b, L) {
 }
 function bindLucky(b, m) {
   const box = $('#ld_box', m); if (!box) return;
-  const done = L => { box.className = ''; box.style.marginTop = '10px'; box.innerHTML = luckyWon(L) + '<a class="btn wa block" target="_blank" rel="noopener" style="margin-top:8px" href="' + esc(luckyWa(b, L)) + '">Send the coupon on WhatsApp</a>'; };
+  const done = (L, fresh) => {
+    box.className = ''; box.style.marginTop = '10px';
+    box.innerHTML = luckyWon(L) + (waOn() && fresh ? '<div id="ld_was"></div>' : '') +
+      '<a class="btn ' + (waOn() ? 'ghost' : 'wa') + ' block" target="_blank" rel="noopener" style="margin-top:8px" href="' + esc(luckyWa(b, L)) + '">' + (waOn() ? 'Send the coupon manually (WhatsApp)' : 'Send the coupon on WhatsApp') + '</a>';
+    if (waOn() && fresh) waAuto($('#ld_was', box), 'waSendCoupon', { kind: 'lucky', no: b.no }, 'Coupon sent to the customer on WhatsApp');
+  };
   if (b.lucky) { if (b.lucky.status === 'Active') done(b.lucky); return; }
   $$('[data-ld]', box).forEach(btn => btn.onclick = async () => {
     $$('[data-ld]', box).forEach(x => x.disabled = true); btn.classList.add('pick'); btn.textContent = '…';
     let L; try { L = await call('luckyDraw', { no: b.no }); } catch (e) { toast(e.message, true); $$('[data-ld]', box).forEach(x => { x.disabled = false; x.textContent = '?'; }); btn.classList.remove('pick'); return; }
     btn.classList.add('flip'); btn.innerHTML = L.pct + '%<small>OFF</small>';
     if (navigator.vibrate) try { navigator.vibrate([80, 40, 160]); } catch (e) { }
-    b.lucky = L; setTimeout(() => done(L), 1300);
+    b.lucky = L; setTimeout(() => done(L, !L.again), 1300);
   });
 }
 /* ───── UPI: QR with the exact amount (customer's UPI app opens with the amount filled in) ───── */
@@ -1744,6 +1749,14 @@ function waUrl(phone, msg) {
       encodeURIComponent('https://play.google.com/store/apps/details?id=com.whatsapp.w4b') + ';end';
   return 'https://wa.me/' + num + '?text=' + encodeURIComponent(msg);
 }
+/* Automatic WhatsApp (Cloud API, company number): the server sends; the phone only shows the result. */
+function waOn() { return !!(B.boot && B.boot.wa && B.boot.wa.on); }
+function waAuto(el, action, data, okMsg) {
+  if (!el) return;
+  el.className = 'tiny'; el.style.marginTop = '8px'; el.innerHTML = '<span class="spin dk"></span> Sending on WhatsApp from the company number…';
+  call(action, data).then(r => { el.className = 'okbox'; el.innerHTML = '✓ ' + (r.already ? 'Already sent on WhatsApp (' + esc(r.sent) + ')' : esc(okMsg)); if (action === 'waSendBill') { B.today = null; loadToday(); } })
+    .catch(e => { el.className = 'warnbox bad'; el.innerHTML = 'WhatsApp not sent: ' + esc(e.message) + '<br>Use the WhatsApp button instead.'; });
+}
 function couponWa(i, brand) {
   const msg = 'Hi' + (i.name ? ' ' + i.name : '') + '! Thank you for referring ' + (i.friend || 'a friend') + ' to ' + (brand || 'Nutvique') + '.\n\nHere is your *' + i.pct + '% coupon: ' + i.code + '*\n' +
     'Use it on a purchase of ₹' + money(i.min).replace(/\.00$/, '') + ' or more at any Nutvique store, valid till ' + i.till.split('-').reverse().join('-') + '. Just tell us your mobile number at billing.';
@@ -1763,15 +1776,20 @@ function billDone(b, fresh) {
     (fresh && b.ref && b.ref.referredBy ? '<div class="tiny">Referred by ' + esc(b.ref.referredBy.label) + '</div>' : '') +
     luckyBox(b) +
     (fresh && b.ref && b.ref.issued ? '<div class="okbox" style="margin-top:8px">🎁 ' + esc(b.ref.issued.name || 'The referrer') + ' earned coupon <b>' + esc(b.ref.issued.code) + '</b> (' + b.ref.issued.pct + '% off, valid till ' + esc(b.ref.issued.till.split('-').reverse().join('-')) + ')' +
-      '<a class="btn wa block" style="margin-top:8px" target="_blank" rel="noopener" href="' + esc(couponWa(b.ref.issued, b.seller.brand)) + '">Send the coupon to ' + esc(b.ref.issued.name || 'them') + ' on WhatsApp</a></div>' : '') +
+      (waOn() ? '<div id="rf_was"></div>' : '') +
+      '<a class="btn ' + (waOn() ? 'ghost' : 'wa') + ' block" style="margin-top:8px" target="_blank" rel="noopener" href="' + esc(couponWa(b.ref.issued, b.seller.brand)) + '">' + (waOn() ? 'Send manually to ' : 'Send the coupon to ') + esc(b.ref.issued.name || 'them') + ' on WhatsApp</a></div>' : '') +
     '<div class="bact">' +
-    (b.customer.phone && live ? '<a class="btn wa block" id="bd_wa" target="_blank" rel="noopener" href="' + esc(waLink(b)) + '">Send bill on WhatsApp</a>' : '') +
+    (b.customer.phone && live && waOn() ? (fresh ? '<div id="bd_was"></div>' : '<button class="btn wa block" id="bd_auto">Send bill on WhatsApp (company number)</button>') : '') +
+    (b.customer.phone && live ? '<a class="btn ' + (waOn() ? 'ghost' : 'wa') + ' block" id="bd_wa" target="_blank" rel="noopener" href="' + esc(waLink(b)) + '">' + (waOn() ? 'Send manually (opens WhatsApp)' : 'Send bill on WhatsApp') + '</a>' : '') +
     '<button class="btn block" id="bd_pr">Print bill</button>' +
     '<a class="btn ghost block" target="_blank" rel="noopener" href="' + esc(b.url) + '">Open full bill (PDF)</a>' +
     (!fresh && can('cancelBill') && live ? '<button class="btn ghost block" id="bd_cx" style="color:var(--bad)">Cancel this bill…</button>' : '') +
     (fresh ? '<button class="btn gold block" id="bd_new">New bill</button>' : '') + '</div></div>');
   if ($('#bd_wa', m)) $('#bd_wa', m).onclick = () => { call('markBillSent', { no: b.no }).then(() => { B.today = null; loadToday(); }).catch(() => { }); };
   $('#bd_pr', m).onclick = () => printBill(b);
+  if ($('#bd_was', m)) waAuto($('#bd_was', m), 'waSendBill', { no: b.no }, 'Bill PDF sent to the customer on WhatsApp');
+  if ($('#bd_auto', m)) $('#bd_auto', m).onclick = e => { const d = document.createElement('div'); e.target.replaceWith(d); waAuto(d, 'waSendBill', { no: b.no, again: true }, 'Bill PDF sent to the customer on WhatsApp'); };
+  if ($('#rf_was', m)) waAuto($('#rf_was', m), 'waSendCoupon', { kind: 'ref', code: b.ref.issued.code }, 'Coupon sent to ' + (b.ref.issued.name || 'the referrer') + ' on WhatsApp');
   bindLucky(b, m);
   if ($('#bd_new', m)) $('#bd_new', m).onclick = () => { m.close(); $('#bq') && $('#bq').focus(); };
   if ($('#bd_cx', m)) $('#bd_cx', m).onclick = () => { m.close(); cancelSheet(b); };
@@ -2115,7 +2133,7 @@ async function billSetupSheet() {
   if (!L) { L = await run('Loading…', () => call('billLists')).catch(() => null); if (!L) return; Object.assign(B.boot, L); }
   let evs = (L.allEvents || []).map(e => Object.assign({}, e)), stf = (L.allStaff || []).map(p => Object.assign({}, p));
   const st = B.boot.setup;
-  const tabs = [can('events') && ['ev', 'Events'], can('billSetup') && ['de', 'Bill details']].filter(Boolean);
+  const tabs = [can('events') && ['ev', 'Events'], can('billSetup') && ['de', 'Bill details'], B.boot.role === 'Owner' && ['wa', 'WhatsApp auto']].filter(Boolean);
   const m = modal('Bill setup', '<div class="seg" id="bs_tabs">' + tabs.map((t, i) => '<button data-t="' + t[0] + '" class="' + (i ? '' : 'on') + '">' + t[1] + '</button>').join('') + '</div><div id="bs_body" style="margin-top:12px"></div>' +
     '<div class="tiny mute" style="margin-top:10px">Employee names, PINs and rights: More → People.</div>', { wide: true, onClose: () => { listsOk(); drawBill(); } });
   const body = $('#bs_body', m);
@@ -2149,6 +2167,8 @@ async function billSetupSheet() {
         const r = await run('Saving…', () => call('saveBillLists', { staff: keep })).catch(() => null);
         if (r) { Object.assign(B.boot, r); B.boot.allStaff = keep.map(p => Object.assign({}, p)); toast('Staff names saved'); m.close(); }
       };
+    } else if (t === 'wa') {
+      waSetup(body);
     } else {
       const keys = Object.keys(st);
       body.innerHTML = '<div class="mute small" style="margin-bottom:8px">Printed on every new bill. Old bills keep the details they were saved with. Also editable in the “Bill Setup” tab of the sheet.</div>' +
@@ -2163,6 +2183,47 @@ async function billSetupSheet() {
   };
   $$('#bs_tabs button', m).forEach(b => b.onclick = () => draw(b.dataset.t));
   draw(tabs[0][0]);
+}
+
+/* ───── Owner: WhatsApp Cloud API setup (automatic bills from the company number) ───── */
+async function waSetup(body) {
+  body.innerHTML = '<div class="empty"><span class="spin dk"></span></div>';
+  let w; try { w = await call('waSettings'); } catch (e) { body.innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+  const tpl = w.templates.map(t => '<div class="card" style="padding:8px 10px;margin-top:6px"><b>' + esc(t.name) + '</b>' + (t.header ? ' <span class="tiny mute">(header: document = bill PDF)</span>' : '') +
+    '<div class="small" style="margin-top:4px">' + esc(t.body) + '</div><div class="tiny mute">Footer: ' + esc(t.footer) + '</div></div>').join('');
+  body.innerHTML = '<div class="mute small">Bills, lucky-draw coupons and referral coupons go out <b>automatically</b> from the company WhatsApp number through Meta\'s WhatsApp Cloud API. Staff phones are not used. Values come from Meta → WhatsApp Manager / App dashboard.</div>' +
+    '<label class="f" style="margin-top:10px"><input type="checkbox" id="wa_on"' + (w.on ? ' checked' : '') + '> Send automatically</label>' +
+    '<label class="f">Phone number ID</label><input class="i" id="wa_pid" inputmode="numeric" value="' + esc(w.pid) + '">' +
+    '<label class="f">WhatsApp Business Account ID</label><input class="i" id="wa_waba" inputmode="numeric" value="' + esc(w.waba) + '">' +
+    '<label class="f">Meta App ID <span class="tiny mute">(only for creating the bill template)</span></label><input class="i" id="wa_app" inputmode="numeric" value="' + esc(w.app) + '">' +
+    '<label class="f">Permanent access token <span class="tiny mute">(system user · whatsapp_business_messaging + whatsapp_business_management)</span></label>' +
+    '<input class="i" id="wa_tok" type="password" autocomplete="off" placeholder="' + (w.hasToken ? 'Saved ✓ – leave blank to keep' : 'Paste the token here') + '">' +
+    '<div class="tiny mute">The token stays on the server; no phone ever sees it.</div>' +
+    '<button class="btn block" id="wa_save" style="margin-top:12px">Save</button>' +
+    '<div class="row" style="margin-top:8px;gap:8px"><button class="btn sm ghost grow" id="wa_chk">Check connection</button><button class="btn sm ghost grow" id="wa_mk">Create the 3 templates</button></div>' +
+    '<div class="row" style="margin-top:8px;gap:8px"><input class="i grow" id="wa_to" inputmode="tel" placeholder="Your mobile for a test"><button class="btn sm ghost" id="wa_tst">Send test bill</button></div>' +
+    '<div id="wa_out" style="margin-top:10px"></div>' +
+    '<details style="margin-top:10px"><summary class="small">Message templates (need Meta approval once)</summary>' + tpl + '</details>';
+  const out = $('#wa_out', body);
+  const show = r => {
+    let h = '';
+    if (r.phone) h += '<div class="okbox">Number: <b>' + esc(r.phone.display_phone_number || '') + '</b> · ' + esc(r.phone.verified_name || '') + '<br><span class="tiny">Name approval: ' + esc(r.phone.name_status || '–') + ' · Quality: ' + esc(r.phone.quality_rating || '–') + ' · Status: ' + esc(r.phone.status || r.phone.code_verification_status || '–') + (r.phone.messaging_limit_tier ? ' · Limit: ' + esc(r.phone.messaging_limit_tier) : '') + '</span></div>';
+    if (r.templates) h += '<div class="card" style="padding:6px 10px;margin-top:6px">' + r.templates.map(t => '<div class="small"><b>' + esc(t.name) + '</b>: ' + esc(t.status) + (t.category ? ' · ' + esc(t.category) : '') + (t.why && t.why !== 'NONE' ? ' – ' + esc(t.why) : '') + '</div>').join('') + '</div>';
+    out.innerHTML = h || '<div class="mute small">Nothing to show – add the IDs first.</div>';
+  };
+  $('#wa_save', body).onclick = async () => {
+    const d = { on: $('#wa_on', body).checked, pid: $('#wa_pid', body).value, waba: $('#wa_waba', body).value, app: $('#wa_app', body).value, token: $('#wa_tok', body).value };
+    if (d.on && !d.pid.trim()) return toast('Add the Phone number ID first', true);
+    const r = await run('Saving…', () => call('waSave', d)).catch(() => null);
+    if (r) { B.boot.wa = { on: r.ready }; toast(r.ready ? 'Saved – bills now go out automatically' : 'Saved' + (r.on && !r.hasToken ? ' – add the token to start sending' : '')); waSetup(body); }
+  };
+  $('#wa_chk', body).onclick = async () => { const r = await run('Checking with Meta…', () => call('waCheck')).catch(e => { out.innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return null; }); if (r) show(r); };
+  $('#wa_mk', body).onclick = async () => { const r = await run('Creating templates…', () => call('waMakeTemplates')).catch(e => { out.innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return null; }); if (r) { show(r); toast('Sent to Meta for approval – press Check connection in a few minutes'); } };
+  $('#wa_tst', body).onclick = async () => {
+    const to = $('#wa_to', body).value.replace(/\D/g, '').slice(-10); if (to.length !== 10) return toast('Type a 10-digit mobile number', true);
+    const r = await run('Sending the latest bill…', () => call('waTest', { to: to })).catch(e => { out.innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return null; });
+    if (r) out.innerHTML = '<div class="okbox">✓ Sent – check WhatsApp on ' + esc(to) + '</div>';
+  };
 }
 
 /* ───────────── PRINTING ─────────────
