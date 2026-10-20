@@ -1,5 +1,5 @@
 // Nutvique app – keeps the app files on the phone so it opens fast; always checks for a newer version first.
-const CACHE = 'nutvique-3ea287420c';
+const CACHE = 'nutvique-2d5b6e838f';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'zxing.min.js', 'qrcode.min.js', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'favicon.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

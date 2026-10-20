@@ -1663,7 +1663,7 @@ function waLink(b) {
     .replace(/\{link\}/g, b.url).replace(/\{name\}/g, b.customer.name || '');
   const R = (B.boot && B.boot.ref) || { pct: 10, refMin: 1000 };
   const ref = b.customer.refCode ? '\n\nYour referral code: *' + b.customer.refCode + '*\nShare it with friends – when a friend shops for ₹' + money(R.refMin).replace(/\.00$/, '') + ' or more with your code, you get a ' + R.pct + '% coupon.' : '';
-  return 'https://wa.me/91' + b.customer.phone + '?text=' + encodeURIComponent(msg + ref);
+  return waUrl(b.customer.phone, msg + ref);
 }
 /* ───── lucky draw: store bill ₹1,000+ → customer picks one of three cards → 5% or 10% coupon for the next visit ───── */
 function luckyR() { return (B.boot && B.boot.lucky) || { min: 1000, use: 1000, days: 30 }; }
@@ -1682,7 +1682,7 @@ function luckyBox(b) {
 function luckyWa(b, L) {
   const msg = 'Congratulations' + (b.customer.name ? ' ' + b.customer.name : '') + '! 🍀 You won *' + L.pct + '% OFF* in the ' + (b.seller.brand || 'Nutvique') + ' lucky draw.\n\nCoupon: *' + L.code + '*\n' +
     'Use it on your next visit on a purchase of ₹' + money(L.use).replace(/\.00$/, '') + ' or more, valid till ' + L.till.split('-').reverse().join('-') + '. Just give your mobile number at the counter.';
-  return 'https://wa.me/91' + b.customer.phone + '?text=' + encodeURIComponent(msg);
+  return waUrl(b.customer.phone, msg);
 }
 function bindLucky(b, m) {
   const box = $('#ld_box', m); if (!box) return;
@@ -1735,10 +1735,19 @@ async function showUpi() {
   $('#upi_x', m).onclick = () => { m.close(); B.pay.mode = 'Cash'; drawBill(); };
   try { if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => { }); } catch (e) { }
 }
+/* WhatsApp link: on Android it always opens WhatsApp Business (the company number), never the staff member's personal WhatsApp. */
+function waUrl(phone, msg) {
+  const st = (B.boot && B.boot.setup) || {}, num = '91' + String(phone).replace(/\D/g, '').slice(-10);
+  const biz = !/^any/i.test(st['WhatsApp app'] || 'WhatsApp Business');
+  if (biz && /Android/i.test(navigator.userAgent))
+    return 'intent://send?phone=' + num + '&text=' + encodeURIComponent(msg) + '#Intent;scheme=whatsapp;package=com.whatsapp.w4b;S.browser_fallback_url=' +
+      encodeURIComponent('https://play.google.com/store/apps/details?id=com.whatsapp.w4b') + ';end';
+  return 'https://wa.me/' + num + '?text=' + encodeURIComponent(msg);
+}
 function couponWa(i, brand) {
   const msg = 'Hi' + (i.name ? ' ' + i.name : '') + '! Thank you for referring ' + (i.friend || 'a friend') + ' to ' + (brand || 'Nutvique') + '.\n\nHere is your *' + i.pct + '% coupon: ' + i.code + '*\n' +
     'Use it on a purchase of ₹' + money(i.min).replace(/\.00$/, '') + ' or more at any Nutvique store, valid till ' + i.till.split('-').reverse().join('-') + '. Just tell us your mobile number at billing.';
-  return 'https://wa.me/91' + i.phone + '?text=' + encodeURIComponent(msg);
+  return waUrl(i.phone, msg);
 }
 function billDone(b, fresh) {
   const live = b.status !== 'Cancelled';
