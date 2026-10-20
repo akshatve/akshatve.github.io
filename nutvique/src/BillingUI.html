@@ -1,0 +1,936 @@
+<style>
+/* ───────────── BILLING ───────────── */
+@media(min-width:900px){header{padding-right:720px}}
+.bwrap{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:900px){.bwrap{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);align-items:start}.bside{position:sticky;top:70px}}
+.bsrch{position:relative}
+.bsrch input{font-size:17px;padding:12px 14px 12px 40px;border-radius:12px;border:1px solid #cfcab9;width:100%;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Ccircle cx='9' cy='9' r='6'/%3E%3Cpath d='m14 14 4 4'/%3E%3C/svg%3E") 12px 50% no-repeat}
+.bres{position:absolute;left:0;right:0;top:100%;z-index:25;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.12);max-height:55vh;overflow:auto;margin-top:4px}
+.bres .li:first-child{background:#faf6e8}
+.bl{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;margin-top:8px}
+.bl .t{display:flex;gap:8px;align-items:flex-start}.bl .t b{flex:1;line-height:1.25}
+.bl .q{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.bl .q input{width:92px;text-align:right;font-size:16px;font-weight:700}
+.bl .q select{width:auto;min-height:40px}
+.bl .q .dsc{width:64px;font-size:14px;font-weight:400}
+.bl .amt{margin-left:auto;font-weight:800;font-size:16px;white-space:nowrap}
+.qk{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.qk button{border:1px solid #cfcab9;background:#fbfaf6;border-radius:16px;padding:3px 10px;font-size:12.5px;cursor:pointer}
+.scanbox{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:4/3}.scanbox video{width:100%;height:100%;object-fit:cover;display:block}
+.scanline{position:absolute;left:8%;right:8%;top:50%;height:2px;background:#e53935;box-shadow:0 0 8px #e53935}
+#sc_log div{padding:3px 0;border-bottom:1px solid #eee}
+#b_scale.on{background:#fff7e3}#b_scale.stable{background:#e3f4e6;color:#1d6b33;font-weight:700}.qk .sw{background:var(--navy);color:#fff;border-color:var(--navy)}
+.seg{display:flex;border:1px solid #cfcab9;border-radius:10px;overflow:hidden}.seg button{flex:1;border:0;background:#fff;padding:9px 4px;cursor:pointer;font-weight:600;font-size:14px}
+.seg button.on{background:var(--navy);color:#fff}
+.btot{font-size:14px}.btot div{display:flex;justify-content:space-between;padding:2px 0}.btot .g{font-size:22px;font-weight:800;border-top:2px solid var(--navy);margin-top:6px;padding-top:6px}
+.chk{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer;margin:8px 0}.chk input{width:18px;height:18px}
+.bdone{text-align:center}.bdone .no{font-size:22px;font-weight:800;color:var(--navy);margin:6px 0}
+.bact{display:grid;grid-template-columns:1fr;gap:8px;margin-top:14px}
+.btn.wa{background:#1e9e4a}
+.blist .li .grow b{font-size:14px}.cx{text-decoration:line-through;opacity:.6}
+</style>
+<script>
+'use strict';
+/* ───────────── BILLING (Bill tab) ───────────── */
+ICONS.bill = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 2h14v20l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>';
+S.view = store.get('view0') || 'bill';
+const B = { boot: null, loc: store.get('bloc') || '', event: store.get('bevent') || '', by: store.get('bby') || '', lines: [], cust: { name: '', phone: '', gstin: '', address: '' },
+  noDetails: false, biz: false, billDisc: 0, pay: { mode: 'Cash', cash: '', upi: '', card: '', other: '', got: '' }, cid: newCid(), q: '', today: null, todayDate: '', search: '' };
+function newCid() { return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+const money = x => (Number(x) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/* same maths as billCalc_ in Billing.gs */
+function billCalc(lines, billDisc, inter) {
+  const r2 = x => Math.round((Number(x) || 0) * 100 + 1e-9) / 100;
+  const out = lines.map(l => {
+    const qty = Math.round((Number(l.qty) || 0) * 1000) / 1000, rate = r2(l.rate);
+    const gross = r2(qty * rate);
+    const ld = r2(gross * Math.min(Math.max(Number(l.discPct) || 0, 0), 100) / 100);
+    return { qty: qty, rate: rate, gross: gross, disc: ld, gst: Number(l.gst) || 0 };
+  });
+  const afterLine = out.reduce((a, l) => a + (l.gross - l.disc), 0);
+  let bd = Math.min(r2(billDisc), r2(afterLine));
+  if (bd > 0 && afterLine > 0) {
+    let left = bd;
+    out.forEach((l, i) => {
+      const base = l.gross - l.disc;
+      const share = i === out.length - 1 ? r2(left) : r2(bd * base / afterLine);
+      const s = Math.min(share, r2(base)); l.disc = r2(l.disc + s); left = r2(left - s);
+    });
+  }
+  const t = { gross: 0, disc: 0, amount: 0, taxable: 0, cgst: 0, sgst: 0, igst: 0, qty: 0, rates: {} };
+  out.forEach(l => {
+    l.amount = r2(l.gross - l.disc);
+    l.taxable = r2(l.amount * 100 / (100 + l.gst));
+    const tax = r2(l.amount - l.taxable);
+    if (inter) { l.igst = tax; l.cgst = 0; l.sgst = 0; } else { l.cgst = r2(tax / 2); l.sgst = r2(tax - l.cgst); l.igst = 0; }
+    ['gross', 'disc', 'amount', 'taxable'].forEach(k => t[k] = r2(t[k] + l[k]));
+    t.qty = Math.round((t.qty + l.qty) * 1000) / 1000;
+    const k = String(l.gst); const g = t.rates[k] = t.rates[k] || { amount: 0, taxable: 0, cgst: 0, sgst: 0, igst: 0 };
+    g.amount = r2(g.amount + l.amount); g.taxable = r2(g.taxable + l.taxable);
+  });
+  Object.keys(t.rates).forEach(k => {          // tax split per rate on the bill total, so CGST = SGST (± 1 paisa)
+    const g = t.rates[k], tax = r2(g.amount - g.taxable);
+    if (inter) g.igst = tax; else { g.cgst = r2(tax / 2); g.sgst = r2(tax - g.cgst); }
+    t.cgst = r2(t.cgst + g.cgst); t.sgst = r2(t.sgst + g.sgst); t.igst = r2(t.igst + g.igst);
+  });
+  t.total = Math.round(t.amount);
+  t.roundOff = r2(t.total - t.amount);
+  return { lines: out, totals: t };
+}
+
+function noDisc() { return !can('disc10'); }
+function discLimits() { const d = (B.boot && B.boot.disc) || { self: 10, max: 25 }; return d; }
+function listsOk() {
+  if (!B.boot) return;
+  if (B.event && !(B.boot.events || []).some(e => e.name === B.event)) { B.event = ''; store.set('bevent', null); }
+  if (noDisc()) { B.billDisc = 0; B.lines.forEach(l => l.discPct = ''); }
+  if (!can('otherItem')) B.lines = B.lines.filter(l => l.sku);
+}
+async function refreshLists(force) {
+  if (!B.boot) return;
+  if (!force && B.boot.listsAt && Date.now() - new Date(B.boot.listsAt).getTime() < 180000) return;
+  try { const r = await call('billLists'); const changed = JSON.stringify([r.events, r.staff]) !== JSON.stringify([B.boot.events, B.boot.staff]); Object.assign(B.boot, r); if (changed && S.view === 'bill' && B.loc && !$('.modal')) { listsOk(); drawBill(); } } catch (e) { }
+}
+function dfltGst() { return Number(B.boot && B.boot.setup['Default GST %']) || 5; }
+function lineQty(l) { return l.unit === 'kg' ? (l.inUnit === 'g' ? num(l.inQty) / 1000 : num(l.inQty)) : num(l.inQty); }
+function interState() { const g = (B.cust.gstin || '').trim().toUpperCase(); return B.biz && g.length >= 2 && g.slice(0, 2) !== ((B.boot && B.boot.setup['State code']) || '09'); }
+function calcNow() {
+  return billCalc(B.lines.map(l => ({ qty: lineQty(l), rate: l.rate, discPct: l.discPct, gst: l.gst })), B.billDisc, interState());
+}
+
+async function viewBill() {
+  if (!B.boot) {
+    $('#view').innerHTML = '<div class="empty"><span class="spin dk"></span><div>Loading billing…</div></div>';
+    try { B.boot = await call('billBoot', { loc: B.loc }); if (B.boot.today) { B.today = B.boot.today; B.todayDate = today(); } }
+    catch (e) { $('#view').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+  }
+  if (!B.loc && S.user && S.user.home) { B.loc = S.user.home; store.set('bloc', B.loc); }
+  if (!B.loc) return pickBillLoc();
+  listsOk();
+  drawBill();
+  scaleAuto();
+  refreshLists();
+  if (!B.today || B.todayDate !== today()) loadToday();
+}
+function pickBillLoc() {
+  $('#view').innerHTML = '<h2>Where are you billing?</h2>' + B.boot.locs.map(l => '<button class="btn ghost block" style="margin-bottom:8px;text-align:left" data-l="' + esc(l.name) + '"><b>' +
+    esc(l.name === 'Event' ? 'Event stall' : l.name) + '</b><div class="tiny mute">Bills ' + esc(l.series) + '/' + esc(B.boot.fy) + '/… · FSSAI ' + esc(l.fssai) + '</div></button>').join('');
+  $$('#view [data-l]').forEach(b => b.onclick = () => { B.loc = b.dataset.l; store.set('bloc', B.loc); B.today = null; listsOk(); viewBill(); });
+}
+function locLabel(l) { return l === 'Event' ? 'Event stall' + (B.event ? ' – ' + B.event : '') : l; }
+
+function drawBill() {
+  const c = calcNow(), t = c.totals;
+  const prev = document.activeElement && document.activeElement.id;
+  $('#view').innerHTML =
+    '<div class="row" style="margin-bottom:8px"><h2 class="grow" style="margin:0">New bill</h2><button class="btn sm ghost" id="b_loc">' + esc(LOC_SHORT[B.loc] || locLabel(B.loc)) + ' ▾</button>' +
+    '<button class="btn sm ghost" id="b_cam" title="Scan barcodes with the camera">📷</button><button class="btn sm ghost" id="b_scale" title="Bluetooth weighing scale">' + scaleLabel() + '</button>' +
+    (can('billSetup') || can('events') ? '<button class="btn sm ghost" id="b_setup">Bill setup</button>' : '') + '</div>' +
+    (B.loc === 'Event' ? '<div class="card" style="padding:10px"><label class="f">Event (printed on the bill)</label>' +
+      ((B.boot.events || []).length ? '<select class="i" id="b_ev"><option value="">– Pick the event –</option>' + B.boot.events.map(e => '<option value="' + esc(e.name) + '"' + (e.name === B.event ? ' selected' : '') + '>' + esc(e.name) + '</option>').join('') + '</select>' +
+        (B.event ? '<div class="tiny mute" style="margin-top:4px">' + esc(((B.boot.events.find(e => e.name === B.event) || {}).venue) || '') + '</div>' : '')
+        : '<div class="warnbox" style="margin:0">No event is open. ' + (can('events') ? 'Add the event with the button below – it shows for every employee at once.' : 'Ask the owner to add the event.') + '</div>') +
+      (can('events') ? '<button class="btn sm" id="b_addev" style="margin-top:8px">+ Add event</button>' : '') + '</div>' : '') +
+    '<div class="bwrap"><div>' +
+    '<div class="bsrch"><input id="bq" type="search" placeholder="Type item name, SKU or scan barcode…" autocomplete="off" value="' + esc(B.search) + '"><div id="bres"></div></div>' +
+    '<div id="blines">' + (B.lines.length ? B.lines.map((l, i) => lineCard(l, i, c.lines[i])).join('') : '<div class="empty small">No items yet. Search above' + (IN_APP ? ', tap 📷 to scan barcodes' : '') + (can('otherItem') ? ', or <a href="#" id="b_oth0">add an item that is not in the list</a>.' : '.') + '</div>') + '</div>' +
+    (B.lines.length && can('otherItem') ? '<div style="margin-top:8px"><button class="btn sm ghost" id="b_oth">+ Item not in the list</button></div>' : '') +
+    '</div><div class="bside">' +
+    '<div class="card"><h3>Customer</h3>' +
+    '<div class="grid2"><div><label class="f">Mobile (for WhatsApp bill)</label><input class="i" id="b_ph" type="tel" inputmode="numeric" maxlength="14" value="' + esc(B.cust.phone) + '" placeholder="10-digit mobile"' + (B.noDetails ? ' disabled' : '') + '></div>' +
+    '<div><label class="f">Name (optional)</label><input class="i" id="b_nm" value="' + esc(B.cust.name) + '" placeholder="Customer name"></div></div>' +
+    '<label class="chk"><input type="checkbox" id="b_nd"' + (B.noDetails ? ' checked' : '') + '>Customer does not want to share – print the bill only</label>' +
+    '<label class="chk"><input type="checkbox" id="b_biz"' + (B.biz ? ' checked' : '') + '>Business customer – GST bill with their GSTIN</label>' +
+    (B.biz ? '<div class="grid2"><div><label class="f">Customer GSTIN</label><input class="i" id="b_gst" maxlength="15" style="text-transform:uppercase" value="' + esc(B.cust.gstin) + '"></div>' +
+      '<div><label class="f">Business name & address</label><textarea class="i" id="b_ad" rows="2">' + esc(B.cust.address) + '</textarea></div></div>' +
+      (interState() ? '<div class="warnbox" style="margin-top:8px">Other state GSTIN → IGST will be charged.</div>' : '') : '') +
+    '</div>' +
+    '<div class="card"><h3>Payment</h3><div class="seg" id="b_pm">' + ['Cash', 'UPI', 'Card', 'Split'].map(m => '<button data-m="' + m + '" class="' + (B.pay.mode === m ? 'on' : '') + '">' + m + '</button>').join('') + '</div>' +
+    (B.pay.mode === 'Split' ? '<div class="grid3" style="margin-top:8px">' + [['cash', 'Cash'], ['upi', 'UPI'], ['card', 'Card']].map(k => '<div><label class="f">' + k[1] + ' ₹</label><input class="i num" data-sp="' + k[0] + '" inputmode="decimal" value="' + esc(B.pay[k[0]]) + '"></div>').join('') + '</div>' +
+      '<div class="tiny mute" id="b_spl" style="margin-top:4px"></div>' : '') +
+    (B.pay.mode === 'Cash' ? '<div class="row" style="margin-top:8px"><div class="grow"><label class="f">Cash received ₹ (optional)</label><input class="i num" id="b_got" inputmode="decimal" value="' + esc(B.pay.got) + '"></div><div class="grow"><label class="f">Give back</label><div class="qty" id="b_chg">–</div></div></div>' : '') +
+    '<div class="row" style="margin-top:8px">' + (noDisc() ? '' : '<div class="grow"><label class="f">Bill discount ₹</label><input class="i num" id="b_bd" inputmode="decimal" value="' + (B.billDisc || '') + '"></div>') +
+    '<div class="grow"><label class="f">Billed by</label><div class="i" style="background:#f4f2ec">' + esc(S.user ? S.user.name : '') + '</div></div></div>' +
+    (noDisc() ? '<div class="tiny mute" style="margin-top:6px">Discounts: only managers can give them.</div>' : '<div class="tiny mute" style="margin-top:6px" id="b_dh"></div>') +
+    '</div>' +
+    '<div class="card btot" id="b_tot">' + totHtml(t) + '</div>' +
+    '<button class="btn gold block" id="b_save" style="min-height:52px;font-size:17px"' + (B.lines.length ? '' : ' disabled') + '>Save bill · ₹' + money(t.total) + '</button>' +
+    (B.lines.length ? '<button class="btn ghost block" id="b_clr" style="margin-top:8px">Clear</button>' : '') +
+    '</div></div>' +
+    '<div class="card" style="margin-top:16px" id="b_today"><div class="empty small"><span class="spin dk"></span></div></div>';
+  bindBill();
+  if (B.today) drawToday();
+  if (prev && $('#' + prev)) { const el = $('#' + prev); el.focus(); if (el.setSelectionRange && el.type !== 'number' && el.type !== 'email') try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) { } }
+  else if (window.innerWidth > 900) $('#bq').focus();
+}
+function discInfo(t) {
+  const pct = t.gross ? Math.round(t.disc / t.gross * 10000) / 100 : 0, L = discLimits();
+  if (!(t.disc > 0)) return { pct: 0, need: '' };
+  if (isOwner()) return { pct: pct, need: '' };
+  if (pct > L.max + 0.01) return { pct: pct, need: 'max' };
+  if (pct > L.self + 0.01 && !can('approve')) return { pct: pct, need: 'approval' };
+  return { pct: pct, need: '' };
+}
+function totHtml(t) {
+  const inter = interState();
+  return '<div><span>Items total (incl. GST)</span><span>₹' + money(t.gross) + '</span></div>' +
+    (t.disc ? '<div><span>Discount (' + (t.gross ? Math.round(t.disc / t.gross * 1000) / 10 : 0) + '%)</span><span>− ₹' + money(t.disc) + '</span></div>' : '') +
+    '<div class="mute"><span>Taxable value</span><span>₹' + money(t.taxable) + '</span></div>' +
+    (inter ? '<div class="mute"><span>IGST</span><span>₹' + money(t.igst) + '</span></div>' : '<div class="mute"><span>CGST + SGST</span><span>₹' + money(t.cgst) + ' + ₹' + money(t.sgst) + '</span></div>') +
+    (t.roundOff ? '<div class="mute"><span>Round off</span><span>' + (t.roundOff > 0 ? '+' : '−') + ' ₹' + money(Math.abs(t.roundOff)) + '</span></div>' : '') +
+    '<div class="g"><span>To pay</span><span>₹' + money(t.total) + '</span></div>';
+}
+function lineCard(l, i, c) {
+  const p = l.sku ? S.bySku[l.sku] : null;
+  const have = l.sku && B.loc !== 'Event' && !/^NV-HMP-/.test(l.sku) ? ((stockOf(l.sku).q || {})[B.loc] || 0) : null;
+  let h = '<div class="bl" data-i="' + i + '"><div class="t"><b>' + (l.sku ? esc(l.name) : '<input class="i" data-f="name" placeholder="Item name" value="' + esc(l.name) + '">') + '</b><button class="btn sm ghost" data-del="' + i + '" aria-label="Remove">×</button></div>';
+  if (!l.sku) h += '<div class="grid3" style="margin-top:6px"><div><label class="f">Rate ₹ incl. GST</label><input class="i num" data-f="rate" inputmode="decimal" value="' + (l.rate || '') + '"></div>' +
+    '<div><label class="f">HSN</label><input class="i" data-f="hsn" inputmode="numeric" value="' + esc(l.hsn || '') + '"></div><div><label class="f">GST %</label><input class="i num" data-f="gst" inputmode="decimal" value="' + (l.gst || '') + '"></div></div>';
+  h += '<div class="q"><input class="i" data-f="inQty" inputmode="decimal" value="' + esc(l.inQty) + '">' +
+    (l.unit === 'kg' ? '<select class="i" data-f="inUnit"><option value="g"' + (l.inUnit === 'g' ? ' selected' : '') + '>g</option><option value="kg"' + (l.inUnit === 'kg' ? ' selected' : '') + '>kg</option></select>' :
+      (l.sku ? '<span class="mute">pcs</span>' : '<select class="i" data-f="unit"><option value="pcs">pcs</option><option value="kg"' + (l.unit === 'kg' ? ' selected' : '') + '>kg</option></select>')) +
+    '<span class="mute small">× ₹' + money(l.rate) + (l.unit === 'kg' ? '/kg' : '') + '</span>' +
+    (noDisc() ? '' : '<input class="i dsc" data-f="discPct" inputmode="decimal" placeholder="Disc %" value="' + (l.discPct || '') + '">') +
+    '<span class="amt">₹' + money(c ? c.amount : 0) + '</span></div>';
+  if (l.unit === 'kg') h += '<div class="qk">' + (IN_APP ? '<button data-w="' + i + '" class="sw">⚖ Scale</button>' : '') + [100, 200, 250, 500, 1000].map(g => '<button data-g="' + g + '">' + (g >= 1000 ? g / 1000 + ' kg' : g + ' g') + '</button>').join('') + '</div>';
+  h += '<div class="tiny mute" style="margin-top:4px">' + (l.sku ? esc(l.sku) + ' · ' : '') + 'HSN ' + esc(l.hsn || '–') + ' · GST ' + (l.gst || dfltGst()) + '%' +
+    (have != null ? ' · <span class="' + (have - lineQty(l) < 0 ? 'neg' : '') + '">stock here ' + qfmt(have) + ' ' + esc(l.unit) + '</span>' : '') + (p && p.mrp ? ' · MRP ₹' + money(p.mrp) : '') + '</div></div>';
+  return h;
+}
+function refreshTotals() {
+  const c = calcNow();
+  $$('#blines .bl').forEach(el => { const i = +el.dataset.i, a = $('.amt', el); if (a && c.lines[i]) a.textContent = '₹' + money(c.lines[i].amount); });
+  $('#b_tot').innerHTML = totHtml(c.totals);
+  const di = discInfo(c.totals), L = discLimits(), dh = $('#b_dh');
+  if (dh) dh.innerHTML = di.need === 'max' ? '<span class="neg">' + di.pct + '% – the maximum discount is ' + L.max + '%.</span>' : di.need === 'approval' ? '<span class="neg">' + di.pct + '% – above ' + L.self + '% needs the owner\'s approval (asked when you save).</span>'
+    : (isOwner() || can('approve') ? 'Discount: no limit for you' + (isOwner() ? '' : ' up to ' + L.max + '%') + '.' : 'Discount: up to ' + L.self + '% yourself, up to ' + L.max + '% with the owner\'s approval.');
+  const sv = $('#b_save'); if (sv) { sv.textContent = (di.need === 'approval' && !B.approval ? 'Ask owner · ' : 'Save bill · ') + '₹' + money(c.totals.total); sv.disabled = !B.lines.length; }
+  const chg = $('#b_chg'); if (chg) { const g = num(B.pay.got); chg.textContent = g ? (g - c.totals.total >= 0 ? '₹' + money(g - c.totals.total) : 'short ₹' + money(c.totals.total - g)) : '–'; }
+  const sp = $('#b_spl'); if (sp) { const s = num(B.pay.cash) + num(B.pay.upi) + num(B.pay.card); const left = Math.round((c.totals.total - s) * 100) / 100; sp.innerHTML = left ? '<span class="neg">₹' + money(left) + ' still to split</span>' : 'Adds up ✓'; }
+  return c;
+}
+function bindBill() {
+  $('#b_loc').onclick = () => { B.loc = ''; store.set('bloc', null); B.today = null; pickBillLoc(); };
+  if ($('#b_setup')) $('#b_setup').onclick = billSetupSheet;
+  if ($('#b_addev')) $('#b_addev').onclick = addEventSheet;
+  if ($('#b_ev')) $('#b_ev').onchange = e => { B.event = e.target.value; store.set('bevent', B.event || null); drawBill(); };
+  const q = $('#bq');
+  q.oninput = () => { B.search = q.value; drawRes(); };
+  q.onkeydown = e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const v = q.value.trim(); if (!v) return;
+    const hit = S.products.find(p => p.gtin === v || p.sku === v.toUpperCase()) || resList(v)[0];
+    if (hit) addItem(hit.sku);
+  };
+  q.onblur = () => setTimeout(() => { if ($('#bres')) $('#bres').innerHTML = ''; }, 200);
+  q.onfocus = drawRes;
+  ['b_oth', 'b_oth0'].forEach(id => { if ($('#' + id)) $('#' + id).onclick = e => { e.preventDefault(); B.lines.push({ sku: '', name: '', hsn: '', unit: 'pcs', inQty: '1', inUnit: 'pcs', rate: 0, gst: dfltGst(), discPct: '' }); drawBill(); }; });
+  $$('#blines .bl').forEach(el => {
+    const l = B.lines[+el.dataset.i];
+    $$('[data-f]', el).forEach(inp => {
+      const f = inp.dataset.f;
+      const upd = () => {
+        if (f === 'unit') { l.unit = inp.value; l.inUnit = inp.value === 'kg' ? 'kg' : 'pcs'; return drawBill(); }
+        l[f] = (f === 'rate' || f === 'gst') ? num(inp.value) : inp.value;
+        if (f === 'inUnit') { const q0 = num(l.inQty); if (q0) l.inQty = String(inp.value === 'g' ? r3(q0 * 1000) : r3(q0 / 1000)); return drawBill(); }
+        refreshTotals();
+      };
+      inp.oninput = upd; if (inp.tagName === 'SELECT') inp.onchange = upd;
+    });
+    $$('[data-g]', el).forEach(b => b.onclick = () => { l.inUnit = 'g'; l.inQty = b.dataset.g; if (+b.dataset.g >= 1000) { l.inUnit = 'kg'; l.inQty = String(+b.dataset.g / 1000); } drawBill(); });
+  });
+  $$('[data-del]').forEach(b => b.onclick = () => { B.lines.splice(+b.dataset.del, 1); drawBill(); });
+  $('#b_ph').oninput = e => { B.cust.phone = e.target.value.replace(/[^\d+ ]/g, ''); };
+  $('#b_nm').oninput = e => { B.cust.name = e.target.value; };
+  $('#b_nd').onchange = e => { B.noDetails = e.target.checked; if (B.noDetails) B.cust.phone = ''; drawBill(); };
+  $('#b_biz').onchange = e => { B.biz = e.target.checked; drawBill(); };
+  if ($('#b_gst')) $('#b_gst').oninput = e => { const was = interState(); B.cust.gstin = e.target.value.toUpperCase(); if (was !== interState()) drawBill(); else refreshTotals(); };
+  if ($('#b_ad')) $('#b_ad').oninput = e => { B.cust.address = e.target.value; };
+  $$('#b_pm button').forEach(b => b.onclick = () => { B.pay.mode = b.dataset.m; drawBill(); });
+  $$('[data-sp]').forEach(i => i.oninput = () => { B.pay[i.dataset.sp] = i.value; refreshTotals(); });
+  if ($('#b_got')) $('#b_got').oninput = e => { B.pay.got = e.target.value; refreshTotals(); };
+  if ($('#b_bd')) $('#b_bd').oninput = e => { B.billDisc = num(e.target.value); refreshTotals(); };
+  $('#b_cam').onclick = scanBill;
+  $('#b_scale').onclick = scaleSheet;
+  $$('[data-w]').forEach(b => b.onclick = () => useScale(+b.dataset.w));
+  $('#b_save').onclick = saveBill;
+  if ($('#b_clr')) $('#b_clr').onclick = e => { if (!confirmTwice(e.target)) return; resetBill(); drawBill(); };
+  refreshTotals();
+  scaleShow();
+}
+function resList(q) {
+  return S.products.filter(p => p.status !== 'Discontinued' && p.sell && matchQ(p, q))
+    .sort((a, b) => (b.name.toUpperCase().indexOf(q.toUpperCase()) >= 0) - (a.name.toUpperCase().indexOf(q.toUpperCase()) >= 0) || a.name.localeCompare(b.name)).slice(0, 40);
+}
+function drawRes() {
+  const box = $('#bres'), q = (B.search || '').trim(); if (!box) return;
+  if (!q) { box.innerHTML = ''; return; }
+  const list = resList(q);
+  box.innerHTML = '<div class="bres">' + (list.length ? list.map(p => '<div class="li" data-sku="' + esc(p.sku) + '"><div class="grow"><b>' + esc(p.name) + '</b><div class="tiny mute">' + esc(p.sku) +
+    (B.loc !== 'Event' ? ' · here ' + qfmt(((stockOf(p.sku).q || {})[B.loc]) || 0) + ' ' + unitOf(p) : '') + '</div></div><div class="nowrap"><b>₹' + money(p.sell) + '</b><span class="tiny mute">/' + unitOf(p) + '</span></div></div>').join('')
+    : '<div class="empty small">No product matches “' + esc(q) + '”.</div>') + '</div>';
+  $$('.li', box).forEach(li => li.onmousedown = e => { e.preventDefault(); addItem(li.dataset.sku); });
+}
+function addItem(sku, scanning) {
+  const p = S.bySku[sku]; if (!p) return;
+  const ex = B.lines.find(l => l.sku === sku), kg = unitOf(p) === 'kg' ? scaleKg() : 0;
+  if (ex && unitOf(p) !== 'kg') ex.inQty = String(num(ex.inQty) + 1);
+  else if (ex && kg) { ex.inUnit = kg >= 1 ? 'kg' : 'g'; ex.inQty = String(kg >= 1 ? Math.round(kg * 1000) / 1000 : Math.round(kg * 1000)); }
+  else if (!ex) B.lines.push({ sku: sku, name: p.name, hsn: p.hsn, unit: unitOf(p) === 'kg' ? 'kg' : 'pcs',
+    inQty: unitOf(p) === 'kg' ? (kg ? String(kg >= 1 ? Math.round(kg * 1000) / 1000 : Math.round(kg * 1000)) : '250') : '1', inUnit: unitOf(p) === 'kg' ? (kg >= 1 ? 'kg' : 'g') : 'pcs',
+    rate: p.sell, gst: p.gst || dfltGst(), discPct: '' });
+  B.search = '';
+  drawBill();
+  if (scanning) return;
+  const idx = B.lines.findIndex(l => l.sku === sku);
+  const el = $('#blines .bl[data-i="' + idx + '"] [data-f="inQty"]');
+  if (el && unitOf(p) === 'kg') { el.focus(); el.select(); } else $('#bq').focus();
+}
+function resetBill() {
+  B.lines = []; B.cust = { name: '', phone: '', gstin: '', address: '' }; B.noDetails = false; B.biz = false; B.billDisc = 0;
+  B.pay = { mode: 'Cash', cash: '', upi: '', card: '', other: '', got: '' }; B.cid = newCid(); B.search = ''; B.approval = null;
+}
+
+async function saveBill() {
+  const c = calcNow();
+  const ph = (B.cust.phone || '').replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '');
+  if (!B.lines.length) return toast('Add an item first', true);
+  if (B.lines.some(l => !(lineQty(l) > 0))) return toast('Enter the quantity for every item', true);
+  if (!B.noDetails && !/^[6-9]\d{9}$/.test(ph)) return toast('Enter the customer\'s 10-digit mobile, or tick “does not want to share”', true);
+  if (B.loc === 'Event' && !B.event) return toast('Pick the event first', true);
+  if (noDisc() && (B.billDisc || B.lines.some(l => num(l.discPct)))) return toast('Only managers can give discounts', true);
+  const di = discInfo(c.totals);
+  if (di.need === 'max') return toast('The maximum discount is ' + discLimits().max + '%', true);
+  if (di.need === 'approval') {
+    const a = B.approval;
+    if (!a || (a.id && (di.pct > a.pct + 0.05 || c.totals.gross > a.gross + 1))) return askApproval(c.totals, di.pct);
+  }
+  const req = { clientId: B.cid, loc: B.loc, event: B.event, noDetails: B.noDetails, billDisc: B.billDisc,
+    approvalId: B.approval && B.approval.id || '', approvalCode: B.approval && B.approval.code || '',
+    customer: { name: B.cust.name, phone: B.noDetails ? '' : ph, gstin: B.biz ? B.cust.gstin : '', address: B.biz ? B.cust.address : '' },
+    lines: B.lines.map(l => ({ sku: l.sku, name: l.name, hsn: l.hsn, unit: l.unit, qty: r3(lineQty(l)), rate: l.rate, gst: l.gst, discPct: num(l.discPct) })),
+    pay: { mode: B.pay.mode, cash: num(B.pay.cash), upi: num(B.pay.upi), card: num(B.pay.card), other: 0 } };
+  let r;
+  try { r = await run('Saving bill…', () => call('createBill', req)); } catch (e) { if (/Open in the Bill Events/.test(e.message)) refreshLists(true); if (/approv|code/i.test(e.message)) B.approval = null; refreshTotals(); return; }
+  const bill = r.bill;
+  if (Math.abs(bill.totals.total - c.totals.total) > 0.01) toast('Note: saved total ₹' + money(bill.totals.total) + ' (prices were updated)');
+  resetBill(); drawBill();
+  B.today = null; loadToday();
+  if (bill.lines.some(l => l.sku)) refresh(true).catch(() => { });
+  billDone(bill, true);
+}
+
+/* ───── after save / bill actions ───── */
+function waLink(b) {
+  const st = (B.boot && B.boot.setup) || {};
+  const tpl = st['WhatsApp message'] || 'Your bill {no} for ₹{total}: {link}';
+  const msg = tpl.replace(/\{brand\}/g, b.seller.brand || 'Nutvique').replace(/\{store\}/g, b.loc === 'Event' ? (b.event || 'our stall') : b.loc)
+    .replace(/\{no\}/g, b.no).replace(/\{date\}/g, b.date.split('-').reverse().join('-')).replace(/\{total\}/g, money(b.totals.total))
+    .replace(/\{link\}/g, b.url).replace(/\{name\}/g, b.customer.name || '');
+  return 'https://wa.me/91' + b.customer.phone + '?text=' + encodeURIComponent(msg);
+}
+function billDone(b, fresh) {
+  const live = b.status !== 'Cancelled';
+  const m = modal(fresh ? 'Bill saved' : 'Bill ' + b.no,
+    '<div class="bdone">' + (fresh ? '<div class="okbox">✓ Saved' + (b.loc !== 'Event' && b.lines.some(l => l.sku) ? ' · stock taken out of ' + esc(LOC_SHORT[b.loc] || b.loc) : '') + '</div>' : '') +
+    (b.status === 'Cancelled' ? '<div class="warnbox bad">Cancelled' + (b.cancelReason ? ': ' + esc(b.cancelReason) : '') + '</div>' : '') +
+    '<div class="no">' + esc(b.no) + '</div><div class="mute">' + esc(b.date.split('-').reverse().join('-')) + ' ' + esc(b.time) + ' · ' + b.lines.length + ' item' + (b.lines.length === 1 ? '' : 's') + '</div>' +
+    '<div style="font-size:28px;font-weight:800;margin:8px 0">₹' + money(b.totals.total) + '</div>' +
+    '<div class="mute small">' + esc(b.customer.name || '') + (b.customer.phone ? ' · +91 ' + esc(b.customer.phone) : (b.customer.name ? '' : 'No customer details')) + ' · ' + esc(b.pay.mode) + '</div>' +
+    (b.sent ? '<div class="tiny mute">WhatsApp opened: ' + esc(b.sent) + '</div>' : '') +
+    '<div class="bact">' +
+    (b.customer.phone && live ? '<a class="btn wa block" id="bd_wa" target="_blank" rel="noopener" href="' + esc(waLink(b)) + '">Send bill on WhatsApp</a>' : '') +
+    '<button class="btn block" id="bd_pr">Print bill</button>' +
+    '<a class="btn ghost block" target="_blank" rel="noopener" href="' + esc(b.url) + '">Open full bill (PDF)</a>' +
+    (!fresh && can('cancelBill') && live ? '<button class="btn ghost block" id="bd_cx" style="color:var(--bad)">Cancel this bill…</button>' : '') +
+    (fresh ? '<button class="btn gold block" id="bd_new">New bill</button>' : '') + '</div></div>');
+  if ($('#bd_wa', m)) $('#bd_wa', m).onclick = () => { call('markBillSent', { no: b.no }).then(() => { B.today = null; loadToday(); }).catch(() => { }); };
+  $('#bd_pr', m).onclick = () => printBill(b);
+  if ($('#bd_new', m)) $('#bd_new', m).onclick = () => { m.close(); $('#bq') && $('#bq').focus(); };
+  if ($('#bd_cx', m)) $('#bd_cx', m).onclick = () => { m.close(); cancelSheet(b); };
+}
+function cancelSheet(b) {
+  const m = modal('Cancel ' + b.no, '<div class="warnbox">The bill number stays used and the bill is marked CANCELLED. ' + (b.loc !== 'Event' ? 'Stock goes back into ' + esc(b.loc) + '. ' : '') +
+    'If the customer already paid, refund them separately.</div><label class="f">Reason</label><input class="i" id="cx_r" placeholder="e.g. wrong item billed, customer returned"><button class="btn red block" id="cx_go" style="margin-top:10px">Cancel bill</button>');
+  $('#cx_go', m).onclick = async e => {
+    if (!confirmTwice(e.target)) return;
+    const r = await run('Cancelling…', () => call('cancelBill', { no: b.no, reason: $('#cx_r', m).value })).catch(() => null);
+    if (!r) return;
+    m.close(); toast('Bill cancelled'); B.today = null; loadToday(); refresh(true).catch(() => { });
+  };
+}
+async function openBill(no) {
+  const r = await run('Opening…', () => call('getBill', { no: no })).catch(() => null);
+  if (r) billDone(r.bill, false);
+}
+
+/* ───── today's bills ───── */
+async function loadToday() {
+  const loc = B.loc;
+  try { const r = await call('listBills', { date: today(), loc: loc }); if (loc !== B.loc) return; B.today = r; B.todayDate = today(); drawToday(); }
+  catch (e) { if ($('#b_today')) $('#b_today').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; }
+}
+function drawToday() {
+  const box = $('#b_today'); if (!box || !B.today) return;
+  const r = B.today, s = r.sum;
+  box.innerHTML = '<div class="row"><h3 class="grow" style="margin:0">' + (r.q ? 'Search: ' + esc(r.q) : 'Today\'s bills · ' + esc(LOC_SHORT[B.loc] || locLabel(B.loc))) + '</h3>' +
+    '<input class="i" id="b_find" style="max-width:220px" placeholder="Find bill no. / mobile" value="' + esc(r.q || '') + '"></div>' +
+    (s ? '<div class="bigp"><div><span>' + s.bills + ' bill' + (s.bills === 1 ? '' : 's') + '</span><b>₹' + money(s.total) + '</b></div><div><span>Cash</span><b>₹' + money(s.cash) + '</b></div><div><span>UPI</span><b>₹' + money(s.upi) + '</b></div><div><span>Card</span><b>₹' + money(s.card) + '</b></div></div>' +
+      (s.cancelled ? '<div class="tiny mute">' + s.cancelled + ' cancelled (not counted)</div>' : '') : '') +
+    '<div class="blist">' + (r.list.length ? r.list.map(x => '<div class="li" data-no="' + esc(x.no) + '"><div class="grow"><b class="' + (x.status === 'Cancelled' ? 'cx' : '') + '">' + esc(x.no) + '</b> <span class="tiny mute">' + (r.q ? esc(x.date) + ' ' : '') + esc(x.time) + '</span>' +
+      '<div class="tiny mute">' + (x.name ? esc(x.name) + ' · ' : '') + (x.phone ? esc(x.phone) + ' · ' : '') + x.items + ' item' + (x.items === 1 ? '' : 's') + ' · ' + esc(x.pay) + ' · ' + esc(x.by) + (x.sent ? ' · WhatsApp ✓' : '') + '</div></div>' +
+      '<div class="nowrap"><b class="' + (x.status === 'Cancelled' ? 'cx' : '') + '">₹' + money(x.total) + '</b></div></div>').join('') : '<div class="empty small">No bills yet.</div>') + '</div>';
+  $$('.li', box).forEach(li => li.onclick = () => openBill(li.dataset.no));
+  const f = $('#b_find');
+  f.onkeydown = async e => {
+    if (e.key !== 'Enter') return;
+    const v = f.value.trim();
+    const res = await run('Searching…', () => call('listBills', v ? { q: v, loc: 'All' } : { date: today(), loc: B.loc })).catch(() => null);
+    if (res) { B.today = res; drawToday(); }
+  };
+}
+
+/* ───── discount above 10%: ask the owner (in the app) or use a one-time code ───── */
+function askApproval(t, pct) {
+  let timer = null, closed = false;
+  const items = B.lines.map(l => (l.name || 'Item') + ' ' + (l.unit === 'kg' ? (l.inUnit === 'g' ? l.inQty + ' g' : l.inQty + ' kg') : l.inQty + ' pcs')).join(', ').slice(0, 380);
+  const m = modal('Owner approval needed', '<div class="bigp"><div><span>Discount</span><b>' + pct + '%</b><span>₹' + money(t.disc) + ' off ₹' + money(t.gross) + '</span></div></div>' +
+    '<div id="ap_st"><button class="btn gold block" id="ap_ask">Ask the owner now</button><div class="tiny mute" style="margin-top:6px">The owner sees it on their phone within seconds. This screen unlocks by itself when they approve.</div></div>' +
+    '<h3 style="margin-top:16px">Or: one-time code from the owner</h3><div class="row"><input class="i grow" id="ap_code" inputmode="numeric" maxlength="7" placeholder="6-digit code"><button class="btn" id="ap_use">Use code</button></div>' +
+    '<div class="tiny mute" style="margin-top:6px">Each code works once, for up to ' + discLimits().max + '% on this bill.</div>', { onClose: () => { closed = true; clearTimeout(timer); } });
+  $('#ap_use', m).onclick = () => {
+    const c = $('#ap_code', m).value.replace(/\D/g, '');
+    if (c.length !== 6) return toast('The code has 6 digits', true);
+    B.approval = { code: c, pct: discLimits().max, gross: Infinity }; m.close(); saveBill();
+  };
+  $('#ap_ask', m).onclick = async () => {
+    const r = await run('Sending to the owner…', () => call('requestApproval', { loc: B.loc, event: B.event, gross: t.gross, disc: t.disc, items: items })).catch(() => null);
+    if (!r) return;
+    $('#ap_st', m).innerHTML = '<div class="empty small"><span class="spin dk"></span><div>Waiting for the owner… (request ' + esc(r.id) + ')</div><div class="tiny mute">Keep this screen open. You can also call the owner for a code.</div></div>';
+    const poll = async () => {
+      if (closed) return;
+      let x; try { x = await call('approvalStatus', { id: r.id }); } catch (e) { }
+      if (closed) return;
+      if (x && x.status === 'Approved') { B.approval = { id: r.id, pct: r.pct, gross: t.gross }; m.close(); toast('Approved by ' + x.by + ' ✓'); saveBill(); return; }
+      if (x && x.status === 'Rejected') { $('#ap_st', m).innerHTML = '<div class="warnbox bad">The owner rejected ' + r.pct + '%. Lower the discount and save again.</div>'; return; }
+      timer = setTimeout(poll, 4000);
+    };
+    timer = setTimeout(poll, 3000);
+  };
+}
+
+/* ───── camera barcode scanner (installed app only – Google's page blocks the camera) ───── */
+function notInApp(what) {
+  modal(what, '<div class="small">' + esc(what) + ' works in the <b>installed Nutvique app</b> (Google\'s page blocks the camera and Bluetooth).</div>' +
+    '<div class="small" style="margin-top:8px">Open <b>vermakshat.com/nutvique</b> on this phone → Install / Add to Home Screen, then use the Nutvique icon.</div>');
+}
+let zxingLoad = null;
+function loadZxing() {
+  if (window.ZXing) return Promise.resolve();
+  return zxingLoad = zxingLoad || new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'zxing.min.js'; s.onload = res; s.onerror = () => { zxingLoad = null; rej(new Error('Could not load the scanner – check internet.')); }; document.head.appendChild(s); });
+}
+function beep() { try { const a = new (window.AudioContext || window.webkitAudioContext)(), o = a.createOscillator(), g = a.createGain(); o.frequency.value = 1500; g.gain.value = 0.08; o.connect(g); g.connect(a.destination); o.start(); setTimeout(() => { o.stop(); a.close(); }, 90); } catch (e) { } }
+/** Opens the camera; onCode(text) is called for each barcode read. opts.once closes after the first. */
+function scanSheet(title, onCode, opts) {
+  opts = opts || {};
+  if (!IN_APP) return notInApp('Scanning with the camera');
+  let stream = null, stop = false, reader = null, last = '', lastAt = 0;
+  const m = modal(title, '<div class="scanbox"><video id="sc_v" playsinline muted autoplay></video><div class="scanline"></div></div>' +
+    '<div id="sc_msg" class="small" style="margin-top:8px;min-height:20px">Point the camera at the barcode.</div><div id="sc_log" class="tiny"></div>' +
+    '<button class="btn block" id="sc_done" style="margin-top:10px">Done</button>', { onClose: () => { stop = true; try { reader && reader.reset(); } catch (e) { } if (stream) stream.getTracks().forEach(t => t.stop()); } });
+  const v = $('#sc_v', m), msg = $('#sc_msg', m);
+  $('#sc_done', m).onclick = () => m.close();
+  const hit = txt => {
+    txt = String(txt || '').trim(); if (!txt) return;
+    const now = Date.now(); if (txt === last && now - lastAt < 2500) return; last = txt; lastAt = now;
+    beep(); if (navigator.vibrate) try { navigator.vibrate(60); } catch (e) { }
+    const res = onCode(txt);
+    if (res) $('#sc_log', m).insertAdjacentHTML('afterbegin', '<div class="' + (res.ok ? '' : 'neg') + '">' + (res.ok ? '✓ ' : '✗ ') + esc(res.text) + '</div>');
+    if (opts.once && res && res.ok) m.close();
+  };
+  (async () => {
+    try {
+      let native = false;
+      if ('BarcodeDetector' in window) { try { const f = await BarcodeDetector.getSupportedFormats(); native = f.indexOf('ean_13') >= 0; } catch (e) { } }
+      if (native) {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+        if (stop) return stream.getTracks().forEach(t => t.stop());
+        v.srcObject = stream; await v.play();
+        const det = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'] });
+        const loop = async () => { if (stop) return; try { if (v.readyState >= 2) { const r = await det.detect(v); if (r && r[0]) hit(r[0].rawValue); } } catch (e) { } setTimeout(loop, 150); };
+        loop();
+      } else {
+        msg.textContent = 'Starting the camera…';
+        await loadZxing(); if (stop) return;
+        const hints = new Map(); hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8, ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.CODE_128]);
+        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+        reader = new ZXing.BrowserMultiFormatReader(hints, 200);
+        await reader.decodeFromConstraints({ video: { facingMode: { ideal: 'environment' } } }, v, r => { if (r && !stop) hit(r.getText()); });
+        msg.textContent = 'Point the camera at the barcode.';
+      }
+    } catch (e) {
+      msg.innerHTML = '<span class="neg">' + esc(/Permission|NotAllowed/i.test(e && (e.name + e.message)) ? 'Camera permission is off. Allow the camera for this app in the phone\'s settings, then try again.' : (e && e.message) || 'Camera not available') + '</span>';
+    }
+  })();
+}
+function findByCode(code) {
+  const c = String(code).replace(/\s/g, '');
+  const variants = [c, c.replace(/^0+/, ''), c.length === 12 ? '0' + c : '', c.length === 13 && c[0] === '0' ? c.slice(1) : ''].filter(Boolean);
+  return S.products.find(p => p.gtin && variants.indexOf(String(p.gtin)) >= 0) || S.products.find(p => p.sku === c.toUpperCase()) || null;
+}
+function scanBill() {
+  scanSheet('Scan items', code => {
+    const p = findByCode(code);
+    if (!p) return { ok: false, text: 'Not in the product list: ' + code };
+    if (p.status === 'Discontinued' || !p.sell) return { ok: false, text: p.name + ' – no selling price / discontinued' };
+    addItem(p.sku, true);
+    const l = B.lines.find(x => x.sku === p.sku);
+    return { ok: true, text: p.name + (l ? ' · ' + (l.unit === 'kg' ? (l.inUnit === 'g' ? l.inQty + ' g' : l.inQty + ' kg') : l.inQty + ' pcs') : '') };
+  });
+}
+function scanSearch() {
+  scanSheet('Scan to check price', code => {
+    const p = findByCode(code);
+    if (!p) return { ok: false, text: 'Not in the product list: ' + code };
+    setTimeout(() => productSheet(p.sku), 300);
+    return { ok: true, text: p.name };
+  }, { once: true });
+}
+
+/* ───── Bluetooth weighing scale (iScale S-07P sends lines like "+001.250 kg", 9600 baud) ───── */
+const SC = { state: 'off', kg: 0, stable: false, name: '', dev: null, port: null, buf: '', hist: [], lastDraw: 0 };
+const SCALE_SVCS = ['0000ffe0-0000-1000-8000-00805f9b34fb', '0000fff0-0000-1000-8000-00805f9b34fb', '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455', '0000ff00-0000-1000-8000-00805f9b34fb', '0000ffe5-0000-1000-8000-00805f9b34fb', '0000fee7-0000-1000-8000-00805f9b34fb',
+  '0000ae00-0000-1000-8000-00805f9b34fb', '0000ae30-0000-1000-8000-00805f9b34fb', '000018f0-0000-1000-8000-00805f9b34fb', '0000181d-0000-1000-8000-00805f9b34fb',
+  '0000ffb0-0000-1000-8000-00805f9b34fb', '0000fe59-0000-1000-8000-00805f9b34fb'];
+const SPP = '00001101-0000-1000-8000-00805f9b34fb';
+function scaleLabel() { return SC.state === 'on' ? '⚖ ' + (SC.stable ? '' : '~') + fmtKg(SC.kg) : SC.state === 'connecting' ? '⚖ …' : '⚖ Scale'; }
+function fmtKg(kg) { return kg < 1 && kg > -1 ? Math.round(kg * 1000) + ' g' : (Math.round(kg * 1000) / 1000).toFixed(3) + ' kg'; }
+function scaleShow() {
+  const b = $('#b_scale'); if (b) { b.textContent = scaleLabel(); b.classList.toggle('on', SC.state === 'on'); b.classList.toggle('stable', SC.state === 'on' && SC.stable && SC.kg > 0.004); }
+  const w = $('#sc_live'); if (w) w.textContent = SC.state === 'on' ? fmtKg(SC.kg) + (SC.stable ? ' · steady' : ' · settling…') : '';
+}
+function scaleFeed(text) {
+  SC.buf = (SC.buf + text).slice(-200);
+  const re = /([+-])?\s*(\d{1,3}(?:\.\d{1,4})?)\s*(kg|g)\b/gi;
+  let m, lastEnd = 0, got = false;
+  while ((m = re.exec(SC.buf))) {
+    let kg = Number(m[2]) / (m[3].toLowerCase() === 'g' ? 1000 : 1); if (m[1] === '-') kg = -kg;
+    SC.hist.push({ kg: kg, t: Date.now() }); lastEnd = re.lastIndex; got = true;
+  }
+  if (!got) return;
+  SC.buf = SC.buf.slice(lastEnd);
+  SC.hist = SC.hist.filter(h => Date.now() - h.t < 2500).slice(-8);
+  const last = SC.hist[SC.hist.length - 1], recent = SC.hist.slice(-3);
+  SC.kg = last.kg;
+  SC.stable = recent.length >= 3 && Math.max.apply(null, recent.map(h => h.kg)) - Math.min.apply(null, recent.map(h => h.kg)) <= 0.002;
+  if (Date.now() - SC.lastDraw > 120) { SC.lastDraw = Date.now(); scaleShow(); }
+}
+async function scaleBle(dev) {
+  SC.state = 'connecting'; scaleShow();
+  if (!dev) dev = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: SCALE_SVCS });
+  SC.dev = dev; SC.name = dev.name || 'Scale';
+  dev.ongattserverdisconnected = () => { if (SC.dev !== dev) return; SC.state = 'connecting'; scaleShow(); setTimeout(() => { if (SC.dev === dev) scaleBle(dev).catch(() => { SC.state = 'off'; scaleShow(); toast('Scale disconnected', true); }); }, 1500); };
+  const g = await dev.gatt.connect();
+  const dec = new TextDecoder();
+  let n = 0;
+  for (const s of await g.getPrimaryServices()) {
+    let cs = []; try { cs = await s.getCharacteristics(); } catch (e) { }
+    for (const c of cs) if (c.properties.notify || c.properties.indicate) {
+      try { await c.startNotifications(); c.addEventListener('characteristicvaluechanged', e => scaleFeed(dec.decode(e.target.value))); n++; } catch (e) { }
+    }
+  }
+  if (!n) { try { g.disconnect(); } catch (e) { } throw new Error('Connected to ' + SC.name + ', but it sends no weight over Bluetooth LE. Try "Paired scale (Bluetooth serial)".'); }
+  SC.state = 'on'; store.set('scaleMode', 'ble'); scaleShow();
+}
+async function scaleSerial() {
+  SC.state = 'connecting'; scaleShow();
+  const port = await navigator.serial.requestPort({ allowedBluetoothServiceClassIds: [SPP], filters: [{ bluetoothServiceClassId: SPP }] });
+  await port.open({ baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none' });
+  SC.port = port; SC.name = 'Scale'; SC.state = 'on'; store.set('scaleMode', 'serial'); scaleShow();
+  const dec = new TextDecoder();
+  (async () => {
+    while (SC.port === port && port.readable) {
+      const rd = port.readable.getReader();
+      try { for (;;) { const { value, done } = await rd.read(); if (done) break; scaleFeed(dec.decode(value)); } } catch (e) { } finally { rd.releaseLock(); }
+      if (SC.port !== port) break;
+    }
+    if (SC.port === port) { SC.state = 'off'; SC.port = null; scaleShow(); toast('Scale disconnected', true); }
+  })();
+}
+function scaleOff() {
+  const d = SC.dev, p = SC.port; SC.dev = null; SC.port = null; SC.state = 'off';
+  try { d && d.gatt.connected && d.gatt.disconnect(); } catch (e) { } try { p && p.close(); } catch (e) { }
+  scaleShow();
+}
+function scaleSheet() {
+  if (!IN_APP) return notInApp('The Bluetooth scale');
+  const hasBle = !!navigator.bluetooth, hasSer = !!(navigator.serial);
+  const m = modal('Weighing scale', (SC.state === 'on' ? '<div class="bigp"><div><span>' + esc(SC.name) + '</span><b id="sc_live"></b></div></div><button class="btn ghost block" id="sc_off">Disconnect</button>' :
+    '<div class="small">Switch the scale on and keep it near this phone. Then pick it from the list.</div>' +
+    '<button class="btn block" id="sc_ble" style="margin-top:12px"' + (hasBle ? '' : ' disabled') + '>Connect scale (Bluetooth)</button>' +
+    '<button class="btn ghost block" id="sc_ser" style="margin-top:8px"' + (hasSer ? '' : ' disabled') + '>Scale not in the list? Paired scale (Bluetooth serial)</button>' +
+    (hasBle ? '' : '<div class="warnbox" style="margin-top:10px">This phone\'s browser has no Bluetooth for web apps (iPhones don\'t). Type the weight by hand, or use an Android phone with Chrome.</div>') +
+    '<div class="tiny mute" style="margin-top:10px">For "Paired scale": first pair the scale in the phone\'s Bluetooth settings (PIN usually 1234 or 0000).</div>') +
+    '<div class="tiny mute" style="margin-top:10px">When the scale is connected, each loose item you add takes the weight on the scale, and the ⚖ button on an item re-weighs it. You can always type the weight yourself.</div>');
+  scaleShow();
+  const go = fn => async () => { try { m.close(); await fn(); toast('Scale connected ✓ – put the goods on it'); } catch (e) { SC.state = 'off'; scaleShow(); if (e && e.name === 'NotFoundError') return; toast((e && e.message) || 'Could not connect', true); } };
+  if ($('#sc_ble', m)) $('#sc_ble', m).onclick = go(() => scaleBle());
+  if ($('#sc_ser', m)) $('#sc_ser', m).onclick = go(scaleSerial);
+  if ($('#sc_off', m)) $('#sc_off', m).onclick = () => { scaleOff(); m.close(); };
+}
+/** Weight on the scale right now, or 0 when there is no steady reading. */
+function scaleKg() { return SC.state === 'on' && SC.stable && SC.kg >= 0.005 && Date.now() - ((SC.hist[SC.hist.length - 1] || {}).t || 0) < 3000 ? SC.kg : 0; }
+function useScale(i) {
+  const l = B.lines[i]; if (!l) return;
+  if (SC.state !== 'on') return scaleSheet();
+  const kg = scaleKg(); if (!kg) return toast('Put the goods on the scale and wait until the weight is steady', true);
+  if (kg >= 1) { l.inUnit = 'kg'; l.inQty = String(Math.round(kg * 1000) / 1000); } else { l.inUnit = 'g'; l.inQty = String(Math.round(kg * 1000)); }
+  drawBill(); toast(fmtKg(kg) + ' from the scale');
+}
+/* Reconnect the scale used last time when the app opens (Chrome remembers the permission). */
+async function scaleAuto() {
+  if (!IN_APP || SC.state !== 'off') return;
+  try {
+    if (store.get('scaleMode') === 'ble' && navigator.bluetooth && navigator.bluetooth.getDevices) { const ds = await navigator.bluetooth.getDevices(); if (ds[0]) await scaleBle(ds[0]); }
+    else if (store.get('scaleMode') === 'serial' && navigator.serial) { const ps = await navigator.serial.getPorts(); if (ps[0]) { await ps[0].open({ baudRate: 9600 }); SC.port = ps[0]; SC.state = 'on'; scaleShow(); scaleReadPort(ps[0]); } }
+  } catch (e) { SC.state = 'off'; scaleShow(); }
+}
+function scaleReadPort(port) {
+  const dec = new TextDecoder();
+  (async () => { while (SC.port === port && port.readable) { const rd = port.readable.getReader(); try { for (;;) { const { value, done } = await rd.read(); if (done) break; scaleFeed(dec.decode(value)); } } catch (e) { } finally { rd.releaseLock(); } } })();
+}
+
+/* ───── sales report (owner) ───── */
+const SR = { period: 'today', from: '', to: '', loc: 'All', data: null, tab: 'store' };
+function srRange(p) {
+  const d = new Date(), f = x => ymd(x);
+  if (p === 'today') return [f(d), f(d)];
+  if (p === 'yday') { d.setDate(d.getDate() - 1); return [f(d), f(d)]; }
+  if (p === 'week') { const s = new Date(d); s.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return [f(s), f(d)]; }
+  if (p === 'month') return [f(new Date(d.getFullYear(), d.getMonth(), 1)), f(d)];
+  if (p === 'lmonth') return [f(new Date(d.getFullYear(), d.getMonth() - 1, 1)), f(new Date(d.getFullYear(), d.getMonth(), 0))];
+  if (p === 'fy') { const y = d.getMonth() < 3 ? d.getFullYear() - 1 : d.getFullYear(); return [f(new Date(y, 3, 1)), f(d)]; }
+  return [SR.from || f(d), SR.to || f(d)];
+}
+async function viewSales() {
+  if (!can('sales')) { $('#view').innerHTML = '<div class="warnbox">You do not have the right to see sales. Ask the owner.</div>'; return; }
+  const P = [['today', 'Today'], ['yday', 'Yesterday'], ['week', 'This week'], ['month', 'This month'], ['lmonth', 'Last month'], ['fy', 'This FY'], ['custom', 'Dates…']];
+  const [from, to] = srRange(SR.period);
+  SR.from = from; SR.to = to;
+  const locs = ['All'].concat((B.boot && B.boot.locs ? B.boot.locs.map(l => l.name) : ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120', 'Event']));
+  $('#view').innerHTML = '<div class="row" style="margin-bottom:8px"><h2 class="grow" style="margin:0">Sales</h2>' +
+    '<select class="i" id="sr_loc" style="width:auto">' + locs.map(l => '<option value="' + esc(l) + '"' + (l === SR.loc ? ' selected' : '') + '>' + esc(l === 'All' ? 'All stores + events' : l === 'Event' ? 'Event stalls' : (LOC_SHORT[l] || l)) + '</option>').join('') + '</select></div>' +
+    '<div class="chips" id="sr_p" style="margin-bottom:8px">' + P.map(p => '<button data-p="' + p[0] + '" class="' + (SR.period === p[0] ? 'on' : '') + '">' + p[1] + '</button>').join('') + '</div>' +
+    (SR.period === 'custom' ? '<div class="row" style="margin-bottom:8px"><div><label class="f">From</label><input class="i" type="date" id="sr_f" value="' + from + '"></div><div><label class="f">To</label><input class="i" type="date" id="sr_t" value="' + to + '"></div><button class="btn" id="sr_go" style="align-self:flex-end">Show</button></div>' : '') +
+    '<div id="sr_body"><div class="empty"><span class="spin dk"></span><div>Adding up the bills…</div></div></div>';
+  $('#sr_loc').onchange = e => { SR.loc = e.target.value; viewSales(); };
+  $$('#sr_p button').forEach(b => b.onclick = () => { SR.period = b.dataset.p; viewSales(); });
+  if ($('#sr_go')) $('#sr_go').onclick = () => { SR.from = $('#sr_f').value; SR.to = $('#sr_t').value; viewSales(); };
+  try { SR.data = await call('salesReport', { from: from, to: to, loc: SR.loc }); }
+  catch (e) { $('#sr_body').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+  if (S.view === 'sales') drawSales();
+}
+function drawSales() {
+  const r = SR.data, t = r.totals, rs = x => '₹' + money(x).replace(/\.00$/, '');
+  const fmtD = x => new Date(x + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  const span = r.from === r.to ? fmtD(r.from) + ' ' + r.from.slice(0, 4) : fmtD(r.from) + ' – ' + fmtD(r.to) + ' ' + r.to.slice(0, 4);
+  const row = (a, o) => '<tr><td>' + a + '</td><td class="n">' + o.bills + '</td><td class="n">' + rs(o.cash) + '</td><td class="n">' + rs(o.upi) + '</td><td class="n">' + rs(o.card) + '</td><td class="n"><b>' + rs(o.total) + '</b></td></tr>';
+  const head = first => '<table class="t"><tr><th>' + first + '</th><th class="n">Bills</th><th class="n">Cash</th><th class="n">UPI</th><th class="n">Card</th><th class="n">Total</th></tr>';
+  const max = Math.max.apply(null, r.byDay.map(d => d.total).concat([1]));
+  const tabs = [['store', 'By store'], ['day', 'By day'], ['item', 'By item'], ['staff', 'By staff']].concat(r.byEvent.length ? [['event', 'By event']] : []);
+  let body = '';
+  if (SR.tab === 'store') body = r.byLoc.length ? head('Store') + r.byLoc.map(x => row(esc(x.loc === 'Event' ? 'Event stalls' : x.loc), x)).join('') + '</table>' : '<div class="empty small">No bills.</div>';
+  if (SR.tab === 'day') body = '<table class="t"><tr><th>Day</th><th class="n">Bills</th><th></th><th class="n">Total</th></tr>' + r.byDay.slice().reverse().map(d => '<tr><td class="nowrap">' + new Date(d.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) + '</td><td class="n">' + d.bills + '</td><td style="width:45%"><div style="height:10px;border-radius:5px;background:var(--gold,#c9a24a);width:' + Math.round(d.total / max * 100) + '%"></div></td><td class="n"><b>' + rs(d.total) + '</b></td></tr>').join('') + '</table>';
+  if (SR.tab === 'item') body = r.items.length ? '<table class="t"><tr><th>Item</th><th class="n">Qty</th><th class="n">Bills</th><th class="n">Sales</th></tr>' + r.items.map(i => '<tr><td>' + esc(i.name) + '<div class="tiny mute">' + esc(i.sku || 'not in product list') + '</div></td><td class="n">' + qfmt(i.qty) + ' ' + esc(i.unit) + '</td><td class="n">' + i.bills + '</td><td class="n"><b>' + rs(i.amount) + '</b></td></tr>').join('') + '</table>' : '<div class="empty small">No items sold.</div>';
+  if (SR.tab === 'staff') body = r.byStaff.length ? head('Billed by') + r.byStaff.map(x => row(esc(x.by), x)).join('') + '</table>' : '<div class="empty small">No bills.</div>';
+  if (SR.tab === 'event') body = head('Event') + r.byEvent.map(x => row(esc(x.event), x)).join('') + '</table>';
+  $('#sr_body').innerHTML =
+    '<div class="tiny mute" style="margin-bottom:6px">' + esc(span) + ' · ' + esc(r.loc === 'All' ? 'all stores and events' : r.loc) + ' · bills made in this app only (not QueueBuster)</div>' +
+    '<div class="bigp"><div><span>Total sales</span><b>' + rs(t.total) + '</b></div><div><span>Bills</span><b>' + t.bills + '</b></div><div><span>Average bill</span><b>' + rs(t.avg) + '</b></div></div>' +
+    '<div class="bigp"><div><span>Cash</span><b>' + rs(t.cash) + '</b></div><div><span>UPI</span><b>' + rs(t.upi) + '</b></div><div><span>Card</span><b>' + rs(t.card) + '</b></div></div>' +
+    '<div class="card" style="padding:10px 12px"><div class="kv"><div>Discount given</div><div>' + rs(t.disc) + '</div><div>Taxable value</div><div>' + rs(t.taxable) + '</div>' +
+    '<div>CGST + SGST</div><div>' + rs(t.cgst) + ' + ' + rs(t.sgst) + '</div>' + (t.igst ? '<div>IGST</div><div>' + rs(t.igst) + '</div>' : '') +
+    '<div>Bills sent on WhatsApp</div><div>' + t.sent + ' of ' + t.bills + '</div>' + (t.cancelled ? '<div>Cancelled (not counted)</div><div>' + t.cancelled + ' · ' + rs(t.cancelledValue) + '</div>' : '') + '</div></div>' +
+    '<div class="seg" id="sr_tabs" style="margin:4px 0 10px">' + tabs.map(x => '<button data-t="' + x[0] + '" class="' + (SR.tab === x[0] ? 'on' : '') + '">' + x[1] + '</button>').join('') + '</div>' +
+    '<div class="card" style="padding:6px 10px;overflow-x:auto">' + body + '</div>' +
+    '<div class="row"><button class="btn ghost sm" id="sr_cb">Download bills (Excel)</button><button class="btn ghost sm" id="sr_ci">Download item sales (Excel)</button></div>';
+  $$('#sr_tabs button').forEach(b => b.onclick = () => { SR.tab = b.dataset.t; drawSales(); });
+  const csv = (name, rows) => {
+    const txt = '\ufeff' + rows.map(rw => rw.map(v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(',')).join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  };
+  const tag = (r.loc === 'All' ? 'ALL' : (LOC_SHORT[r.loc] || r.loc)).replace(/\W+/g, '') + '_' + r.from + (r.from === r.to ? '' : '_to_' + r.to);
+  $('#sr_cb').onclick = () => csv('SALES_BILLS_' + tag + '.csv', [r.billHead].concat(r.bills));
+  $('#sr_ci').onclick = () => csv('SALES_ITEMS_' + tag + '.csv', [['Item', 'SKU', 'Unit', 'Qty', 'Bills', 'Sales ₹']].concat(r.items.map(i => [i.name, i.sku, i.unit, i.qty, i.bills, i.amount])));
+}
+
+/* ───── bill setup (owner) ───── */
+function addEventSheet() {
+  const m = modal('Add event', '<label class="f">Event name (printed on the bill)</label><input class="i" id="ae_nm" placeholder="Type the event name" autocomplete="off">' +
+    '<label class="f" style="margin-top:8px">Venue / address (printed on the bill)</label><input class="i" id="ae_vn" placeholder="Venue, city">' +
+    '<div class="grid2" style="margin-top:8px"><div><label class="f">From</label><input class="i" type="date" id="ae_fr" value="' + today() + '"></div><div><label class="f">To</label><input class="i" type="date" id="ae_to" value="' + today() + '"></div></div>' +
+    '<button class="btn gold block" id="ae_go" style="margin-top:14px">Add event</button><div class="tiny mute" style="margin-top:6px">Shows on every employee\'s Bill screen at once. Close it later in Bill setup → Events.</div>', { onClose: () => viewBill() });
+  setTimeout(() => { const f = $('#ae_nm', m); f && f.focus(); }, 50);
+  $('#ae_go', m).onclick = async () => {
+    const d = { name: $('#ae_nm', m).value.trim(), venue: $('#ae_vn', m).value.trim(), from: $('#ae_fr', m).value, to: $('#ae_to', m).value };
+    if (!d.name) { toast('Type the event name', true); $('#ae_nm', m).focus(); return; }
+    const r = await run('Adding…', () => call('addBillEvent', d)).catch(() => null);
+    if (!r) return;
+    Object.assign(B.boot, r); B.event = r.added; store.set('bevent', B.event);
+    if (B.loc !== 'Event') { B.loc = 'Event'; store.set('bloc', B.loc); B.today = null; }
+    toast('Event added – staff see it now'); m.close();
+  };
+}
+async function billSetupSheet() {
+  let L = B.boot.allEvents && B.boot.allStaff ? B.boot : null;      // opens at once from what the app already has
+  if (!L) { L = await run('Loading…', () => call('billLists')).catch(() => null); if (!L) return; Object.assign(B.boot, L); }
+  let evs = (L.allEvents || []).map(e => Object.assign({}, e)), stf = (L.allStaff || []).map(p => Object.assign({}, p));
+  const st = B.boot.setup;
+  const tabs = [can('events') && ['ev', 'Events'], can('billSetup') && ['de', 'Bill details']].filter(Boolean);
+  const m = modal('Bill setup', '<div class="seg" id="bs_tabs">' + tabs.map((t, i) => '<button data-t="' + t[0] + '" class="' + (i ? '' : 'on') + '">' + t[1] + '</button>').join('') + '</div><div id="bs_body" style="margin-top:12px"></div>' +
+    '<div class="tiny mute" style="margin-top:10px">Employee names, PINs and rights: More → People.</div>', { wide: true, onClose: () => { listsOk(); drawBill(); } });
+  const body = $('#bs_body', m);
+  const evRow = (e, i) => '<div class="bl" data-i="' + i + '"><div class="grid2"><div><label class="f">Event name</label><input class="i" data-e="name" value="' + esc(e.name) + '" placeholder="Type the event name"></div>' +
+    '<div><label class="f">Venue / address (printed on the bill)</label><input class="i" data-e="venue" value="' + esc(e.venue) + '"></div></div>' +
+    '<div class="row" style="margin-top:6px"><div><label class="f">From</label><input class="i" type="date" data-e="from" value="' + esc(e.from) + '"></div><div><label class="f">To</label><input class="i" type="date" data-e="to" value="' + esc(e.to) + '"></div>' +
+    '<div><label class="f">Status</label><select class="i" data-e="status"><option' + (e.status !== 'Closed' ? ' selected' : '') + '>Open</option><option' + (e.status === 'Closed' ? ' selected' : '') + '>Closed</option></select></div>' +
+    '<button class="btn sm ghost" data-del="' + i + '" style="margin-left:auto;align-self:flex-end">Remove</button></div></div>';
+  const stRow = (p, i) => '<div class="li" data-i="' + i + '" style="cursor:default"><input class="i grow" data-s="name" value="' + esc(p.name) + '" placeholder="Employee name"><select class="i" data-s="active" style="width:auto"><option value="Yes"' + (p.active !== 'No' ? ' selected' : '') + '>Active</option><option value="No"' + (p.active === 'No' ? ' selected' : '') + '>Left / inactive</option></select><button class="btn sm ghost" data-del="' + i + '">×</button></div>';
+  const draw = t => {
+    $$('#bs_tabs button', m).forEach(b => b.classList.toggle('on', b.dataset.t === t));
+    if (t === 'ev') {
+      body.innerHTML = '<div class="mute small">Open events appear for every employee in the Bill screen (Event stall). Close an event when it is over. Also editable in the “Bill Events” tab of the sheet.</div>' +
+        evs.map(evRow).join('') + '<div class="row" style="margin-top:10px"><button class="btn sm ghost" id="bs_add">+ Add event</button><div class="grow"></div><button class="btn" id="bs_save">Save events</button></div>';
+      $$('[data-e]', body).forEach(inp => { inp.oninput = inp.onchange = () => { evs[+inp.closest('[data-i]').dataset.i][inp.dataset.e] = inp.value; }; });
+      $$('[data-del]', body).forEach(b => b.onclick = () => { evs.splice(+b.dataset.del, 1); draw('ev'); });
+      $('#bs_add', body).onclick = () => { evs.push({ name: '', venue: '', from: today(), to: today(), status: 'Open' }); draw('ev'); };
+      $('#bs_save', body).onclick = async () => {
+        if (evs.some(e => !e.name.trim())) return toast('Every event needs a name (or remove the empty row)', true);
+        const r = await run('Saving…', () => call('saveBillLists', { events: evs })).catch(() => null);
+        if (r) { Object.assign(B.boot, r); B.boot.allEvents = evs.map(e => Object.assign({}, e)); toast('Events saved – staff see them now'); m.close(); }
+      };
+    } else if (t === 'st') {
+      body.innerHTML = '<div class="mute small">Active names appear in “Billed by”. Staff can only bill under a name from this list. Also editable in the “Bill Staff” tab of the sheet.</div>' +
+        '<div class="card" style="margin-top:8px;padding:4px 10px">' + stf.map(stRow).join('') + '</div><div class="row" style="margin-top:10px"><button class="btn sm ghost" id="bs_add">+ Add name</button><div class="grow"></div><button class="btn" id="bs_save">Save names</button></div>';
+      $$('[data-s]', body).forEach(inp => { inp.oninput = inp.onchange = () => { stf[+inp.closest('[data-i]').dataset.i][inp.dataset.s] = inp.value; }; });
+      $$('[data-del]', body).forEach(b => b.onclick = () => { stf.splice(+b.dataset.del, 1); draw('st'); });
+      $('#bs_add', body).onclick = () => { stf.push({ name: '', active: 'Yes' }); draw('st'); setTimeout(() => { const l = $$('[data-s="name"]', body).pop(); l && l.focus(); }, 30); };
+      $('#bs_save', body).onclick = async () => {
+        const keep = stf.filter(p => p.name.trim());
+        const r = await run('Saving…', () => call('saveBillLists', { staff: keep })).catch(() => null);
+        if (r) { Object.assign(B.boot, r); B.boot.allStaff = keep.map(p => Object.assign({}, p)); toast('Staff names saved'); m.close(); }
+      };
+    } else {
+      const keys = Object.keys(st);
+      body.innerHTML = '<div class="mute small" style="margin-bottom:8px">Printed on every new bill. Old bills keep the details they were saved with. Also editable in the “Bill Setup” tab of the sheet.</div>' +
+        keys.map(k => '<label class="f" style="margin-top:8px">' + esc(k) + '</label>' + (String(st[k]).length > 60 ? '<textarea class="i" rows="2" data-k="' + esc(k) + '">' + esc(st[k]) + '</textarea>' : '<input class="i" data-k="' + esc(k) + '" value="' + esc(st[k]) + '">')).join('') +
+        '<button class="btn block" id="bs_go" style="margin-top:14px">Save bill details</button>';
+      $('#bs_go', body).onclick = async () => {
+        const d = {}; $$('[data-k]', body).forEach(i => { if (String(st[i.dataset.k]) !== i.value) d[i.dataset.k] = i.value; });
+        const r = await run('Saving…', () => call('saveBillSetup', d)).catch(() => null);
+        if (r) { B.boot = Object.assign(B.boot, r); toast('Bill details saved'); }
+      };
+    }
+  };
+  $$('#bs_tabs button', m).forEach(b => b.onclick = () => draw(b.dataset.t));
+  draw(tabs[0][0]);
+}
+
+/* ───────────── PRINTING ─────────────
+   The bill is drawn as a black-and-white picture (203 dpi = 8 dots per mm) and sent to the printer
+   from a separate print window (Bluetooth is not allowed inside the app frame). */
+function billCanvas(b, mm) {
+  const W = Math.round((mm || 100) * 8), k = Math.max(W / 800, 0.8), M = Math.round(14 * W / 800);
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = 6000;
+  const x = cv.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, W, cv.height); x.fillStyle = '#000'; x.textBaseline = 'top';
+  let y = M;
+  const F = (sz, bold) => { x.font = (bold ? '700 ' : '400 ') + Math.round(sz * k) + 'px Arial, Helvetica, sans-serif'; return Math.round(sz * k); };
+  const wrap = (txt, maxW) => {
+    const out = []; String(txt || '').split('\n').forEach(par => {
+      let line = ''; par.split(' ').forEach(w => { const t = line ? line + ' ' + w : w; if (x.measureText(t).width > maxW && line) { out.push(line); line = w; } else line = t; });
+      if (line) out.push(line);
+    }); return out;
+  };
+  const text = (txt, sz, bold, align, gap) => {
+    const h = F(sz, bold);
+    wrap(txt, W - 2 * M).forEach(l => { x.textAlign = align || 'left'; x.fillText(l, align === 'center' ? W / 2 : align === 'right' ? W - M : M, y); y += Math.round(h * 1.22); });
+    y += Math.round((gap || 0) * k);
+  };
+  const lr = (a, bTxt, sz, bold) => { const h = F(sz, bold); x.textAlign = 'left'; x.fillText(a, M, y); x.textAlign = 'right'; x.fillText(bTxt, W - M, y); y += Math.round(h * 1.3); };
+  const rule = (thick) => { x.fillRect(M, y, W - 2 * M, Math.max(1, Math.round((thick || 2) * k))); y += Math.round(10 * k); };
+  const s = b.seller, c = b.customer, t = b.totals;
+  text(s.brand, 46, true, 'center', 2);
+  text(s.legal, 23, true, 'center');
+  text(s.store + (s.storeAddr && s.storeAddr !== s.store ? ': ' + s.storeAddr : ''), 19, false, 'center');
+  text('GSTIN: ' + s.gstin, 22, true, 'center');
+  text('FSSAI Lic. No.: ' + s.fssai, 20, true, 'center');
+  text('CIN: ' + s.cin, 18, false, 'center');
+  text('Regd. Office: ' + s.regd, 17, false, 'center');
+  text('Ph: ' + s.phone + (s.email ? '  ' + s.email : ''), 17, false, 'center', 4);
+  rule(3); text(b.status === 'Cancelled' ? '*** CANCELLED ***' : 'TAX INVOICE', 28, true, 'center', -2); rule(3);
+  lr('Invoice: ' + b.no, b.date.split('-').reverse().join('-') + ' ' + b.time, 21, true);
+  if (c.name || c.phone) text('Customer: ' + [c.name, c.phone ? '+91 ' + c.phone : ''].filter(Boolean).join(', '), 20);
+  else text('Customer: Walk-in', 20);
+  if (c.gstin) text('Customer GSTIN: ' + c.gstin, 20, true);
+  if (c.address) text(c.address, 18);
+  text('Place of supply: ' + b.pos + '   Reverse charge: ' + (b.reverseCharge || 'No'), 18, false, 'left', 4);
+  rule(2);
+  // table
+  const cQ = W - M - Math.round(330 * k), cR = W - M - Math.round(170 * k);
+  const hdr = F(18, true); x.textAlign = 'left'; x.fillText('Item', M, y); x.textAlign = 'right'; if (W >= 560) { x.fillText('Qty', cQ + Math.round(110 * k), y); x.fillText('Rate', cR + Math.round(40 * k), y); } x.fillText('Amount', W - M, y);
+  y += Math.round(hdr * 1.4); rule(1);
+  b.lines.forEach(l => {
+    F(20, true);
+    const nameLines = wrap(l.n + '. ' + l.name, cQ - M - Math.round(10 * k));
+    if (W >= 560) {
+      nameLines.forEach((nl, i) => { x.textAlign = 'left'; x.fillText(nl, M, y); if (i === 0) {
+        F(20, false); x.textAlign = 'right';
+        x.fillText(l.unit === 'kg' ? Number(l.qty).toFixed(3) + 'kg' : l.qty + ' pc', cQ + Math.round(110 * k), y);
+        x.fillText(money(l.rate).replace(/\.00$/, ''), cR + Math.round(40 * k), y); F(20, true); x.fillText(money(l.amount), W - M, y); }
+        y += Math.round(20 * k * 1.25); });
+    } else {
+      wrap(l.n + '. ' + l.name, W - 2 * M).forEach(nl => { x.textAlign = 'left'; x.fillText(nl, M, y); y += Math.round(20 * k * 1.25); });
+      F(20, false); lr((l.unit === 'kg' ? Number(l.qty).toFixed(3) + ' kg' : l.qty + ' pc') + ' × ' + money(l.rate), money(l.amount), 20, true);
+    }
+    F(16, false); x.textAlign = 'left'; x.fillText('HSN ' + (l.hsn || '-') + '  GST ' + l.gst + '%' + (l.disc ? '  Disc ' + money(l.disc) : ''), M + Math.round(24 * k), y); y += Math.round(16 * k * 1.5);
+  });
+  rule(2);
+  lr('Total (incl. GST)', money(t.gross), 20);
+  if (t.disc) lr('Discount', '- ' + money(t.disc), 20);
+  lr('Taxable value', money(t.taxable), 20);
+  if (b.inter) lr('IGST', money(t.igst), 20); else Object.keys(t.rates).forEach(r => { lr('CGST @' + (r / 2) + '%', money(t.rates[r].cgst), 20); lr('SGST @' + (r / 2) + '%', money(t.rates[r].sgst), 20); });
+  if (t.roundOff) lr('Round off', (t.roundOff > 0 ? '+ ' : '- ') + money(Math.abs(t.roundOff)), 20);
+  rule(3); lr('GRAND TOTAL', 'Rs ' + money(t.total), 30, true); y += Math.round(2 * k);
+  text(b.words, 18, false, 'left', 4);
+  const pay = b.pay.mode === 'Split' ? ['cash', 'upi', 'card', 'other'].filter(q => b.pay[q]).map(q => q.toUpperCase() + ' ' + money(b.pay[q])).join(' + ') : b.pay.mode + ' ' + money(t.total);
+  text('Paid: ' + pay + '   Billed by: ' + b.by, 18, false, 'left', 6);
+  rule(1);
+  text(s.footer, 18, false, 'center');
+  text('Computer-generated invoice. ' + (c.phone ? 'Digital copy sent on WhatsApp.' : ''), 16, false, 'center');
+  y += Math.round(30 * k);
+  const H = Math.ceil(y / 8) * 8;
+  const out = document.createElement('canvas'); out.width = W; out.height = H;
+  out.getContext('2d').drawImage(cv, 0, 0);
+  return out;
+}
+/** 1 bit per dot, 1 = black, rows padded to whole bytes. */
+function packBits(cv) {
+  const W = cv.width, H = cv.height, wb = Math.ceil(W / 8), d = cv.getContext('2d').getImageData(0, 0, W, H).data, out = new Uint8Array(wb * H);
+  for (let yy = 0; yy < H; yy++) for (let xx = 0; xx < W; xx++) {
+    const i = (yy * W + xx) * 4, lum = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+    if (lum < 150) out[yy * wb + (xx >> 3)] |= 0x80 >> (xx & 7);
+  }
+  let s = ''; for (let i = 0; i < out.length; i += 0x8000) s += String.fromCharCode.apply(null, out.subarray(i, i + 0x8000));
+  return { w: W, h: H, wb: wb, b64: btoa(s) };
+}
+let printWin = null;
+function printBill(b) {
+  const mm = num(store.get('pmm')) || 100;
+  const cv = billCanvas(b, mm);
+  const job = Object.assign(packBits(cv), { png: cv.toDataURL('image/png'), no: b.no, mm: mm });
+  if (printWin && !printWin.closed) { try { printWin.postMessage({ nvjob: job }, '*'); printWin.focus(); return; } catch (e) { } }
+  const html = PRINT_PAGE.replace('/*JOB*/null', () => JSON.stringify(job));
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  printWin = window.open(url, 'nvprint');
+  if (!printWin) { toast('Allow pop-ups for this page to print', true); return; }
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+window.addEventListener('message', e => { if (e.data && e.data.nvpmm) { store.set('pmm', String(e.data.nvpmm)); } });
+
+const PRINT_PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Print bill</title><style>
+body{margin:0;font:15px/1.4 -apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#F4F2EC;color:#1d2433}
+.top{background:#1F2A44;color:#F7F1DE;padding:12px 16px;font-weight:700}.w{max-width:520px;margin:0 auto;padding:12px 16px 40px}
+.btn{display:block;width:100%;border:0;border-radius:10px;padding:13px;margin-top:10px;font-weight:700;font-size:16px;background:#1F2A44;color:#fff;cursor:pointer}
+.btn.g{background:#C9A24A;color:#1F2A44}.btn.l{background:#fff;color:#1F2A44;border:1px solid #cfcab9}
+.card{background:#fff;border:1px solid #e4e1d8;border-radius:12px;padding:12px;margin-top:12px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+select,input{font:inherit;border:1px solid #cfcab9;border-radius:8px;padding:7px;min-height:38px}label{font-size:12.5px;color:#666;display:block;margin-top:8px}
+.st{margin-top:10px;font-size:14px;min-height:20px}.ok{color:#167a4a}.bad{color:#b42318}
+.prev{background:#fff;text-align:center;padding:10px;margin-top:12px;border-radius:12px;border:1px solid #e4e1d8}.prev img{width:100%;max-width:400px;image-rendering:pixelated}
+.sm{font-size:12.5px;color:#666}
+#pimg{display:none}
+@media print{body{background:#fff}.top,.w>*:not(#pimg){display:none!important}.w{padding:0;max-width:none}#pimg{display:block!important;width:100%}}
+</style></head><body><div class="top">NUTVIQUE · Print bill <span id="no"></span></div><div class="w">
+<button class="btn g" id="bt">Print on Bluetooth printer</button>
+<div class="st" id="st"></div>
+<button class="btn l" id="raw">Print with RawBT app</button>
+<button class="btn l" id="sys">Print (phone / laptop print dialog)</button>
+<button class="btn l" id="img">Save bill as image</button>
+<div class="card"><b>Printer settings</b><span class="sm"> – saved on this phone</span>
+<div class="row"><div><label>Paper width</label><select id="mm"><option value="100">100 mm (4 inch)</option><option value="75">75 mm (3 inch)</option><option value="58">58 mm (2 inch)</option></select></div>
+<div><label>Paper</label><select id="pp"><option value="roll">Continuous roll</option><option value="label">Labels (with gap)</option></select></div>
+<div id="lw"><label>Label length mm</label><input id="ll" type="number" value="150" style="width:90px"></div></div>
+<div class="row"><div><label>Printer language</label><select id="lang"><option value="tspl">TSPL (label mode)</option><option value="esc">ESC/POS (receipt mode)</option></select></div>
+<div><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="inv">Print comes out inverted</label></div></div>
+<div class="sm" style="margin-top:8px">Bluetooth printing needs Chrome on Android or a laptop. If the printer does not show up in the list, use “Print with RawBT app” (free on Play Store) after pairing the printer in phone Bluetooth settings.</div></div>
+<div class="prev"><img id="pv"></div><img id="pimg">
+</div><script>
+'use strict';
+let JOB = /*JOB*/null, dev = null, chr = null;
+const $ = s => document.querySelector(s), ls = { get(k) { try { return localStorage.getItem('nvp_' + k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem('nvp_' + k, v); } catch (e) { } } };
+const st = (m, c) => { $('#st').textContent = m; $('#st').className = 'st ' + (c || ''); };
+['mm', 'pp', 'll', 'lang'].forEach(k => { const v = ls.get(k); if (v) $('#' + k).value = v; $('#' + k).onchange = () => { ls.set(k, $('#' + k).value); lw(); if (k === 'mm' && window.opener) { try { window.opener.postMessage({ nvpmm: $('#mm').value }, '*'); } catch (e) { } st('Paper width changed – tap Print again in the app to redraw the bill for ' + $('#mm').value + ' mm.'); } }; });
+$('#inv').checked = ls.get('inv') === '1'; $('#inv').onchange = () => ls.set('inv', $('#inv').checked ? '1' : '0');
+function lw() { $('#lw').style.display = $('#pp').value === 'label' ? '' : 'none'; }
+function show() { if (!JOB) return; $('#no').textContent = JOB.no; $('#pv').src = JOB.png; $('#pimg').src = JOB.png; let ps = document.getElementById('ps'); if (!ps) { ps = document.createElement('style'); ps.id = 'ps'; document.head.appendChild(ps); } ps.textContent = '@page{size:' + JOB.mm + 'mm auto;margin:0}'; if (String(JOB.mm) !== $('#mm').value) { $('#mm').value = String(JOB.mm); ls.set('mm', String(JOB.mm)); } }
+lw(); show();
+window.addEventListener('message', e => { if (e.data && e.data.nvjob) { JOB = e.data.nvjob; show(); st('New bill ' + JOB.no + ' ready.' + (chr ? ' Printing…' : '')); if (chr) printBt(); } });
+const enc = s => new TextEncoder().encode(s);
+function bits(invert) { const b = atob(JOB.b64), a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = invert ? (~b.charCodeAt(i)) & 255 : b.charCodeAt(i); return a; }
+function cat(parts) { let n = 0; parts.forEach(p => n += p.length); const o = new Uint8Array(n); let i = 0; parts.forEach(p => { o.set(p, i); i += p.length; }); return o; }
+function build() {
+  const inv = $('#inv').checked, mm = JOB.mm, wb = JOB.wb, H = JOB.h;
+  if ($('#lang').value === 'esc') {
+    const data = bits(inv), parts = [new Uint8Array([0x1b, 0x40])];
+    for (let y = 0; y < H; y += 200) { const h = Math.min(200, H - y); parts.push(new Uint8Array([0x1d, 0x76, 0x30, 0, wb & 255, wb >> 8, h & 255, h >> 8]), data.subarray(y * wb, (y + h) * wb)); }
+    parts.push(new Uint8Array([0x1b, 0x64, 5, 0x1d, 0x56, 0x42, 0])); return cat(parts);
+  }
+  const data = bits(!inv);  // TSPL: 0 bit = black dot
+  const label = $('#pp').value === 'label', lenMm = label ? Math.max(20, Number($('#ll').value) || 150) : Math.ceil(H / 8) + 4;
+  const page = label ? lenMm * 8 - 24 : H, parts = [enc('SIZE ' + mm + ' mm,' + lenMm + ' mm\\r\\nGAP ' + (label ? '2 mm,0 mm' : '0 mm,0 mm') + '\\r\\nDIRECTION 1,0\\r\\nREFERENCE 0,0\\r\\nDENSITY 10\\r\\nSPEED 4\\r\\n')];
+  for (let y = 0; y < H; y += page) { const h = Math.min(page, H - y); parts.push(enc('CLS\\r\\nBITMAP 0,' + (label ? 12 : 0) + ',' + wb + ',' + h + ',0,'), data.subarray(y * wb, (y + h) * wb), enc('\\r\\nPRINT 1,1\\r\\n')); }
+  return cat(parts);
+}
+const SVC = ['000018f0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '49535343-fe7d-4ae5-8fa9-9fafd205e455', '0000ff00-0000-1000-8000-00805f9b34fb',
+  '0000ffe0-0000-1000-8000-00805f9b34fb', '0000fff0-0000-1000-8000-00805f9b34fb', '0000ae30-0000-1000-8000-00805f9b34fb', '0000ae00-0000-1000-8000-00805f9b34fb',
+  '0000ffe5-0000-1000-8000-00805f9b34fb', '0000ff12-0000-1000-8000-00805f9b34fb', '0000fee7-0000-1000-8000-00805f9b34fb'];
+async function connect() {
+  if (!navigator.bluetooth) throw new Error('Bluetooth printing is not available in this browser. Use Chrome on Android, or the RawBT button.');
+  if (!dev) dev = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: SVC });
+  st('Connecting to ' + (dev.name || 'printer') + '…');
+  const g = dev.gatt.connected ? dev.gatt : await dev.gatt.connect();
+  dev.ongattserverdisconnected = () => { chr = null; };
+  const svcs = await g.getPrimaryServices();
+  for (const s of svcs) { let cs = []; try { cs = await s.getCharacteristics(); } catch (e) { } for (const c of cs) if (c.properties.writeWithoutResponse || c.properties.write) { chr = c; return; } }
+  throw new Error('Connected, but this printer has no writable Bluetooth LE channel. Use the RawBT button instead.');
+}
+async function send(data) {
+  let size = 180, i = 0;
+  while (i < data.length) {
+    const part = data.subarray(i, i + size);
+    try { if (chr.properties.writeWithoutResponse && chr.writeValueWithoutResponse) await chr.writeValueWithoutResponse(part); else await chr.writeValue(part); }
+    catch (e) { if (size > 20) { size = 20; continue; } throw e; }
+    i += size; if ((i / size) % 20 === 0) { st('Sending… ' + Math.round(i * 100 / data.length) + '%'); await new Promise(r => setTimeout(r, 15)); }
+  }
+}
+async function printBt() {
+  try { if (!chr) await connect(); st('Sending…'); await send(build()); st('Sent to ' + (dev && dev.name || 'printer') + ' ✓  (keep this window open – next bills print straight away)', 'ok'); }
+  catch (e) { chr = null; if (e && e.name === 'NotFoundError') st('No printer picked.', 'bad'); else st((e && e.message) || String(e), 'bad'); }
+}
+$('#bt').onclick = printBt;
+$('#raw').onclick = () => {
+  const d = build(); let s = ''; for (let i = 0; i < d.length; i += 0x8000) s += String.fromCharCode.apply(null, d.subarray(i, i + 0x8000));
+  const a = document.createElement('a'); a.href = 'intent:base64,' + btoa(s) + '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;'; document.body.appendChild(a); a.click(); a.remove();
+  st('Opening RawBT… If nothing happens, install “RawBT” from the Play Store and pick the printer in it once.');
+};
+$('#sys').onclick = () => window.print();
+$('#img').onclick = async () => {
+  const blob = await (await fetch(JOB.png)).blob(), f = new File([blob], 'Bill-' + JOB.no.replace(/\\//g, '-') + '.png', { type: 'image/png' });
+  if (navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], title: 'Bill ' + JOB.no }); return; } catch (e) { } }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+};
+<\/script></body></html>`;
+</script>
