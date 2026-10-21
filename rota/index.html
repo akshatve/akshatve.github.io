@@ -875,7 +875,7 @@ if ('serviceWorker' in navigator) window.addEventListener('load', () => navigato
 // Opened inside WhatsApp / Instagram / Facebook: those browsers cannot install apps, so we send the person to Chrome first.
 let INSTALL_EVT = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); INSTALL_EVT = e; document.querySelectorAll('.inst').forEach(drawInstall); });
-window.addEventListener('appinstalled', () => { INSTALL_EVT = null; store.set('installed', '1'); document.querySelectorAll('.inst').forEach(el => el.remove()); toast('✓ Staff Rota app installed – open it from your app list'); });
+window.addEventListener('appinstalled', () => { INSTALL_EVT = null; store.set('installed', '1'); document.querySelectorAll('.inst').forEach(drawInstall); toast('✓ Staff Rota app installed – open it from your app list'); });
 const UA = navigator.userAgent || '';
 const IS_STANDALONE = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
 const IS_ANDROID = /Android/i.test(UA), IS_IOS = /iPhone|iPad|iPod/i.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -883,19 +883,21 @@ const IN_APP_BROWSER = /WhatsApp|FBAN|FBAV|FB_IAB|Instagram|Line\/|Snapchat|; wv
 const IS_CHROME = /Chrome\//.test(UA) && !/EdgA|OPR|SamsungBrowser|MiuiBrowser|HeyTap|UCBrowser|YaBrowser/i.test(UA) && !IN_APP_BROWSER;
 function installBox() { return IS_STANDALONE ? '' : '<div class="inst"></div>'; }
 function drawInstall(el) {
-  if (IS_STANDALONE) { el.remove(); return; }
+  el.dataset.d = '1';
+  const hide = () => { el.style.display = 'none'; el.innerHTML = ''; };
+  if (IS_STANDALONE || store.get('installed')) return hide();
   const chromeLink = 'intent://' + location.host + location.pathname + '#Intent;scheme=https;package=com.android.chrome;end';
   let h = '';
   if (INSTALL_EVT) h = '<b>Install the Staff Rota app</b><div class="tiny" style="margin:4px 0 10px">It gets its own icon in your app list and opens full screen – no Chrome bar.</div><button class="btn gold full" id="instgo">⬇ Install app</button>';
   else if (IS_ANDROID && (IN_APP_BROWSER || !IS_CHROME)) h = '<b>Open in Chrome to install the app</b><div class="tiny" style="margin:4px 0 10px">This page is open inside ' + (/WhatsApp/i.test(UA) ? 'WhatsApp' : 'another app') + ', which cannot install apps.</div><a class="btn gold full" href="' + chromeLink + '">Open in Chrome</a><div class="tiny" style="margin-top:6px">If nothing happens: tap ⋮ (top right) → <b>Open in Chrome</b>.</div>';
   else if (IS_ANDROID) h = '<b>Install the Staff Rota app</b><div class="tiny" style="margin-top:4px">Tap <b>⋮</b> (top right of Chrome) → <b>Install app</b> (or <b>Add to Home screen</b> → <b>Install</b>, not "Create shortcut").</div>';
   else if (IS_IOS) h = '<b>Add the Staff Rota app</b><div class="tiny" style="margin-top:4px">Open this page in <b>Safari</b> → tap <b>Share</b> (□↑) → <b>Add to Home Screen</b> → <b>Add</b>. It then opens full screen like an app.</div>';
-  else { el.remove(); return; }
-  el.className = 'inst warnbox blue'; el.style.textAlign = 'left'; el.innerHTML = h;
+  if (!h) return hide();
+  el.className = 'inst warnbox blue'; el.style.display = ''; el.style.textAlign = 'left'; el.innerHTML = h;
   const b = el.querySelector('#instgo');
-  if (b) b.onclick = async () => { const e = INSTALL_EVT; if (!e) return; e.prompt(); const c = await e.userChoice.catch(() => null); if (c && c.outcome === 'accepted') { INSTALL_EVT = null; el.remove(); } };
+  if (b) b.onclick = async () => { const e = INSTALL_EVT; if (!e) return; e.prompt(); const c = await e.userChoice.catch(() => null); if (c && c.outcome === 'accepted') { INSTALL_EVT = null; hide(); } };
 }
-new MutationObserver(() => document.querySelectorAll('.inst:empty').forEach(drawInstall)).observe(document.body, { childList: true, subtree: true });
+new MutationObserver(() => document.querySelectorAll('.inst:not([data-d])').forEach(drawInstall)).observe(document.body, { childList: true, subtree: true });
 start();
 </script>
 </body>
