@@ -1,7 +1,7 @@
 {
   "name": "Nutvique Staff Rota",
   "short_name": "Staff Rota",
-  "description": "Clock in / out, breaks, trips and rota – Nutzy Foods Pvt Ltd",
+  "description": "Clock in / out with location + selfie, breaks, company trips and your rota – Nutvique (Nutzy Foods Pvt Ltd)",
   "id": "./",
   "start_url": "./",
   "scope": "./",
@@ -10,9 +10,34 @@
   "background_color": "#1F2A44",
   "theme_color": "#1F2A44",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ]
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": [
+    "business",
+    "productivity"
+  ],
+  "lang": "en-IN"
 }
