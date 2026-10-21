@@ -35,12 +35,12 @@ const RECEIPT_NEEDED = { porter: 1, rapido: 1, cab: 1 };
 
 const T = {
   staff: ['Staff', ['Name', 'Emp ID', 'Location', 'Role', 'Active', 'Shift preference', 'Weekly off preference', 'Monthly salary ₹',
-    'Joined on', 'Phone ID', 'Phone set on', 'Notes', 'Updated']],
+    'Joined on', 'Phone ID', 'Phone set on', 'Notes', 'Updated', 'On rota', 'App rights']],
   locs: ['Locations', ['Location', 'Type', 'Latitude', 'Longitude', 'Radius (m)', 'Active', 'Notes']],
   rota: ['Rota', ['Week (Mon)', 'Date', 'Day', 'Name', 'Location', 'Shift', 'Start', 'End', 'Status', 'Note', 'Saved by', 'Saved at']],
   punch: ['Punches', ['ID', 'Date', 'Name', 'Type', 'Time', 'Location', 'Distance (m)', 'Inside', 'Latitude', 'Longitude',
     'Accuracy (m)', 'Selfie', 'Phone ID', 'Flags', 'Reason', 'Approved', 'Approved by', 'Saved at']],
-  fix: ['Day Corrections', ['Date', 'Name', 'Status', 'In', 'Out', 'Break (min)', 'Overtime approved (min)', 'Note', 'By', 'At']],
+  fix: ['Day Corrections', ['Date', 'Name', 'Status', 'In', 'Out', 'Break (min)', 'Overtime approved (min)', 'Note', 'By', 'At', 'Late excused', 'Extra break paid (min)']],
   trips: ['Trips', ['Trip ID', 'Date', 'Name', 'Purpose', 'Mode', 'Status', 'Start time', 'Start place', 'Start lat', 'Start lng',
     'End time', 'End place', 'End lat', 'End lng', 'Straight km', 'GPS trail km', 'Claimed km', 'Rate ₹/km', 'Fare ₹', 'Receipt',
     'Claimed ₹', 'Approved ₹', 'Decided by', 'Decided at', 'Staff note', 'Manager note', 'Trail']],
@@ -59,8 +59,8 @@ const C = {}; Object.keys(T).forEach(k => { C[k] = {}; T[k][1].forEach((h, i) =>
 const DEFAULT_SETTINGS = [
   ['Morning shift', '10:00-19:00', 'Start-end, 24-hour clock.'],
   ['Evening shift', '13:00-22:00', ''],
-  ['Break allowed (min per shift)', 60, 'Break time inside this limit is part of the shift. Extra break minutes are cut from the day.'],
-  ['Late grace (min)', 10, 'Coming in up to this many minutes late is not counted.'],
+  ['Break allowed (min per shift)', 30, 'Paid break per shift. Extra break minutes are cut from the day (the owner can pay them for a person on a day).'],
+  ['Late grace (min)', 5, 'Coming in up to this many minutes late is not counted (the owner can excuse a late day).'],
   ['Geofence radius (m)', 200, 'Default for a location; each location can have its own radius in the Locations tab.'],
   ['Max GPS error (m)', 250, 'Clock-ins with a worse GPS reading are refused (ask the person to wait a few seconds / step near the entrance).'],
   ['Selfie required', 'Yes', 'Yes = a front-camera photo is taken at every clock in / out and break.'],
@@ -96,8 +96,29 @@ function doPost(e) {
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 
-const ADMIN_ACTIONS = { board: 1, rotaGet: 1, rotaAuto: 1, rotaSave: 1, attendance: 1, fixDay: 1, approvePunch: 1, trips: 1, tripDecide: 1, photo: 1, staffList: 1 };
-const OWNER_ACTIONS = { payroll: 1, staffSave: 1, resetPhone: 1, syncStaff: 1, locSave: 1, settingsGet: 1, settingsSave: 1 };
+// Rights inside this app. The owner has all of them and gives them to anyone in More → Permissions.
+// Managers get only "rota" unless the owner ticks more. Checked on the server for every action.
+const RRIGHTS = [
+  ['rota', 'Plan, change and publish the rota (incl. who covers a shift)'],
+  ['team', 'See the team board and attendance (who is in, late, on break)'],
+  ['times', 'Change anyone\'s in / out times, breaks and day status (leave, off…)'],
+  ['payAdj', 'Pay adjustments: excuse a late day, pay extra break, approve overtime'],
+  ['approve', 'Approve clock entries made away from a store'],
+  ['trips', 'Approve trip claims (travel money)'],
+  ['staff', 'Edit staff: store, shifts, weekly off, on rota, phone reset'],
+  ['pay', 'Payroll and salaries'],
+  ['settings', 'Settings, store locations and geofence']];
+const RRIGHT_LABEL = {}; RRIGHTS.forEach(r => RRIGHT_LABEL[r[0]] = r[1]);
+const DEFAULT_RIGHTS = { Manager: ['rota'], Staff: [] };
+const ACTION_NEED = { board: ['team', 'approve', 'times', 'payAdj'], attendance: ['team', 'approve', 'times', 'payAdj'], fixDay: ['times', 'payAdj'], approvePunch: 'approve',
+  photo: ['team', 'approve', 'times', 'trips'], trips: 'trips', tripDecide: 'trips', staffList: ['staff', 'pay', 'rota'], staffSave: ['staff', 'pay'], resetPhone: 'staff',
+  syncStaff: 'staff', rotaGet: 'rota', rotaAuto: 'rota', rotaSave: 'rota', payroll: 'pay', locSave: 'settings', settingsGet: 'settings', settingsSave: 'settings',
+  rightsList: 'owner', rightsSave: 'owner' };
+function can_(me, need) {
+  if (me.owner) return true;
+  if (need === 'owner') return false;
+  return (Array.isArray(need) ? need : [need]).some(k => me.rights.indexOf(k) >= 0);
+}
 
 function api_(req) {
   const action = String(req.action || '');
@@ -105,8 +126,7 @@ function api_(req) {
   const me = who_(req.token);
   ensureSetup_();
   const d = req.data || {};
-  if (ADMIN_ACTIONS[action] && !me.admin) throw new Error('Only managers can do this.');
-  if (OWNER_ACTIONS[action] && !me.pay) throw new Error('Only the owner can do this.');
+  if (ACTION_NEED[action] && !can_(me, ACTION_NEED[action])) throw new Error('You do not have the right for this – ask the owner (More → Permissions).');
   switch (action) {
     case 'boot': return boot_(me, req.token);
     case 'punch': return punch_(d, me);
@@ -135,6 +155,8 @@ function api_(req) {
     case 'locSave': return locSave_(d, me);
     case 'settingsGet': return settingsGet_();
     case 'settingsSave': return settingsSave_(d, me);
+    case 'rightsList': return rightsList_();
+    case 'rightsSave': return rightsSave_(d, me);
   }
   throw new Error('Unknown action: ' + action);
 }
@@ -155,11 +177,13 @@ function who_(token) {
     u = j.r.user;
     c.put(key, JSON.stringify(u), 600);
   }
-  const owner = u.role === 'Owner', rights = u.rights || [];
-  const me = { name: u.name, role: u.role, home: u.home || '', rights: rights, owner: owner };
-  me.admin = owner || u.role === 'Manager';
-  me.pay = owner || rights.indexOf('people') >= 0;
-  me.scope = owner || rights.indexOf('allStores') >= 0 || (u.role === 'Manager' && !u.home) ? null : [u.home];
+  const owner = u.role === 'Owner', invRights = u.rights || [];
+  const me = { name: u.name, role: u.role, home: u.home || '', owner: owner };
+  const s = owner ? null : staffByName_(u.name);
+  me.rights = owner ? RRIGHTS.map(r => r[0]) : rightsOf_(s, u.role);
+  me.admin = owner || me.rights.length > 0;
+  me.pay = can_(me, 'pay');
+  me.scope = owner || invRights.indexOf('allStores') >= 0 || (u.role === 'Manager' && !u.home) ? null : [(s && s.loc) || u.home];
   return me;
 }
 function inScope_(me, loc) { return !me.scope || me.scope.indexOf(loc) >= 0; }
@@ -206,6 +230,21 @@ function setup() {
 function ensureSetup_() {
   const p = PropertiesService.getScriptProperties();
   if (!p.getProperty('SETUP_V1')) { setup(); p.setProperty('SETUP_V1', '1'); }
+  if (!p.getProperty('V2_RULES')) {                 // 21 Oct 2026: owner's changes
+    p.setProperty('V2_RULES', '1');
+    const st = tab_('staff'); st.getRange(1, 1, 1, T.staff[1].length).setValues([T.staff[1]]).setFontWeight('bold').setBackground('#1F2A44').setFontColor('#F7F1DE');
+    const fx = tab_('fix'); fx.getRange(1, 1, 1, T.fix[1].length).setValues([T.fix[1]]).setFontWeight('bold').setBackground('#1F2A44').setFontColor('#F7F1DE');
+    const sh = tab_('set'), keys = rows_('set').map(r => s_(r[0])), vals = rows_('set').map(r => s_(r[1]));
+    [['Break allowed (min per shift)', '60', '30'], ['Late grace (min)', '10', '5']].forEach(x => { const i = keys.indexOf(x[0]); if (i >= 0 && vals[i] === x[1]) sh.getRange(i + 2, 2).setValue(x[2]); });
+    DEFAULT_SETTINGS.filter(x => /^(Break allowed|Late grace)/.test(x[0])).forEach(x => { const i = keys.indexOf(x[0]); if (i >= 0) sh.getRange(i + 2, 3).setValue(x[2]); });
+    staffAll_().forEach(x => {
+      if (norm_(x.name) === norm_('Jitender Chauhan') && x.loc !== STORES[1]) st.getRange(x.row, C.staff['Location'] + 1).setValue(STORES[1]);
+      if (norm_(x.name) === norm_('Pankaj Verma')) st.getRange(x.row, C.staff['On rota'] + 1).setValue('No');
+      if (st.getRange(x.row, C.staff['On rota'] + 1).getValue() === '') st.getRange(x.row, C.staff['On rota'] + 1).setValue(norm_(x.name) === norm_('Pankaj Verma') ? 'No' : 'Yes');
+    });
+    CacheService.getScriptCache().remove('settings');
+    log_('v2: break 30 min, grace 5 min, rights, Jitender → City Galleria, Pankaj Verma off the rota', 'system');
+  }
   if (!p.getProperty('GOLIVE_V1')) {                 // the day the app is first used = "Attendance starts on" (earlier days count as paid)
     p.setProperty('GOLIVE_V1', '1');
     if (!setv_('Attendance starts on')) { const sh = tab_('set'), keys = rows_('set').map(r => s_(r[0])), i = keys.indexOf('Attendance starts on');
@@ -252,15 +291,36 @@ function settingsSave_(d, me) {
 // ───────────────────────────── staff & locations ─────────────────────────────
 function staffAll_() {
   return rows_('staff').map((r, i) => ({ row: i + 2, name: s_(r[0]), id: s_(r[1]), loc: s_(r[2]), role: s_(r[3]) || 'Staff', active: s_(r[4]) !== 'No',
-    pref: s_(r[5]) || 'Rotate', offPref: s_(r[6]) || 'Any (Tue–Thu)', salary: n_(r[7]), joined: ymd_(r[8]), phone: s_(r[9]), phoneAt: iso_(r[10]), notes: s_(r[11]) }))
+    pref: s_(r[5]) || 'Rotate', offPref: s_(r[6]) || 'Any (Tue–Thu)', salary: n_(r[7]), joined: ymd_(r[8]), phone: s_(r[9]), phoneAt: iso_(r[10]), notes: s_(r[11]),
+    onRota: s_(r[13]) !== 'No', rightsRaw: s_(r[14]) }))
     .filter(x => x.name);
+}
+/** Rights from the "App rights" column; blank = the role's default (Manager: rota only). "-" = none. */
+function rightsOf_(s, role) {
+  if (!s) return (DEFAULT_RIGHTS[role] || []).slice();
+  if (!s.rightsRaw) return (DEFAULT_RIGHTS[s.role] || DEFAULT_RIGHTS[role] || []).slice();
+  return s.rightsRaw.split(/[,\s]+/).filter(k => RRIGHT_LABEL[k]);
+}
+function tracked_(s) { return s.active && s.onRota; }
+function rightsList_() {
+  return { rights: RRIGHTS.map(r => ({ key: r[0], label: r[1] })),
+    people: staffAll_().filter(s => s.active).map(s => ({ name: s.name, role: s.role, loc: s.loc, rights: rightsOf_(s, s.role), custom: !!s.rightsRaw })) };
+}
+/** Owner: d = {name, rights:[keys]} */
+function rightsSave_(d, me) {
+  const s = staffByName_(d.name); if (!s) throw new Error('Person not found.');
+  const list = (d.rights || []).filter(k => RRIGHT_LABEL[k]);
+  tab_('staff').getRange(s.row, C.staff['App rights'] + 1).setValue(list.length ? list.join(', ') : '-');
+  CacheService.getScriptCache().remove('staff');
+  log_('Rights for ' + s.name + ': ' + (list.join(', ') || 'none'), me.name);
+  return rightsList_();
 }
 function staffByName_(name) { return staffAll_().find(x => norm_(x.name) === norm_(name)) || null; }
 /** The signed-in person's staff row – added automatically the first time someone uses the app. */
 function myStaff_(me) {
   let s = staffByName_(me.name);
   if (!s && me.role !== 'Owner') {
-    lock_(() => { if (!staffByName_(me.name)) append_('staff', [[me.name, '', me.home || '', me.role === 'Manager' ? 'Manager' : 'Staff', 'Yes', 'Rotate', 'Any (Tue–Thu)', '', '', '', '', 'Added on first use – set salary', new Date()]]); });
+    lock_(() => { if (!staffByName_(me.name)) append_('staff', [[me.name, '', me.home || '', me.role === 'Manager' ? 'Manager' : 'Staff', 'Yes', 'Rotate', 'Any (Tue–Thu)', '', '', '', '', 'Added on first use – set salary', new Date(), 'Yes', '']]); });
     s = staffByName_(me.name);
   }
   return s;
@@ -271,11 +331,11 @@ function locs_(all) {
 }
 function staffList_(me) {
   const list = staffAll_().filter(s => inScope_(me, s.loc) || !s.loc).map(s => {
-    const o = { name: s.name, id: s.id, loc: s.loc, role: s.role, active: s.active, pref: s.pref, offPref: s.offPref, joined: s.joined, phone: !!s.phone, phoneAt: s.phoneAt, notes: s.notes };
+    const o = { name: s.name, id: s.id, loc: s.loc, role: s.role, active: s.active, onRota: s.onRota, pref: s.pref, offPref: s.offPref, joined: s.joined, phone: !!s.phone, phoneAt: s.phoneAt, notes: s.notes };
     if (me.pay) o.salary = s.salary;
     return o;
   });
-  return { staff: list, locations: locs_(true).map(l => l.name), canPay: me.pay };
+  return { staff: list, locations: locs_(true).map(l => l.name), canPay: me.pay, canEdit: can_(me, 'staff') };
 }
 function staffSave_(d, me) {
   return lock_(() => {
@@ -287,7 +347,12 @@ function staffSave_(d, me) {
     const row = [newName, txt_(d.id, 20), txt_(d.loc, 60), d.role === 'Manager' ? 'Manager' : 'Staff', d.active === false ? 'No' : 'Yes',
       ['Rotate', 'Morning only', 'Evening only'].indexOf(d.pref) >= 0 ? d.pref : 'Rotate',
       ['Any (Tue–Thu)', 'Tue', 'Wed', 'Thu'].indexOf(d.offPref) >= 0 ? d.offPref : 'Any (Tue–Thu)',
-      d.salary === '' || d.salary == null ? '' : Math.max(0, n_(d.salary)), d.joined || '', s ? s.phone : '', s ? (s.phoneAt ? new Date(s.phoneAt) : '') : '', txt_(d.notes, 200), new Date()];
+      !me.pay ? (s ? (s.salary || '') : '') : d.salary === '' || d.salary == null ? '' : Math.max(0, n_(d.salary)), d.joined || '', s ? s.phone : '', s ? (s.phoneAt ? new Date(s.phoneAt) : '') : '', txt_(d.notes, 200), new Date(),
+      d.onRota === false ? 'No' : 'Yes', s ? s.rightsRaw : ''];
+    if (!can_(me, 'staff')) {                       // payroll-only people may change the salary and nothing else
+      if (!s) throw new Error('Only people with the Staff right can add a person.');
+      const keep = rows_('staff')[s.row - 2].slice(); keep[7] = row[7]; keep[12] = new Date(); row.splice(0, row.length, ...keep);
+    }
     const sh = tab_('staff');
     if (s) sh.getRange(s.row, 1, 1, row.length).setValues([row]); else append_('staff', [row]);
     log_('Staff saved: ' + newName, me.name);
@@ -311,7 +376,7 @@ function syncStaff_(token, me) {
     if (have.some(x => norm_(x.name) === norm_(u.name))) return;
     const id = (/NF-[A-Z]-\d{3,5}/.exec(u.notes || '') || [''])[0], loc = u.home || (u.role === 'Manager' ? HO : '');
     add.push([u.name, id, loc, u.role === 'Manager' ? 'Manager' : 'Staff', 'Yes', loc === HO ? 'Morning only' : 'Rotate', 'Any (Tue–Thu)', '', '', '', '',
-      'From Nutvique People – set salary' + (loc ? '' : ' and location'), new Date()]);
+      'From Nutvique People – set salary' + (loc ? '' : ' and location'), new Date(), 'Yes', '']);
   });
   lock_(() => append_('staff', add));
   const missing = have.filter(x => x.active && !j.r.users.some(u => u.active && norm_(u.name) === norm_(x.name))).map(x => x.name);
@@ -345,7 +410,7 @@ function rotaFor_(name, date, cache) {
 function rotaGet_(d, me) {
   const week = monday_(d.week), end = addDays_(week, 6);
   const rows = rotaRows_(week, end);
-  const staff = staffAll_().filter(s => s.active && (inScope_(me, s.loc) || !s.loc));
+  const staff = staffAll_().filter(s => tracked_(s) && (inScope_(me, s.loc) || !s.loc));
   const cells = {};
   rows.forEach(x => { if (staff.some(s => norm_(s.name) === norm_(x.name))) cells[x.name + '|' + x.date] = { shift: x.shift, start: x.start, end: x.end, loc: x.loc, note: x.note, status: x.status }; });
   const status = rows.length ? (rows.some(x => x.status === 'Draft') ? 'Draft' : 'Published') : 'Not planned';
@@ -358,7 +423,7 @@ function rotaGet_(d, me) {
 function rotaAuto_(d, me) {
   const week = monday_(d.week), days = [0, 1, 2, 3, 4, 5, 6].map(i => addDays_(week, i));
   const wkNo = Math.round(parse_(week).getTime() / (7 * 864e5));
-  const staff = staffAll_().filter(s => s.active && s.loc && (inScope_(me, s.loc)));
+  const staff = staffAll_().filter(s => tracked_(s) && s.loc && (inScope_(me, s.loc)));
   const locType = {}; locs_(true).forEach(l => locType[l.name] = l.type);
   const byLoc = {}; staff.forEach(s => (byLoc[s.loc] = byLoc[s.loc] || []).push(s));
   const keep = d.keep || {};                                    // cells the manager already fixed by hand: {name|date: cell}
@@ -395,7 +460,7 @@ function rotaAuto_(d, me) {
       });
     });
   });
-  const shown = staffAll_().filter(s => s.active && (inScope_(me, s.loc) || !s.loc));
+  const shown = staffAll_().filter(s => tracked_(s) && (inScope_(me, s.loc) || !s.loc));
   return { week: week, cells: cells, warnings: rotaWarnings_(week, shown, cells) };
 }
 function rotaWarnings_(week, staff, cells) {
@@ -481,6 +546,7 @@ function punch_(d, me) {
   const s = myStaff_(me);
   if (!s) throw new Error('The owner does not clock in.');
   if (!s.active) throw new Error('You are not on the active staff list – ask head office.');
+  if (!s.onRota) throw new Error('You are not on the staff rota, so you do not clock in here.');
   const type = String(d.type || '');
   if (!P_TYPES[type]) throw new Error('Unknown action.');
   const now = new Date(), date = today_();
@@ -522,7 +588,7 @@ function punch_(d, me) {
     if (type === 'IN') {
       if (!ro) flags.push('Not on the rota');
       else if (['OFF', 'LP', 'LU', 'HOL'].indexOf(ro.shift) >= 0) flags.push('Working on ' + SHIFT_LABEL[ro.shift].toLowerCase());
-      else if (ro.start) { const late = mins_(now) - toMin_(ro.start); if (late > setn_('Late grace (min)', 10)) flags.push('Late ' + late + ' min'); }
+      else if (ro.start) { const late = mins_(now) - toMin_(ro.start); if (late > setn_('Late grace (min)', 5)) flags.push('Late ' + late + ' min'); }
       if (st === 'OUT') flags.push('Second clock-in today');
     }
     const id = 'P' + Utilities.formatDate(now, tz_(), 'yyMMddHHmmss') + Math.floor(Math.random() * 90 + 10);
@@ -598,12 +664,14 @@ function dayCalc_(date, s, ro, ps, fx, live) {
     return out;
   }
   out.in = minTxt_(inMin); out.out = outMin != null ? minTxt_(outMin) : '';
-  const sS = toMin_(t.start), sE = toMin_(t.end), shiftLen = sE - sS, allow = setn_('Break allowed (min per shift)', 60), grace = setn_('Late grace (min)', 10);
-  out.breakMin = Math.round(breakMin); out.extraBreak = Math.max(0, out.breakMin - allow);
+  const sS = toMin_(t.start), sE = toMin_(t.end), shiftLen = sE - sS, allow = setn_('Break allowed (min per shift)', 30), grace = setn_('Late grace (min)', 5);
+  out.breakMin = Math.round(breakMin); out.extraBreak = Math.max(0, out.breakMin - allow - (fx ? n_(fx.brkPaid) : 0));
+  if (fx && fx.brkPaid && out.breakMin > allow) out.flags.push('Extra break paid ' + Math.min(n_(fx.brkPaid), out.breakMin - allow) + ' min');
   out.worked = Math.max(0, outMin - inMin - out.breakMin);
-  const late = Math.max(0, inMin - sS); out.late = late > grace ? late : 0;
+  const late = Math.max(0, inMin - sS), excused = !!(fx && fx.lateOk); out.late = late > grace && !excused ? late : 0;
+  if (excused && late > grace) out.flags.push('Late ' + late + ' min – excused');
   out.early = Math.max(0, sE - outMin);
-  const effIn = late <= grace ? Math.min(inMin, sS) : inMin;
+  const effIn = late <= grace || excused ? Math.min(inMin, sS) : inMin;
   const inside = Math.max(0, Math.min(outMin, sE) - Math.max(effIn, sS));
   out.credited = Math.max(0, inside - out.extraBreak);
   const before = setv_('Count early arrival as overtime') === 'Yes' ? Math.max(0, sS - inMin) : 0;
@@ -625,7 +693,7 @@ function dayCalc_(date, s, ro, ps, fx, live) {
 }
 function fixRows_(from, to) {
   return rows_('fix').map((r, i) => ({ row: i + 2, date: ymd_(r[0]), name: s_(r[1]), status: s_(r[2]), in: hm_(r[3]), out: hm_(r[4]), brk: r[5] === '' ? '' : n_(r[5]),
-    ot: n_(r[6]), note: s_(r[7]), by: s_(r[8]) })).filter(x => x.name && x.date >= from && x.date <= to);
+    ot: n_(r[6]), note: s_(r[7]), by: s_(r[8]), lateOk: s_(r[10]) === 'Yes', brkPaid: n_(r[11]) })).filter(x => x.name && x.date >= from && x.date <= to);
 }
 /** Days for many people over a date range – shared by Attendance, Payroll, the board and the nightly email. */
 function daysFor_(names, from, to, live) {
@@ -640,6 +708,7 @@ function daysFor_(names, from, to, live) {
       const fx = fixes.filter(x => x.date === dt && norm_(x.name) === norm_(name)).pop() || null;
       const c = dayCalc_(dt, s, ro, ps, fx, live);
       c.name = s ? s.name : name; c.loc = (ro && ro.loc) || (s && s.loc) || ''; c.fixed = fx ? (fx.note || 'Corrected') + ' – ' + fx.by : '';
+      c.lateOk = !!(fx && fx.lateOk); c.brkPaid = fx ? n_(fx.brkPaid) : 0; c.fixIn = fx ? fx.in : ''; c.fixOut = fx ? fx.out : ''; c.fixBrk = fx ? fx.brk : ''; c.fixStatus = fx ? fx.status : '';
       c.punches = ps.map(p => ({ id: p.id, type: p.type, time: hmOf_(p.time), loc: p.loc, dist: p.dist, inside: p.inside === 'Yes', acc: p.acc, selfie: p.selfie ? 1 : 0,
         flags: p.flags, reason: p.reason, approved: p.approved, lat: p.lat, lng: p.lng }));
       out.push(c);
@@ -659,7 +728,7 @@ function myMonth_(d, me) {
 // ───────────────────────────── manager: today board, attendance, corrections ─────────────────────────────
 function board_(d, me) {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(d.date || '') ? d.date : today_();
-  const staff = staffAll_().filter(s => s.active && (inScope_(me, s.loc) || !s.loc));
+  const staff = staffAll_().filter(s => tracked_(s) && (inScope_(me, s.loc) || !s.loc));
   const days = daysFor_(staff.map(s => s.name), date, date, true);
   const trips = rows_('trips').filter(r => s_(r[5]) === 'Running').map(r => s_(r[2]));
   const pendingTrips = rows_('trips').filter(r => s_(r[5]) === 'Submitted' && staff.some(s => norm_(s.name) === norm_(r[2]))).length;
@@ -670,13 +739,14 @@ function board_(d, me) {
 function attendance_(d, me) {
   const from = /^\d{4}-\d{2}-\d{2}$/.test(d.from || '') ? d.from : addDays_(today_(), -6), to = /^\d{4}-\d{2}-\d{2}$/.test(d.to || '') ? d.to : today_();
   if (parse_(to) - parse_(from) > 62 * 864e5) throw new Error('Pick at most 2 months.');
-  const staff = staffAll_().filter(s => (inScope_(me, s.loc) || !s.loc) && (!d.name || norm_(s.name) === norm_(d.name)) && (s.active || d.name));
+  const staff = staffAll_().filter(s => s.onRota && (inScope_(me, s.loc) || !s.loc) && (!d.name || norm_(s.name) === norm_(d.name)) && (s.active || d.name));
   const days = daysFor_(staff.map(s => s.name), from, to, true);
   const pending = punchesOn_(null, null).filter(p => p.approved === 'Pending' && staff.some(s => norm_(s.name) === norm_(p.name)))
     .map(p => ({ id: p.id, date: p.date, name: p.name, type: p.type, label: P_TYPES[p.type], time: hmOf_(p.time), loc: p.loc, dist: p.dist, reason: p.reason, lat: p.lat, lng: p.lng, selfie: p.selfie ? 1 : 0 }));
   return { from: from, to: to, days: days, pending: pending, names: staff.map(s => s.name) };
 }
-/** Manager corrects a day: d = {date, name, status ('' = as per rota), in, out, brk, ot, note} */
+/** Corrects a day: d = {date, name, status ('' = as per rota), in, out, brk, ot, lateOk, brkPaid, note}.
+ *  status / in / out / break need the "times" right; overtime, excused late and paid extra break need "payAdj". The rest of the row is kept. */
 function fixDay_(d, me) {
   const s = staffByName_(d.name); if (!s) throw new Error('Person not found.');
   if (!inScope_(me, s.loc) && s.loc) throw new Error('Not your store.');
@@ -684,10 +754,24 @@ function fixDay_(d, me) {
   if (d.status && SHIFT_CODES.indexOf(d.status) < 0) throw new Error('Unknown status.');
   ['in', 'out'].forEach(k => { if (d[k] && !/^\d{1,2}:\d{2}$/.test(d[k])) throw new Error('Time like 10:05'); });
   if (!txt_(d.note, 200)) throw new Error('Write why you are correcting this day.');
+  const canT = can_(me, 'times'), canP = can_(me, 'payAdj');
   lock_(() => {
     const sh = tab_('fix'), all = rows_('fix'), i = all.findIndex(r => ymd_(r[0]) === d.date && norm_(r[1]) === norm_(s.name));
-    const row = [d.date, s.name, d.status || '', d.in ? hm_(d.in) : '', d.out ? hm_(d.out) : '', d.brk === '' || d.brk == null ? '' : n_(d.brk), n_(d.ot), txt_(d.note, 200), me.name, new Date()];
-    if (d.clear) { if (i >= 0) sh.deleteRow(i + 2); }
+    const old = i >= 0 ? all[i] : [d.date, s.name, '', '', '', '', 0, '', '', '', '', ''];
+    const row = old.slice(); row[0] = d.date; row[1] = s.name;
+    const tWant = [d.status || '', d.in ? hm_(d.in) : '', d.out ? hm_(d.out) : '', d.brk === '' || d.brk == null ? '' : n_(d.brk)];
+    const tOld = [s_(old[2]), hm_(old[3]), hm_(old[4]), old[5] === '' ? '' : n_(old[5])];
+    if (tWant.some((v, k) => String(v) !== String(tOld[k]))) {
+      if (!canT) throw new Error('Only the owner (or someone given the right) can change in / out times, breaks or the day status.');
+      row[2] = tWant[0]; row[3] = tWant[1]; row[4] = tWant[2]; row[5] = tWant[3];
+    }
+    const pWant = [n_(d.ot), d.lateOk ? 'Yes' : '', n_(d.brkPaid) || ''], pOld = [n_(old[6]), s_(old[10]) === 'Yes' ? 'Yes' : '', n_(old[11]) || ''];
+    if (pWant.some((v, k) => String(v) !== String(pOld[k]))) {
+      if (!canP) throw new Error('Only the owner (or someone given the right) can approve overtime, excuse late or pay extra break.');
+      row[6] = pWant[0]; row[10] = pWant[1]; row[11] = pWant[2];
+    }
+    row[7] = txt_(d.note, 200); row[8] = me.name; row[9] = new Date();
+    if (d.clear) { if (!canT || !canP) throw new Error('Only the owner can remove a correction.'); if (i >= 0) sh.deleteRow(i + 2); }
     else if (i >= 0) sh.getRange(i + 2, 1, 1, row.length).setValues([row]); else append_('fix', [row]);
   });
   log_('Day corrected ' + d.date + ' ' + s.name + (d.clear ? ' (cleared)' : ''), me.name);
@@ -864,7 +948,7 @@ function payroll_(d, me) {
   const from = m + '-01', last = ymd_(new Date(Number(m.slice(0, 4)), Number(m.slice(5)), 0)), to = last < today_() ? last : today_();
   if (from > today_()) throw new Error('That month has not started.');
   const punched = {}; rows_('punch').forEach(r => { if (ymd_(r[1]) >= from) punched[norm_(r[2])] = 1; });
-  const staff = staffAll_().filter(s => s.active || punched[norm_(s.name)]);
+  const staff = staffAll_().filter(s => tracked_(s) || (s.onRota && punched[norm_(s.name)]));
   const days = daysFor_(staff.map(s => s.name), from, to, false);
   const trips = tripRows_().filter(t => t.date >= from && t.date <= last).map(tripPub_);
   const list = staff.map(s => payFor_(s, m, days.filter(x => norm_(x.name) === norm_(s.name)), trips.filter(t => norm_(t.name) === norm_(s.name))));
@@ -887,18 +971,19 @@ function payroll_(d, me) {
 // ───────────────────────────── boot ─────────────────────────────
 function boot_(me, token) {
   ensureSetup_();
-  if (me.pay && !rows_('staff').length) { try { syncStaff_(token, me); } catch (e) { log_('First staff sync failed: ' + e, me.name); } }
+  if (me.owner && !rows_('staff').length) { try { syncStaff_(token, me); } catch (e) { log_('First staff sync failed: ' + e, me.name); } }
   const s = me.owner ? staffByName_(me.name) : myStaff_(me);
-  const out = { me: { name: me.name, role: me.role, home: me.home, admin: me.admin, pay: me.pay, owner: me.owner, staffLoc: s ? s.loc : '' },
+  const out = { me: { name: me.name, role: me.role, home: me.home, admin: me.admin, pay: me.pay, owner: me.owner, rights: me.rights, staffLoc: s ? s.loc : '' },
     shifts: { M: shiftTimes_('M'), E: shiftTimes_('E') }, modes: TRIP_MODES.map(m => ({ key: m[0], label: m[1], kind: m[2], receipt: !!RECEIPT_NEEDED[m[0]] })),
-    selfie: setv_('Selfie required') === 'Yes', breakAllow: setn_('Break allowed (min per shift)', 60), maxAcc: setn_('Max GPS error (m)', 250), rates: { bike: setn_('Bike rate ₹/km', 4), car: setn_('Car rate ₹/km', 10) },
+    selfie: setv_('Selfie required') === 'Yes', breakAllow: setn_('Break allowed (min per shift)', 30), grace: setn_('Late grace (min)', 5), maxAcc: setn_('Max GPS error (m)', 250), rates: { bike: setn_('Bike rate ₹/km', 4), car: setn_('Car rate ₹/km', 10) },
     locations: locs_(false).map(l => ({ name: l.name, lat: l.lat, lng: l.lng, radius: l.radius })) };
-  if (s) { out.day = myDay_(me); out.weeks = myRota_(me); }
+  if (s && tracked_(s)) { out.day = myDay_(me); out.weeks = myRota_(me); }
   if (me.admin) {
     const staff = staffAll_().filter(x => x.active && (inScope_(me, x.loc) || !x.loc)).map(x => norm_(x.name));
-    out.pendingTrips = tripRows_().filter(t => t.status === 'Submitted' && staff.indexOf(norm_(t.name)) >= 0).length;
-    out.pendingPunch = punchesOn_(null, null).filter(p => p.approved === 'Pending' && staff.indexOf(norm_(p.name)) >= 0).length;
+    out.pendingTrips = can_(me, 'trips') ? tripRows_().filter(t => t.status === 'Submitted' && staff.indexOf(norm_(t.name)) >= 0).length : 0;
+    out.pendingPunch = can_(me, 'approve') ? punchesOn_(null, null).filter(p => p.approved === 'Pending' && staff.indexOf(norm_(p.name)) >= 0).length : 0;
   }
+  out.rightsList = RRIGHTS.map(r => ({ key: r[0], label: r[1] }));
   return out;
 }
 
@@ -910,7 +995,7 @@ function installTriggers() {
 }
 function nightlySummary() {
   const to = String(setv_('Summary email') || '').trim(); if (!to) return;
-  const date = today_(), staff = staffAll_().filter(s => s.active);
+  const date = today_(), staff = staffAll_().filter(s => tracked_(s));
   const days = daysFor_(staff.map(s => s.name), date, date, false);
   const line = x => '• ' + x.name + (x.loc ? ' (' + x.loc + ')' : '') + ' – ' + x.status + (x.in ? ', in ' + x.in + (x.out ? ' out ' + x.out : '') : '') + (x.flags.length ? ' – ' + x.flags.join('; ') : '');
   const absent = days.filter(x => x.status === 'Absent'), flagged = days.filter(x => x.status !== 'Absent' && x.flags.length);
