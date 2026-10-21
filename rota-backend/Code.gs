@@ -203,7 +203,15 @@ function setup() {
   CacheService.getScriptCache().remove('settings');
   return 'Setup done.';
 }
-function ensureSetup_() { if (!PropertiesService.getScriptProperties().getProperty('SETUP_V1')) { setup(); PropertiesService.getScriptProperties().setProperty('SETUP_V1', '1'); } }
+function ensureSetup_() {
+  const p = PropertiesService.getScriptProperties();
+  if (!p.getProperty('SETUP_V1')) { setup(); p.setProperty('SETUP_V1', '1'); }
+  if (!p.getProperty('GOLIVE_V1')) {                 // the day the app is first used = "Attendance starts on" (earlier days count as paid)
+    p.setProperty('GOLIVE_V1', '1');
+    if (!setv_('Attendance starts on')) { const sh = tab_('set'), keys = rows_('set').map(r => s_(r[0])), i = keys.indexOf('Attendance starts on');
+      if (i >= 0) sh.getRange(i + 2, 2).setValue(today_()); CacheService.getScriptCache().remove('settings'); }
+  }
+}
 
 // ───────────────────────────── settings ─────────────────────────────
 function settings_() {
