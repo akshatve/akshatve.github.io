@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F2A44">
+<title>Nutvique Staff</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Staff Rota">
+<script>
+window.ROTA_API = '__ROTA_API__';
+window.INV_API = 'https://script.google.com/macros/s/AKfycbzzWrQoosUFIlSWu4-jvlaG7j2CYpWTcgw6wByaY2aQD6vZ5tWIOJ36wyk1XMT8sM3RHQ/exec';
+</script>
+<style>
+:root{--navy:#1F2A44;--navy2:#2B3A5E;--gold:#C9A24A;--gold2:#e9d9ad;--cream:#F7F1DE;--bg:#F4F2EC;--card:#fff;--ink:#1d2433;--mute:#6b7280;--line:#e4e1d8;
+--ok:#167a4a;--okbg:#e5f4ec;--warn:#9a5b00;--warnbg:#fff3dc;--bad:#b42318;--badbg:#fde8e6;--blue:#1d4ed8;--bluebg:#e6edff;--r:14px;
+--m:#e7f0ff;--mi:#1d4ed8;--e:#f3e8ff;--ei:#6d28d9;--off:#eceae4;--offi:#57534e}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:20;background:var(--navy);color:var(--cream);padding:calc(10px + env(safe-area-inset-top)) 16px 10px;display:flex;align-items:center;gap:10px}
+header .brand{font-weight:800;letter-spacing:.14em;font-size:14px}header .brand small{display:block;font-weight:500;letter-spacing:.02em;font-size:11px;color:var(--gold2)}
+header .sp{flex:1}header .who{font-size:12px;text-align:right;color:var(--gold2)}header .who b{display:block;color:var(--cream);font-size:13px}
+main{padding:14px 14px calc(90px + env(safe-area-inset-bottom));max-width:860px;margin:0 auto}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#fff;border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+nav.tabs button{flex:1;border:0;background:none;padding:8px 2px 7px;font-size:11px;color:var(--mute);display:flex;flex-direction:column;align-items:center;gap:2px;position:relative;min-width:0}
+nav.tabs button svg{width:22px;height:22px}nav.tabs button.on{color:var(--navy);font-weight:700}nav.tabs button.on svg{color:var(--gold)}
+nav.tabs .dot{position:absolute;top:4px;left:calc(50% + 6px);background:var(--bad);color:#fff;border-radius:9px;font-size:10px;padding:0 5px;line-height:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px}
+.card h2{font-size:15px;margin:0 0 8px}.card h3{font-size:13px;margin:12px 0 6px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+h1.pg{font-size:20px;margin:4px 2px 12px}
+.row{display:flex;gap:8px;align-items:center}.row.wrap{flex-wrap:wrap}.grow{flex:1;min-width:0}.right{text-align:right}.mute{color:var(--mute)}.small{font-size:12.5px}.tiny{font-size:11.5px}
+.btn{border:0;border-radius:12px;background:var(--navy);color:var(--cream);padding:12px 16px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn:disabled{opacity:.5}.btn.gold{background:var(--gold);color:#1d1606}.btn.ok{background:var(--ok);color:#fff}.btn.bad{background:var(--bad);color:#fff}
+.btn.ghost{background:#fff;color:var(--navy);border:1.5px solid var(--line)}.btn.sm{padding:7px 11px;font-size:13px;border-radius:10px}.btn.full{width:100%}
+.btn.huge{width:100%;padding:20px;font-size:19px;border-radius:18px;box-shadow:0 6px 18px rgba(31,42,68,.18)}
+.chip{display:inline-block;border-radius:20px;padding:2px 9px;font-size:12px;font-weight:600;background:var(--off);color:var(--offi);white-space:nowrap}
+.chip.ok{background:var(--okbg);color:var(--ok)}.chip.warn{background:var(--warnbg);color:var(--warn)}.chip.bad{background:var(--badbg);color:var(--bad)}.chip.blue{background:var(--bluebg);color:var(--blue)}
+.chip.M{background:var(--m);color:var(--mi)}.chip.E{background:var(--e);color:var(--ei)}
+label.f{display:block;margin:10px 0 4px;font-size:12.5px;font-weight:600;color:var(--mute)}
+input.i,select.i,textarea.i{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:10px 11px;background:#fff}
+input.i:focus,select.i:focus,textarea.i:focus{outline:none;border-color:var(--gold)}
+.pills{display:flex;flex-wrap:wrap;gap:6px}.pills button{border:1.5px solid var(--line);background:#fff;border-radius:20px;padding:7px 12px;font-size:13px}
+.pills button.on{background:var(--navy);color:var(--cream);border-color:var(--navy)}
+.list>div{padding:10px 0;border-top:1px solid var(--line)}.list>div:first-child{border-top:0}
+.warnbox{background:var(--warnbg);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:13px;margin:8px 0}.warnbox.bad{background:var(--badbg);color:var(--bad)}.warnbox.ok{background:var(--okbg);color:var(--ok)}.warnbox.blue{background:var(--bluebg);color:var(--blue)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));background:var(--ink);color:#fff;padding:11px 16px;border-radius:12px;z-index:90;max-width:92vw;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,.2)}
+.toast.err{background:var(--bad)}
+.busy{position:fixed;inset:0;background:rgba(244,242,236,.75);z-index:80;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;font-weight:600}
+.spin{width:28px;height:28px;border:3px solid var(--gold2);border-top-color:var(--navy);border-radius:50%;animation:sp 0.8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.sheet{position:fixed;inset:0;z-index:60;background:rgba(15,20,35,.45);display:flex;align-items:flex-end;justify-content:center}
+.sheet>.in{background:var(--bg);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(18px + env(safe-area-inset-bottom))}
+.sheet .hd{display:flex;align-items:center;gap:8px;margin-bottom:10px}.sheet .hd h2{flex:1;margin:0;font-size:17px}.x{border:0;background:#fff;border-radius:50%;width:34px;height:34px;font-size:18px}
+/* clock */
+.clock{background:linear-gradient(160deg,var(--navy),var(--navy2));color:var(--cream);border:0}
+.clock .time{font-size:44px;font-weight:800;letter-spacing:.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.clock .date{color:var(--gold2);font-size:13px}.clock .st{margin-top:12px;font-size:16px;font-weight:700}.clock .sub{font-size:13px;color:var(--gold2)}
+.clock .meter{height:8px;background:rgba(255,255,255,.15);border-radius:6px;margin-top:10px;overflow:hidden}.clock .meter i{display:block;height:100%;background:var(--gold)}
+.tl{position:relative;margin-left:8px;padding-left:18px;border-left:2px solid var(--line)}.tl>div{position:relative;padding:6px 0}
+.tl>div:before{content:'';position:absolute;left:-25px;top:11px;width:10px;height:10px;border-radius:50%;background:var(--gold);border:2px solid #fff}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px}.kpi b{display:block;font-size:20px}.kpi span{font-size:11.5px;color:var(--mute)}
+/* camera */
+.cam{position:relative;background:#000;border-radius:16px;overflow:hidden;aspect-ratio:3/4;max-height:58vh;margin:0 auto}
+.cam video,.cam img{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}.cam img{transform:none}
+.cam .ring{position:absolute;inset:12% 18% 22%;border:3px dashed rgba(255,255,255,.6);border-radius:50%}
+/* rota grid */
+.grid{width:100%;border-collapse:separate;border-spacing:3px;table-layout:fixed}.grid th{font-size:11px;color:var(--mute);font-weight:600;padding:2px 0}
+.grid th.nm,.grid td.nm{width:92px;text-align:left;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grid td.c{height:38px;border-radius:9px;text-align:center;font-size:12px;font-weight:700;cursor:pointer;background:#fff;border:1px dashed var(--line);padding:0}
+.grid td.c.M{background:var(--m);color:var(--mi);border:0}.grid td.c.E{background:var(--e);color:var(--ei);border:0}.grid td.c.OFF{background:var(--off);color:var(--offi);border:0}
+.grid td.c.LP,.grid td.c.LU,.grid td.c.HOL{background:var(--warnbg);color:var(--warn);border:0}.grid td.c.CUST{background:var(--okbg);color:var(--ok);border:0}
+.grid td.c small{display:block;font-size:9px;font-weight:500;opacity:.8}.grid tr.loc td{font-size:11px;font-weight:800;color:var(--gold);letter-spacing:.06em;text-transform:uppercase;padding-top:10px}
+.grid td.cov{font-size:10px;text-align:center;color:var(--mute)}.grid td.cov.bad{color:var(--bad);font-weight:700}
+.grid th.today{color:var(--navy);font-weight:800}
+.person{display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line);cursor:pointer}.person:first-child{border-top:0}
+.av{width:38px;height:38px;border-radius:50%;background:var(--navy);color:var(--cream);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex:none}
+.lock{max-width:420px;margin:0 auto;padding:30px 18px;text-align:center}.lock h1{letter-spacing:.2em;color:var(--navy);margin:10px 0 2px}.lock p{color:var(--mute)}
+.names{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0;text-align:left}.names button{border:1.5px solid var(--line);background:#fff;border-radius:12px;padding:10px;text-align:left}
+.names button small{display:block;color:var(--mute);font-size:11px}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:280px;margin:14px auto}.pad button{border:0;background:#fff;border-radius:16px;height:58px;font-size:22px;font-weight:700;box-shadow:0 1px 0 var(--line)}
+.dots{display:flex;gap:12px;justify-content:center;margin:12px 0}.dots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--navy)}.dots i.f{background:var(--navy)}
+table.t{width:100%;border-collapse:collapse;font-size:13px}table.t th{text-align:left;font-size:11.5px;color:var(--mute);font-weight:600;padding:6px 4px;border-bottom:1px solid var(--line)}
+table.t td{padding:7px 4px;border-bottom:1px solid var(--line);vertical-align:top}table.t td.n,table.t th.n{text-align:right;font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+a{color:var(--blue)}
+.seg{display:flex;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:3px;gap:3px;margin-bottom:12px}.seg button{flex:1;border:0;background:none;border-radius:9px;padding:8px 4px;font-size:13px;font-weight:600;color:var(--mute)}
+.seg button.on{background:var(--navy);color:var(--cream)}
+@media (min-width:700px){.grid th.nm,.grid td.nm{width:150px}.grid td.c{height:44px}}
+</style>
+</head>
+<body>
+<div id="app"><div class="lock"><div class="spin" style="margin:60px auto"></div></div></div>
+<script>
+'use strict';
+/* ───────────── basics ───────────── */
+const S = { token: '', user: null, b: null, tab: 'today', offset: 0 };
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = { get(k) { try { return localStorage.getItem('nvrota_' + k); } catch (e) { return null; } }, set(k, v) { try { v == null ? localStorage.removeItem('nvrota_' + k) : localStorage.setItem('nvrota_' + k, v); } catch (e) { } } };
+const pad = n => String(n).padStart(2, '0');
+const ymd = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const now = () => new Date(Date.now() + S.offset);
+const today = () => ymd(now());
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const pd = s => { const p = String(s).split('-').map(Number); return new Date(p[0], p[1] - 1, p[2], 12); };
+const addD = (s, n) => { const d = pd(s); d.setDate(d.getDate() + n); return ymd(d); };
+const monday = s => { const d = pd(s || today()); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return ymd(d); };
+const dLabel = s => { const d = pd(s); return DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()]; };
+const hmin = m => { m = Math.max(0, Math.round(m || 0)); return Math.floor(m / 60) + 'h ' + pad(m % 60) + 'm'; };
+const toMin = hm => { const m = /^(\d{1,2}):(\d{2})/.exec(hm || ''); return m ? (+m[1]) * 60 + (+m[2]) : 0; };
+const rs = n => '₹' + Math.round(n || 0).toLocaleString('en-IN');
+const initials = n => String(n).split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+const SHIFT = { M: 'Morning', E: 'Evening', OFF: 'Weekly off', LP: 'Leave (paid)', LU: 'Leave (unpaid)', HOL: 'Holiday', CUST: 'Custom' };
+const SHORT = { M: 'M', E: 'E', OFF: 'Off', LP: 'L', LU: 'LU', HOL: 'Hol', CUST: '⏱' };
+function phoneId() { let id = store.get('phone'); if (!id) { id = 'PH-' + Array.from(crypto.getRandomValues(new Uint8Array(9))).map(b => b.toString(16).padStart(2, '0')).join(''); store.set('phone', id); } return id; }
+
+let toastT;
+function toast(msg, err) { let t = $('.toast'); if (!t) { t = document.createElement('div'); document.body.appendChild(t); } t.className = 'toast' + (err ? ' err' : ''); t.textContent = msg; clearTimeout(toastT); toastT = setTimeout(() => t.remove(), err ? 6500 : 3200); }
+function busy(msg) { const b = document.createElement('div'); b.className = 'busy'; b.innerHTML = '<div class="spin"></div><div>' + esc(msg || 'Working…') + '</div>'; document.body.appendChild(b); return { done: () => b.remove(), set: m => { b.lastChild.textContent = m; } }; }
+async function run(msg, fn) { const b = busy(msg); try { return await fn(b); } catch (e) { toast(e.message, true); throw e; } finally { b.done(); } }
+function sheet(title, html, onClose) {
+  const el = document.createElement('div'); el.className = 'sheet';
+  el.innerHTML = '<div class="in"><div class="hd"><h2>' + esc(title) + '</h2><button class="x" aria-label="Close">×</button></div><div class="bd">' + html + '</div></div>';
+  const close = () => { el.remove(); if (onClose) onClose(); };
+  el.querySelector('.x').onclick = close; el.onclick = e => { if (e.target === el) close(); };
+  document.body.appendChild(el); return { el: el, body: el.querySelector('.bd'), close: close };
+}
+
+/* ───────────── server ───────────── */
+async function post(url, body) {
+  const go = () => fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) }).then(r => r.json());
+  let j;
+  try { j = await go(); } catch (e) { await new Promise(r => setTimeout(r, 1500)); try { j = await go(); } catch (e2) { throw new Error('No internet connection – check Wi-Fi / mobile data and try again.'); } }
+  if (!j || !j.ok) { const m = (j && j.e) || 'Server error'; if (/Signed out/.test(m)) { signOut(true); } throw new Error(m); }
+  return j.r;
+}
+const inv = (action, data) => post(window.INV_API, { token: S.token, action: action, data: data || {} });
+const call = (action, data) => post(window.ROTA_API, { token: S.token, action: action, data: data || {} });
+
+/* ───────────── location + camera ───────────── */
+function getPos(onProgress) {
+  return new Promise((res, rej) => {
+    if (!navigator.geolocation) return rej(new Error('This phone cannot share its location.'));
+    let best = null, done = false;
+    const finish = () => { if (done) return; done = true; navigator.geolocation.clearWatch(w); clearTimeout(t); best ? res(best) : rej(new Error('Could not get your location. Turn on Location / GPS and try again.')); };
+    const w = navigator.geolocation.watchPosition(p => {
+      const c = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) };
+      if (!best || c.acc < best.acc) best = c;
+      if (onProgress) onProgress(best);
+      if (best.acc <= 35) finish();
+    }, e => {
+      if (e.code === 1) { done = true; navigator.geolocation.clearWatch(w); clearTimeout(t); rej(new Error('Location permission is blocked. Allow Location for this app in phone Settings → Apps → Chrome (or Safari) → Location, then try again.')); }
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+    const t = setTimeout(finish, 15000);
+  });
+}
+function haversine(a, b, c, d) { const R = 6371000, r = x => x * Math.PI / 180, dLat = r(c - a), dLng = r(d - b); const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); }
+function nearestLoc(p) {
+  let best = null; (S.b.locations || []).filter(l => l.lat != null).forEach(l => { const d = haversine(p.lat, p.lng, l.lat, l.lng); if (!best || d < best.d) best = { name: l.name, d: d, r: l.radius }; });
+  return best;
+}
+const distTxt = d => d >= 1000 ? (d / 1000).toFixed(1) + ' km' : Math.round(d) + ' m';
+/** Front-camera selfie → resized JPEG (base64) with the name and time printed on it. */
+function selfie(title) {
+  return new Promise((resolve, reject) => {
+    const sh = sheet(title || 'Selfie', '<div class="cam"><video playsinline autoplay muted></video><div class="ring"></div></div>' +
+      '<p class="small mute" style="text-align:center">Face in the circle, then tap the button.</p><button class="btn gold huge snap">📸 Take selfie</button>' +
+      '<input type="file" accept="image/*" capture="user" style="display:none">', () => { stop(); if (!got) reject(new Error('Selfie cancelled.')); });
+    let stream = null, got = false;
+    const video = sh.el.querySelector('video'), file = sh.el.querySelector('input');
+    const stop = () => { if (stream) stream.getTracks().forEach(t => t.stop()); };
+    const finish = (src, w, h) => {
+      const c = document.createElement('canvas'), W = 480, H = Math.round(W * h / w); c.width = W; c.height = H;
+      const x = c.getContext('2d'); x.drawImage(src, 0, 0, W, H);
+      x.fillStyle = 'rgba(0,0,0,.55)'; x.fillRect(0, H - 46, W, 46); x.fillStyle = '#fff'; x.font = 'bold 17px sans-serif';
+      const n = now(); x.fillText(S.user.name + '  ·  ' + dLabel(ymd(n)) + '  ' + pad(n.getHours()) + ':' + pad(n.getMinutes()), 12, H - 18);
+      got = true; stop(); sh.el.remove(); resolve(c.toDataURL('image/jpeg', 0.62));
+    };
+    sh.el.querySelector('.snap').onclick = () => {
+      if (stream && video.videoWidth) {
+        const c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight;
+        const x = c.getContext('2d'); x.translate(c.width, 0); x.scale(-1, 1); x.drawImage(video, 0, 0);
+        finish(c, c.width, c.height);
+      } else file.click();
+    };
+    file.onchange = () => { const f = file.files[0]; if (!f) return; const img = new Image(); img.onload = () => finish(img, img.naturalWidth, img.naturalHeight); img.src = URL.createObjectURL(f); };
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 720 } }, audio: false })
+        .then(s => { stream = s; video.srcObject = s; })
+        .catch(() => { sh.el.querySelector('.cam').innerHTML = '<div style="color:#fff;padding:30px;text-align:center">Camera not allowed here – tap the button to use the phone camera.</div>'; });
+    }
+  });
+}
+function pickPhoto(cb) {
+  const f = document.createElement('input'); f.type = 'file'; f.accept = 'image/*';
+  f.onchange = () => { const file = f.files[0]; if (!file) return; const img = new Image(); img.onload = () => {
+    const W = Math.min(1100, img.naturalWidth), H = Math.round(W * img.naturalHeight / img.naturalWidth), c = document.createElement('canvas'); c.width = W; c.height = H;
+    c.getContext('2d').drawImage(img, 0, 0, W, H); cb(c.toDataURL('image/jpeg', 0.7)); }; img.src = URL.createObjectURL(file); };
+  f.click();
+}
+
+/* ───────────── sign in (same people & PINs as the Nutvique app) ───────────── */
+async function start() {
+  S.token = store.get('token') || '';
+  if (!S.token) { try { const t = localStorage.getItem('nvinv_token'); if (t) { S.token = t; S.borrowed = true; } } catch (e) { } }   // already signed in to the Nutvique app on this phone
+  if (!S.token) return loginScreen();
+  try { await boot(); } catch (e) { if (!S.token) return; $('#app').innerHTML = '<div class="lock"><h1>NUTVIQUE</h1><p class="warnbox bad">' + esc(e.message) + '</p><button class="btn" onclick="location.reload()">Try again</button></div>'; }
+}
+function signOut(quiet) {
+  let shared = S.borrowed; try { shared = shared || localStorage.getItem('nvinv_token') === S.token; } catch (e) { }
+  if (S.token && !quiet && !shared) inv('logout').catch(() => { });   // never sign the billing app out from here
+  S.token = ''; S.borrowed = false; store.set('token', null); S.user = null; S.b = null;
+  stopTrail(); loginScreen();
+}
+async function loginScreen() {
+  $('#app').innerHTML = '<div class="lock"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#C9A24A" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' +
+    '<h1>NUTVIQUE</h1><p>Staff attendance &amp; rota</p><div class="names"><div class="spin" style="margin:20px auto;grid-column:1/3"></div></div></div>';
+  let names;
+  try { names = await post(window.INV_API, { action: 'loginNames' }); } catch (e) { $('.names').innerHTML = '<p class="warnbox bad" style="grid-column:1/3">' + esc(e.message) + '</p><button class="btn" style="grid-column:1/3" onclick="loginScreen()">Try again</button>'; return; }
+  const last = store.get('lastName');
+  const list = names.names.slice().sort((a, b) => (a.name === last ? -1 : b.name === last ? 1 : a.name < b.name ? -1 : 1));
+  $('.names').innerHTML = '<p class="small mute" style="grid-column:1/3;margin:0">Tap your name</p>' + list.map(n => '<button data-n="' + esc(n.name) + '"><b>' + esc(n.name) + '</b><small>' + esc(n.home || n.role) + '</small></button>').join('') +
+    (names.owner ? '<button data-n="Owner" style="grid-column:1/3;text-align:center"><b>Owner</b></button>' : '');
+  document.querySelectorAll('.names button').forEach(b => b.onclick = () => pinScreen(b.dataset.n));
+}
+function pinScreen(name, title, onDone) {
+  let pin = '';
+  const el = $('#app');
+  el.innerHTML = '<div class="lock"><div class="av" style="margin:10px auto;width:60px;height:60px;font-size:20px">' + esc(initials(name)) + '</div><h2 style="margin:4px 0">' + esc(name) + '</h2>' +
+    '<p class="small">' + esc(title || 'Your Nutvique PIN (same as the billing app)') + '</p><div class="dots"></div><div class="pad"></div><button class="btn ghost sm back">← Not me</button></div>';
+  const dots = () => { el.querySelector('.dots').innerHTML = [0, 1, 2, 3].concat(pin.length > 4 ? [4, 5].slice(0, pin.length - 4) : []).map(i => '<i class="' + (i < pin.length ? 'f' : '') + '"></i>').join(''); };
+  el.querySelector('.pad').innerHTML = [1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, 'OK'].map(k => '<button data-k="' + k + '"' + (k === 'OK' ? ' style="background:var(--navy);color:var(--cream);font-size:16px"' : '') + '>' + (k === 'C' ? '⌫' : k) + '</button>').join('');
+  el.querySelector('.back').onclick = () => onDone ? onDone(null) : loginScreen();
+  const submit = async () => {
+    if (pin.length < 4) return toast('Type your PIN');
+    if (onDone) return onDone(pin);
+    try {
+      const r = await run('Signing in…', () => post(window.INV_API, { action: 'login', data: { name: name, pin: pin } }));
+      S.token = r.token; S.borrowed = false; store.set('token', r.token); store.set('lastName', name);
+      if (r.user.mustChange) return changePin(true);
+      await boot();
+    } catch (e) { pin = ''; dots(); }
+  };
+  el.querySelectorAll('.pad button').forEach(b => b.onclick = () => {
+    const k = b.dataset.k; if (k === 'C') pin = pin.slice(0, -1); else if (k === 'OK') return submit(); else if (pin.length < 6) pin += k;
+    dots(); if (navigator.vibrate) navigator.vibrate(8);
+  });
+  dots();
+}
+function changePin(forced) {
+  const sh = sheet(forced ? 'Choose your own PIN' : 'Change PIN', (forced ? '<p class="warnbox blue">First sign-in: choose your own 4–6 digit PIN. It also works in the Nutvique billing app.</p>' : '') +
+    '<label class="f">Current PIN</label><input class="i" type="password" inputmode="numeric" id="p0" maxlength="6"><label class="f">New PIN</label><input class="i" type="password" inputmode="numeric" id="p1" maxlength="6">' +
+    '<label class="f">New PIN again</label><input class="i" type="password" inputmode="numeric" id="p2" maxlength="6"><br><br><button class="btn full" id="pgo">Save PIN</button>', () => { if (forced && !S.b) boot().catch(() => { }); });
+  sh.el.querySelector('#pgo').onclick = async () => {
+    const a = sh.el.querySelector('#p0').value, b = sh.el.querySelector('#p1').value, c = sh.el.querySelector('#p2').value;
+    if (b !== c) return toast('The new PINs do not match.', true);
+    await run('Saving…', () => inv('changePin', { old: a, pin: b }));
+    toast('PIN changed'); sh.close(); if (forced) await boot();
+  };
+}
+
+/* ───────────── app shell ───────────── */
+async function boot() {
+  const t0 = Date.now();
+  const b = await call('boot');
+  S.b = b; S.user = b.me;
+  if (b.day && b.day.now) S.offset = new Date(b.day.now).getTime() - (t0 + Date.now()) / 2;
+  if (!b.day && !b.me.admin) { $('#app').innerHTML = '<div class="lock"><h1>NUTVIQUE</h1><p class="warnbox">You are not on the staff list yet. Ask head office.</p><button class="btn ghost" onclick="signOut()">Sign out</button></div>'; return; }
+  const tabs = tabList();
+  if (!tabs.some(t => t.k === S.tab)) S.tab = tabs[0].k;
+  shell(); go(S.tab);
+  if (b.day && b.day.trip) startTrail(b.day.trip);
+}
+const ICON = {
+  today: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  rota: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  trips: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+  team: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><circle cx="17" cy="9" r="2.7"/><path d="M16.5 14.5c2.6.2 4.4 2 5 4.8"/></svg>',
+  plan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M9 9v12M15 9v12M3 15h18"/></svg>',
+  more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>'
+};
+function tabList() {
+  const b = S.b, t = [];
+  if (b.day) t.push({ k: 'today', l: 'Today' }, { k: 'rota', l: 'My rota' }, { k: 'trips', l: 'Trips' });
+  if (b.me.admin) t.push({ k: 'team', l: 'Team', dot: (b.pendingPunch || 0) }, { k: 'plan', l: 'Rota plan' });
+  t.push({ k: 'more', l: 'More', dot: b.me.admin ? (b.pendingTrips || 0) : 0 });
+  return t;
+}
+function shell() {
+  const u = S.user;
+  $('#app').innerHTML = '<header><div class="brand">NUTVIQUE<small>Staff rota</small></div><div class="sp"></div><div class="who"><b>' + esc(u.name) + '</b>' + esc(u.staffLoc || u.home || u.role) + '</div></header>' +
+    '<main id="main"></main><nav class="tabs">' + tabList().map(t => '<button data-t="' + t.k + '">' + ICON[t.k] + '<span>' + t.l + '</span>' + (t.dot ? '<i class="dot">' + t.dot + '</i>' : '') + '</button>').join('') + '</nav>';
+  document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => go(b.dataset.t));
+}
+function go(t) {
+  S.tab = t; clearInterval(S.tick);
+  document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  const m = $('#main'); m.innerHTML = ''; window.scrollTo(0, 0);
+  ({ today: viewToday, rota: viewRota, trips: viewTrips, team: viewTeam, plan: viewPlan, more: viewMore })[t](m);
+}
+async function refreshBoot() { const b = await call('boot'); S.b = b; const tb = document.querySelectorAll('nav.tabs button'); if (tb.length !== tabList().length) shell(); return b; }
+
+/* ───────────── TODAY (clock in / break / out) ───────────── */
+function viewToday(m) {
+  const d = S.b.day;
+  const sh = d.shift;
+  const st = d.state, c = d.calc || {};
+  const shiftTxt = sh ? (sh.start ? sh.label + ' ' + sh.start + '–' + sh.end : sh.label) + (sh.loc ? ' · ' + sh.loc : '') : 'No shift on the rota today';
+  const last = d.punches[d.punches.length - 1];
+  let status = 'Not clocked in', sub = shiftTxt;
+  if (st === 'IN') { status = 'Working'; sub = 'Since ' + (d.punches.filter(p => p.type === 'IN').pop() || {}).time + ' · worked ' + hmin(c.worked); }
+  if (st === 'BREAK') { status = 'On break'; sub = 'Since ' + last.time; }
+  if (st === 'OUT') { status = 'Clocked out at ' + last.time; sub = 'Worked ' + hmin(c.worked) + (c.breakMin ? ' · break ' + c.breakMin + ' min' : ''); }
+  const shiftLen = sh && sh.start ? toMin(sh.end) - toMin(sh.start) : 540;
+  const pct = Math.min(100, Math.round(((c.credited || 0) / shiftLen) * 100));
+  const btns = {
+    OUT_NONE: '<button class="btn gold huge" data-p="IN">⏱ Clock in</button>',
+    OUT: '<button class="btn gold huge" data-p="IN">⏱ Clock in again</button>',
+    IN: '<button class="btn huge" data-p="BO" style="background:#fff;color:var(--navy);border:2px solid var(--navy)">☕ Start break</button><div style="height:10px"></div><button class="btn bad huge" data-p="OUT">🏁 Clock out</button>',
+    BREAK: '<button class="btn ok huge" data-p="BI">↩ Back from break</button><div style="height:10px"></div><button class="btn ghost full" data-p="OUT">Clock out (end of day)</button>'
+  }[st];
+  m.innerHTML = '<div class="card clock"><div class="date">' + esc(dLabel(today())) + '</div><div class="time" id="clk"></div>' +
+    '<div class="st">' + esc(status) + '</div><div class="sub" id="sub">' + esc(sub) + '</div>' +
+    (st !== 'OUT_NONE' ? '<div class="meter"><i style="width:' + pct + '%"></i></div><div class="sub" style="margin-top:4px">' + hmin(c.credited) + ' of ' + hmin(shiftLen) + ' shift' + (c.late ? ' · late ' + c.late + ' min' : '') + '</div>' : '') +
+    (st === 'BREAK' ? '<div class="sub" id="brk" style="margin-top:6px"></div>' : '') + '</div>' +
+    (d.trip ? '<div class="warnbox blue">🛵 Trip running: ' + esc(d.trip.purpose) + ' – <a href="#" onclick="go(\'trips\');return false">open</a></div>' : '') +
+    '<div class="card" style="background:none;border:0;padding:4px 0">' + btns + '</div>' +
+    '<div class="card"><h2>Today</h2>' + (d.punches.length ? '<div class="tl">' + d.punches.map(p => '<div><b>' + esc(p.time) + '</b> · ' + esc(p.label) +
+      '<div class="small mute">' + esc(p.loc || '') + (p.inside ? ' ✓' : ' – outside store') + (p.approved === 'Pending' ? ' · <span class="chip warn">waiting for approval</span>' : '') + (p.flags ? ' · ' + esc(p.flags) : '') + '</div></div>').join('') + '</div>'
+      : '<p class="mute small">Nothing yet. Clock in when you reach the store – the app checks your location and takes a selfie.</p>') + '</div>' +
+    '<button class="btn ghost full" onclick="viewMonthSheet()">📊 My hours this month</button>';
+  m.querySelectorAll('[data-p]').forEach(b => b.onclick = () => doPunch(b.dataset.p));
+  const tick = () => {
+    const n = now(); const el = $('#clk'); if (!el) return clearInterval(S.tick);
+    el.textContent = pad(n.getHours()) + ':' + pad(n.getMinutes()) + ':' + pad(n.getSeconds());
+    if (st === 'BREAK') { const bm = Math.round((n - new Date(today() + 'T' + last.time + ':00')) / 60000), allow = S.b.breakAllow || 60; const b = $('#brk'); if (b) b.textContent = 'Break ' + bm + ' min' + (bm > allow ? ' – ' + (bm - allow) + ' min over the allowed break' : ''); }
+  };
+  tick(); S.tick = setInterval(tick, 1000);
+}
+async function doPunch(type, reason, selfieData) {
+  const label = { IN: 'Clock in', BO: 'Start break', BI: 'Back from break', OUT: 'Clock out' }[type];
+  if (type === 'OUT' && !reason && !confirm('Clock out for the day?')) return;
+  let pos;
+  const b = busy('Finding your location…');
+  try { pos = await getPos(p => { const n = nearestLoc(p); b.set('Finding your location… ±' + p.acc + ' m' + (n ? ' · ' + distTxt(n.d) + ' from ' + n.name : '')); }); }
+  catch (e) { b.done(); return toast(e.message, true); }
+  b.done();
+  if (pos.acc > (S.b.maxAcc || 250)) return toast('GPS is not precise yet (±' + pos.acc + ' m). Step near the store entrance or a window and try again.', true);
+  let pic = selfieData || '';
+  if (S.b.selfie && !pic) { try { pic = await selfie(label + ' – selfie'); } catch (e) { return toast(e.message, true); } }
+  let r;
+  try { r = await run('Saving…', () => call('punch', { type: type, lat: pos.lat, lng: pos.lng, acc: pos.acc, selfie: pic, phone: phoneId(), reason: reason || '' })); }
+  catch (e) { return; }
+  if (r.needReason) {
+    const n = r.near;
+    const sh = sheet('You are not at a store', '<p class="warnbox">' + (n ? 'You are ' + distTxt(n.dist) + ' from ' + esc(n.name) + '.' : 'No store is near you.') + ' If you are working somewhere else (event, warehouse, delivery), write where and why. A manager has to approve it before it counts.</p>' +
+      '<label class="f">Where are you and why?</label><textarea class="i" rows="3" id="rsn" placeholder="e.g. Event stall at ATS Bouquet"></textarea><br><br><button class="btn full" id="rgo">Send for approval</button>');
+    sh.el.querySelector('#rgo').onclick = () => { const v = sh.el.querySelector('#rsn').value.trim(); if (v.length < 5) return toast('Write where you are.', true); sh.close(); doPunch(type, v, pic); };
+    return;
+  }
+  S.b.day = r; if (navigator.vibrate) navigator.vibrate([20, 40, 20]);
+  toast('✓ ' + r.saved.label + ' at ' + r.saved.time + (r.saved.flags.length ? ' – ' + r.saved.flags.join(', ') : ''));
+  go('today');
+}
+
+/* ───────────── MY ROTA ───────────── */
+function viewRota(m) {
+  const weeks = S.b.weeks || [];
+  m.innerHTML = '<h1 class="pg">My rota</h1>' + weeks.map((w, i) => '<div class="card"><h2>' + (i ? 'Next week' : 'This week') + ' <span class="mute small">from ' + esc(dLabel(w.week)) + '</span></h2><div class="list">' +
+    w.days.map(d => '<div class="row"><div style="width:84px" class="' + (d.date === today() ? '' : 'mute') + '"><b>' + esc(DAYS[pd(d.date).getDay()]) + '</b> ' + pd(d.date).getDate() + ' ' + MON[pd(d.date).getMonth()] + '</div>' +
+      '<div class="grow">' + (d.shift ? '<span class="chip ' + esc(d.shift) + (['LP', 'LU', 'HOL'].indexOf(d.shift) >= 0 ? ' warn' : '') + '">' + esc(d.label) + '</span> ' + (d.start ? '<b>' + esc(d.start) + '–' + esc(d.end) + '</b>' : '') : '<span class="mute small">Not planned yet</span>') +
+      (d.loc ? '<div class="tiny mute">' + esc(d.loc) + (d.note ? ' · ' + esc(d.note) : '') + '</div>' : '') + '</div>' + (d.date === today() ? '<span class="chip blue">Today</span>' : '') + '</div>').join('') + '</div></div>').join('') +
+    '<p class="small mute">Weekly off is on a Tuesday, Wednesday or Thursday. Ask your manager for a change.</p>';
+}
+
+/* ───────────── MY HOURS ───────────── */
+async function viewMonthSheet(month) {
+  month = month || today().slice(0, 7);
+  const r = await run('Loading…', () => call('myMonth', { month: month }));
+  const t = r.totals || {};
+  const mm = pd(month + '-01'), prev = ymd(new Date(mm.getFullYear(), mm.getMonth() - 1, 1)).slice(0, 7), next = ymd(new Date(mm.getFullYear(), mm.getMonth() + 1, 1)).slice(0, 7);
+  const sh = sheet('My hours – ' + MON[mm.getMonth()] + ' ' + mm.getFullYear(),
+    '<div class="row" style="margin-bottom:10px"><button class="btn ghost sm" data-m="' + prev + '">‹ ' + MON[pd(prev + '-01').getMonth()] + '</button><div class="grow"></div>' + (next <= today().slice(0, 7) ? '<button class="btn ghost sm" data-m="' + next + '">' + MON[pd(next + '-01').getMonth()] + ' ›</button>' : '') + '</div>' +
+    '<div class="kpis"><div class="kpi"><b>' + (t.paidDays || 0) + '</b><span>paid days so far</span></div><div class="kpi"><b>' + (t.lateDays || 0) + '</b><span>late days</span></div><div class="kpi"><b>' + (t.absent || 0) + '</b><span>absent</span></div>' +
+    '<div class="kpi"><b>' + (t.extraBreak || 0) + 'm</b><span>extra break</span></div><div class="kpi"><b>' + (t.otH || 0) + 'h</b><span>approved overtime</span></div><div class="kpi"><b>' + rs(t.travel) + '</b><span>travel approved</span></div></div>' +
+    (r.showPay ? '<div class="warnbox ok" style="margin-top:10px">Estimated pay so far: <b>' + rs(t.total) + '</b> (salary ' + rs(t.earned) + (t.otPay ? ' + overtime ' + rs(t.otPay) : '') + ' + travel ' + rs(t.travel) + '). Final amount is checked by head office.</div>' : '') +
+    '<h3 style="font-size:13px;color:var(--mute);margin:14px 0 6px">DAYS</h3><div class="card" style="padding:4px 12px"><div class="list">' + r.days.map(dayLine).join('') + '</div></div>');
+  sh.el.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { sh.close(); viewMonthSheet(b.dataset.m); });
+}
+function statusChip(x) {
+  const s = x.status || '';
+  const cls = /^Present$/.test(s) ? 'ok' : /Absent|Half/.test(s) ? 'bad' : /late|Short|Not in yet|No shift/i.test(s) ? 'warn' : /Working|break/i.test(s) ? 'blue' : '';
+  return '<span class="chip ' + cls + '">' + esc(s) + '</span>';
+}
+function dayLine(x) {
+  return '<div><div class="row"><b style="width:92px">' + esc(dLabel(x.date)) + '</b><div class="grow small">' + esc(x.label) + (x.start && ['M', 'E', 'CUST', ''].indexOf(x.shift) >= 0 ? ' ' + esc(x.start) + '–' + esc(x.end) : '') + '</div>' + statusChip(x) + '</div>' +
+    (x.in ? '<div class="tiny mute" style="margin-left:92px">In ' + esc(x.in) + (x.out ? ' · out ' + esc(x.out) : '') + ' · worked ' + hmin(x.worked) + (x.breakMin ? ' · break ' + x.breakMin + 'm' : '') + (x.credit != null && x.credit < 1 && /Present|Short|Half/.test(x.status) ? ' · day ' + Math.round(x.credit * 100) + '%' : '') + '</div>' : '') +
+    (x.flags && x.flags.length ? '<div class="tiny" style="margin-left:92px;color:var(--warn)">' + esc(x.flags.join(' · ')) + '</div>' : '') + (x.fixed ? '<div class="tiny mute" style="margin-left:92px">✎ ' + esc(x.fixed) + '</div>' : '') + '</div>';
+}
+
+/* ───────────── TRIPS (staff) ───────────── */
+let TRAIL = null;
+function startTrail(trip) {
+  if (TRAIL && TRAIL.id === trip.id) return;
+  stopTrail();
+  let pts = []; try { pts = JSON.parse(store.get('trail_' + trip.id) || '[]'); } catch (e) { }
+  TRAIL = { id: trip.id, pts: pts, w: null };
+  if (!navigator.geolocation) return;
+  TRAIL.w = navigator.geolocation.watchPosition(p => {
+    if (p.coords.accuracy > 80) return;
+    const c = [p.coords.latitude, p.coords.longitude, Date.now()], last = TRAIL.pts[TRAIL.pts.length - 1];
+    if (last && haversine(last[0], last[1], c[0], c[1]) < 60 && Date.now() - last[2] < 120000) return;
+    TRAIL.pts.push(c); if (TRAIL.pts.length > 1500) TRAIL.pts.shift();
+    store.set('trail_' + trip.id, JSON.stringify(TRAIL.pts));
+    const k = $('#tkm'); if (k) k.textContent = trailKm(trip).toFixed(1);
+  }, () => { }, { enableHighAccuracy: true, maximumAge: 15000 });
+  try { if (navigator.wakeLock && !TRAIL.lock) navigator.wakeLock.request('screen').then(l => { if (TRAIL) TRAIL.lock = l; }).catch(() => { }); } catch (e) { }
+}
+function stopTrail() { if (TRAIL) { if (TRAIL.w != null) navigator.geolocation.clearWatch(TRAIL.w); try { TRAIL.lock && TRAIL.lock.release(); } catch (e) { } } TRAIL = null; }
+function trailKm(trip) {
+  const pts = [[trip.sLat, trip.sLng]].concat((TRAIL && TRAIL.pts) || []); let d = 0;
+  for (let i = 1; i < pts.length; i++) { const s = haversine(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]); if (s < 5000) d += s; }
+  return d / 1000;
+}
+async function viewTrips(m) {
+  const t = S.b.day && S.b.day.trip;
+  m.innerHTML = '<h1 class="pg">Trips on company work</h1><div id="tnow"></div><div class="card"><h2>My trips</h2><div id="tlist" class="list"><div class="spin" style="margin:10px auto"></div></div></div>' +
+    '<p class="small mute">Own bike / car is paid per km (from the GPS route). For Porter, Rapido, cab, auto or metro, type the exact fare and add a screenshot of the receipt. A manager approves each trip; approved money is added to your salary.</p>';
+  t ? tripRunning(t) : tripForm();
+  call('myTrips').then(r => { const el = $('#tlist'); if (el) el.innerHTML = r.trips.filter(x => x.status !== 'Running').map(tripLine).join('') || '<p class="mute small">No trips in the last 60 days.</p>'; }).catch(e => { const el = $('#tlist'); if (el) el.innerHTML = '<p class="warnbox bad">' + esc(e.message) + '</p>'; });
+}
+function tripLine(t) {
+  const cls = { Approved: 'ok', Rejected: 'bad', Submitted: 'warn', Running: 'blue', Cancelled: '' }[t.status] || '';
+  return '<div><div class="row"><div class="grow"><b>' + esc(t.purpose) + '</b><div class="tiny mute">' + esc(dLabel(t.date)) + ' · ' + esc(t.modeLabel) + (t.km ? ' · ' + t.km + ' km' : '') + (t.fare ? ' · fare ' + rs(t.fare) : '') + '</div>' +
+    '<div class="tiny mute">' + esc(t.startPlace) + ' → ' + esc(t.endPlace || '…') + '</div>' + (t.mnote ? '<div class="tiny" style="color:var(--warn)">' + esc(t.mnote) + '</div>' : '') + '</div>' +
+    '<div class="right"><span class="chip ' + cls + '">' + esc(t.status === 'Submitted' ? 'Waiting' : t.status) + '</span><div><b>' + (t.status === 'Approved' ? rs(t.approved) : t.claimed ? rs(t.claimed) : '') + '</b></div></div></div></div>';
+}
+function tripForm() {
+  const el = $('#tnow'); let mode = store.get('lastMode') || 'bike';
+  el.innerHTML = '<div class="card"><h2>Start a trip</h2><label class="f">Where to and why</label><input class="i" id="tp" placeholder="e.g. Stock from warehouse to Gulshan store">' +
+    '<label class="f">Travelling by</label><div class="pills" id="tm">' + S.b.modes.map(x => '<button data-m="' + x.key + '"' + (x.key === mode ? ' class="on"' : '') + '>' + esc(x.label) + '</button>').join('') + '</div>' +
+    '<p class="tiny mute" id="tmh"></p><button class="btn gold full" id="tgo">▶ Start trip</button></div>';
+  const hint = () => { const x = S.b.modes.find(z => z.key === mode); $('#tmh').textContent = x.kind === 'km' ? 'Paid ' + rs(S.b.rates[mode === 'car' ? 'car' : 'bike']) + ' per km. Keep this app open on the way so the route is recorded.' : x.kind === 'fare' ? 'You will type the actual fare at the end' + (x.receipt ? ' and add the receipt screenshot.' : '.') : 'No money claimed.'; };
+  el.querySelectorAll('#tm button').forEach(b => b.onclick = () => { mode = b.dataset.m; el.querySelectorAll('#tm button').forEach(x => x.classList.toggle('on', x === b)); hint(); });
+  hint();
+  $('#tgo').onclick = async () => {
+    const purpose = $('#tp').value.trim(); if (purpose.length < 4) return toast('Write where you are going.', true);
+    let pos; const b = busy('Finding your location…');
+    try { pos = await getPos(p => b.set('Finding your location… ±' + p.acc + ' m')); } catch (e) { b.done(); return toast(e.message, true); }
+    b.done();
+    const r = await run('Starting…', () => call('tripStart', { purpose: purpose, mode: mode, lat: pos.lat, lng: pos.lng, acc: pos.acc }));
+    store.set('lastMode', mode); S.b.day.trip = r.trip; startTrail(r.trip); toast('Trip started'); go('trips');
+  };
+}
+function tripRunning(t) {
+  const el = $('#tnow'), mins = Math.round((now() - new Date(t.start)) / 60000);
+  el.innerHTML = '<div class="card clock"><div class="date">TRIP RUNNING · ' + esc(t.modeLabel) + '</div><div class="st" style="margin-top:4px">' + esc(t.purpose) + '</div>' +
+    '<div class="sub">From ' + esc(t.startPlace) + ' · started ' + new Date(t.start).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + ' (' + hmin(mins) + ' ago)</div>' +
+    (t.kind === 'km' ? '<div class="time" style="font-size:34px;margin-top:8px"><span id="tkm">' + trailKm(t).toFixed(1) + '</span> km</div><div class="sub">recorded on this phone so far</div>' : '') + '</div>' +
+    '<button class="btn bad huge" id="tend">🏁 End trip</button><div style="height:8px"></div><button class="btn ghost full sm" id="tcan">Cancel this trip (started by mistake)</button>';
+  $('#tend').onclick = () => tripEndSheet(t);
+  $('#tcan').onclick = async () => { if (!confirm('Cancel this trip? Nothing will be claimed.')) return; await run('Cancelling…', () => call('tripCancel', { id: t.id })); stopTrail(); store.set('trail_' + t.id, null); S.b.day.trip = null; go('trips'); };
+}
+async function tripEndSheet(t) {
+  let pos; const b = busy('Finding your location…');
+  try { pos = await getPos(p => b.set('Finding your location… ±' + p.acc + ' m')); } catch (e) { b.done(); return toast(e.message, true); }
+  b.done();
+  const straight = haversine(t.sLat, t.sLng, pos.lat, pos.lng) / 1000, trail = trailKm(t), est = Math.max(trail, straight * 1.3);
+  let receipt = '';
+  const sh = sheet('End trip', '<p class="small">' + esc(t.purpose) + ' · ' + esc(t.modeLabel) + '</p>' +
+    (t.kind === 'km' ? '<div class="warnbox blue">Distance: about <b>' + est.toFixed(1) + ' km</b> (route ' + trail.toFixed(1) + ' km, straight line ' + straight.toFixed(1) + ' km). Claim ≈ <b>' + rs(est * S.b.rates[t.mode === 'car' ? 'car' : 'bike']) + '</b></div>' +
+      '<label class="f">Km (change only if the route was not recorded – your manager sees the GPS figure)</label><input class="i" id="ekm" type="number" inputmode="decimal" step="0.1" value="' + est.toFixed(1) + '">' : '') +
+    (t.kind === 'fare' ? '<label class="f">Fare you paid (₹)</label><input class="i" id="efare" type="number" inputmode="decimal" placeholder="Exact amount from the app / ticket">' +
+      '<label class="f">Receipt screenshot' + (S.b.modes.find(x => x.key === t.mode).receipt ? ' (needed)' : ' (if you have one)') + '</label><button class="btn ghost full" id="erc">📎 Add screenshot / photo</button><div id="erp"></div>' : '') +
+    '<label class="f">Note (optional)</label><input class="i" id="enote" placeholder="e.g. Carried 2 cartons"><br><br><button class="btn full gold" id="ego">Submit trip</button>');
+  const rc = sh.el.querySelector('#erc');
+  if (rc) rc.onclick = () => pickPhoto(d => { receipt = d; sh.el.querySelector('#erp').innerHTML = '<img src="' + d + '" style="max-width:100%;max-height:220px;border-radius:10px;margin-top:8px">'; });
+  sh.el.querySelector('#ego').onclick = async () => {
+    const data = { id: t.id, lat: pos.lat, lng: pos.lng, acc: pos.acc, trail: ((TRAIL && TRAIL.pts) || []).map(p => [p[0], p[1]]), note: sh.el.querySelector('#enote').value, receipt: receipt };
+    if (t.kind === 'km') data.km = sh.el.querySelector('#ekm').value;
+    if (t.kind === 'fare') data.fare = sh.el.querySelector('#efare').value;
+    const r = await run('Submitting…', () => call('tripEnd', data));
+    sh.close(); stopTrail(); store.set('trail_' + t.id, null); S.b.day.trip = null;
+    toast('Trip submitted – ' + (r.trip.claimed ? rs(r.trip.claimed) + ' sent for approval' : 'no cost')); go('trips');
+  };
+}
+
+/* ───────────── TEAM (managers) ───────────── */
+async function viewTeam(m, date) {
+  date = date || S.teamDate || today(); S.teamDate = date;
+  m.innerHTML = '<div class="seg"><button class="on">Day</button><button id="rng">Date range</button></div><div class="row" style="margin-bottom:10px"><button class="btn ghost sm" id="dp">‹</button>' +
+    '<input class="i grow" type="date" id="dd" value="' + date + '" max="' + today() + '"><button class="btn ghost sm" id="dn">›</button><button class="btn ghost sm" id="drf">↻</button></div><div id="tb"><div class="spin" style="margin:30px auto"></div></div>';
+  $('#rng').onclick = () => viewRange(m);
+  $('#dd').onchange = e => viewTeam(m, e.target.value);
+  $('#dp').onclick = () => viewTeam(m, addD(date, -1));
+  $('#dn').onclick = () => { if (date < today()) viewTeam(m, addD(date, 1)); };
+  $('#drf').onclick = () => viewTeam(m, date);
+  let r; try { r = await call('board', { date: date }); } catch (e) { $('#tb').innerHTML = '<p class="warnbox bad">' + esc(e.message) + '</p>'; return; }
+  if (S.tab !== 'team') return;
+  S.b.pendingPunch = r.pendingPunch; S.b.pendingTrips = r.pendingTrips;
+  const ppl = r.people, cnt = k => ppl.filter(x => k(x)).length;
+  const on = x => /Working|break|Left|Present|Short|Half|Worked/i.test(x.status);
+  const groups = {}; ppl.forEach(x => (groups[x.loc || 'No location set'] = groups[x.loc || 'No location set'] || []).push(x));
+  $('#tb').innerHTML = (r.pendingPunch ? '<div class="warnbox">⚠ ' + r.pendingPunch + ' clock entr' + (r.pendingPunch > 1 ? 'ies' : 'y') + ' outside a store waiting for approval – <a href="#" id="gpend">check</a></div>' : '') +
+    (r.pendingTrips ? '<div class="warnbox blue">🛵 ' + r.pendingTrips + ' trip claim' + (r.pendingTrips > 1 ? 's' : '') + ' to approve – <a href="#" id="gtrip">open</a></div>' : '') +
+    '<div class="kpis" style="margin-bottom:12px"><div class="kpi"><b>' + cnt(on) + '</b><span>at work</span></div><div class="kpi"><b>' + cnt(x => /late/i.test(x.status) || x.late) + '</b><span>late</span></div>' +
+    '<div class="kpi"><b>' + cnt(x => /Absent|Not in yet/.test(x.status)) + '</b><span>' + (date === today() ? 'not in yet' : 'absent') + '</span></div></div>' +
+    Object.keys(groups).sort().map(g => '<div class="card"><h2>' + esc(g) + '</h2>' + groups[g].map(x => '<div class="person" data-n="' + esc(x.name) + '"><div class="av">' + esc(initials(x.name)) + '</div><div class="grow"><b>' + esc(x.name) + '</b>' + (x.onTrip ? ' 🛵' : '') +
+      '<div class="tiny mute">' + esc(x.label) + (x.start && ['M', 'E', 'CUST', ''].indexOf(x.shift) >= 0 ? ' ' + esc(x.start) + '–' + esc(x.end) : '') + (x.in ? ' · in ' + esc(x.in) + (x.out && !/Working|break/i.test(x.status) ? ' out ' + esc(x.out) : '') : '') + (x.breakMin ? ' · break ' + x.breakMin + 'm' : '') + '</div>' +
+      (x.flags.length ? '<div class="tiny" style="color:var(--warn)">' + esc(x.flags.join(' · ')) + '</div>' : '') + '</div>' + statusChip(x) + '</div>').join('') + '</div>').join('');
+  const gp = $('#gpend'); if (gp) gp.onclick = e => { e.preventDefault(); viewRange(m, true); };
+  const gt = $('#gtrip'); if (gt) gt.onclick = e => { e.preventDefault(); go('more'); setTimeout(viewTripClaims, 50); };
+  m.querySelectorAll('.person').forEach(p => p.onclick = () => personDay(ppl.find(x => x.name === p.dataset.n), () => viewTeam(m, date)));
+}
+function personDay(x, after) {
+  const opts = ['', 'M', 'E', 'CUST', 'OFF', 'LP', 'LU', 'HOL'];
+  const sh = sheet(x.name + ' · ' + dLabel(x.date), statusChip(x) + ' <span class="small mute">' + esc(x.label) + ' ' + esc(x.start) + '–' + esc(x.end) + '</span>' +
+    '<div class="kpis" style="margin:10px 0"><div class="kpi"><b>' + esc(x.in || '–') + '</b><span>in</span></div><div class="kpi"><b>' + esc(x.out || '–') + '</b><span>out</span></div><div class="kpi"><b>' + hmin(x.worked) + '</b><span>worked</span></div>' +
+    '<div class="kpi"><b>' + (x.breakMin || 0) + 'm</b><span>break' + (x.extraBreak ? ' (+' + x.extraBreak + ')' : '') + '</span></div><div class="kpi"><b>' + (x.late || 0) + 'm</b><span>late</span></div><div class="kpi"><b>' + Math.round((x.credit || 0) * 100) + '%</b><span>day credit</span></div></div>' +
+    (x.flags.length ? '<div class="warnbox">' + esc(x.flags.join(' · ')) + '</div>' : '') + (x.fixed ? '<p class="small mute">✎ ' + esc(x.fixed) + '</p>' : '') +
+    '<h3 style="font-size:12px;color:var(--mute)">ENTRIES</h3><div class="card" style="padding:4px 12px"><div class="list">' + (x.punches.length ? x.punches.map(p => '<div class="row"><div class="grow"><b>' + esc(p.time) + '</b> ' + esc({ IN: 'Clock in', BO: 'Break out', BI: 'Back from break', OUT: 'Clock out' }[p.type]) +
+      '<div class="tiny mute">' + esc(p.loc || '?') + ' · ' + (p.dist != null ? distTxt(p.dist) : '') + (p.inside ? ' ✓ inside' : ' outside') + ' · GPS ±' + p.acc + ' m' + (p.lat != null ? ' · <a target="_blank" href="https://maps.google.com/?q=' + p.lat + ',' + p.lng + '">map</a>' : '') + '</div>' +
+      (p.flags ? '<div class="tiny" style="color:var(--warn)">' + esc(p.flags) + '</div>' : '') + (p.reason ? '<div class="tiny">Reason: ' + esc(p.reason) + '</div>' : '') +
+      (p.approved === 'Pending' ? '<div class="row" style="margin-top:4px"><span class="chip warn">Waiting</span><button class="btn ok sm" data-ap="' + p.id + '">Approve</button><button class="btn ghost sm" data-rj="' + p.id + '">Reject</button></div>' : p.approved === 'No' ? '<span class="chip bad">Rejected</span>' : '') + '</div>' +
+      (p.selfie ? '<button class="btn ghost sm" data-ph="' + p.id + '">📷</button>' : '') + '</div>').join('') : '<p class="small mute">No entries.</p>') + '</div></div>' +
+    '<h3 style="font-size:12px;color:var(--mute)">CORRECT THIS DAY</h3><div class="card"><p class="tiny mute" style="margin-top:0">Use for a forgotten clock-out, leave, or approved overtime. Leave a box empty to keep the app\'s figure.</p>' +
+    '<label class="f">Day is</label><select class="i" id="fs">' + opts.map(o => '<option value="' + o + '">' + (o ? SHIFT[o] : 'As per rota') + '</option>').join('') + '</select>' +
+    '<div class="row"><div class="grow"><label class="f">In</label><input class="i" type="time" id="fi"></div><div class="grow"><label class="f">Out</label><input class="i" type="time" id="fo"></div></div>' +
+    '<div class="row"><div class="grow"><label class="f">Break (min)</label><input class="i" type="number" id="fb" inputmode="numeric"></div><div class="grow"><label class="f">Overtime approved (min)</label><input class="i" type="number" id="fot" inputmode="numeric" value="' + (x.otApproved || '') + '" placeholder="' + (x.ot ? 'stayed ' + x.ot + 'm extra' : '0') + '"></div></div>' +
+    '<label class="f">Reason (required)</label><input class="i" id="fn" placeholder="e.g. Forgot to clock out – left at 7 pm per manager"><br><br>' +
+    '<div class="row"><button class="btn grow" id="fgo">Save correction</button>' + (x.fixed ? '<button class="btn ghost" id="fclr">Remove</button>' : '') + '</div></div>');
+  const save = async clear => {
+    const d = { date: x.date, name: x.name, status: sh.el.querySelector('#fs').value, in: sh.el.querySelector('#fi').value, out: sh.el.querySelector('#fo').value, brk: sh.el.querySelector('#fb').value, ot: sh.el.querySelector('#fot').value, note: sh.el.querySelector('#fn').value || (clear ? 'Removed' : ''), clear: !!clear };
+    await run('Saving…', () => call('fixDay', d)); toast('Saved'); sh.close(); after && after();
+  };
+  sh.el.querySelector('#fgo').onclick = () => save(false);
+  const fc = sh.el.querySelector('#fclr'); if (fc) fc.onclick = () => save(true);
+  sh.el.querySelectorAll('[data-ph]').forEach(b => b.onclick = () => showPhoto({ punch: b.dataset.ph }));
+  sh.el.querySelectorAll('[data-ap],[data-rj]').forEach(b => b.onclick = async () => { await run('Saving…', () => call('approvePunch', { id: b.dataset.ap || b.dataset.rj, approve: !!b.dataset.ap })); toast('Saved'); sh.close(); after && after(); });
+}
+async function showPhoto(q) {
+  const r = await run('Loading photo…', () => call('photo', q));
+  sheet('Photo', '<img src="data:' + r.mime + ';base64,' + r.b64 + '" style="width:100%;border-radius:12px">');
+}
+async function viewRange(m, pendingFirst) {
+  const from = S.rFrom || addD(today(), -6), to = S.rTo || today();
+  m.innerHTML = '<div class="seg"><button id="dy">Day</button><button class="on">Date range</button></div><div class="card"><div class="row"><div class="grow"><label class="f">From</label><input class="i" type="date" id="rf" value="' + from + '"></div>' +
+    '<div class="grow"><label class="f">To</label><input class="i" type="date" id="rt" value="' + to + '" max="' + today() + '"></div></div><label class="f">Person</label><select class="i" id="rp"><option value="">Everyone</option></select><br><br><button class="btn full" id="rgo">Show</button></div><div id="rb"></div>';
+  $('#dy').onclick = () => viewTeam(m);
+  const load = async () => {
+    S.rFrom = $('#rf').value; S.rTo = $('#rt').value;
+    $('#rb').innerHTML = '<div class="spin" style="margin:30px auto"></div>';
+    let r; try { r = await call('attendance', { from: S.rFrom, to: S.rTo, name: $('#rp').value }); } catch (e) { $('#rb').innerHTML = '<p class="warnbox bad">' + esc(e.message) + '</p>'; return; }
+    const sel = $('#rp'); if (sel.options.length === 1) r.names.forEach(n => sel.add(new Option(n, n)));
+    const by = {}; r.days.forEach(x => (by[x.name] = by[x.name] || []).push(x));
+    $('#rb').innerHTML = (r.pending.length ? '<div class="card"><h2>⚠ Entries outside a store – approve?</h2><div class="list">' + r.pending.map(p => '<div><b>' + esc(p.name) + '</b> · ' + esc(dLabel(p.date)) + ' ' + esc(p.time) + ' · ' + esc(p.label) +
+      '<div class="tiny mute">' + (p.dist != null ? distTxt(p.dist) + ' from ' + esc(p.loc) : '') + (p.lat != null ? ' · <a target="_blank" href="https://maps.google.com/?q=' + p.lat + ',' + p.lng + '">map</a>' : '') + '</div><div class="small">Reason: ' + esc(p.reason) + '</div>' +
+      '<div class="row" style="margin-top:6px"><button class="btn ok sm" data-ap="' + p.id + '">Approve</button><button class="btn ghost sm" data-rj="' + p.id + '">Reject</button>' + (p.selfie ? '<button class="btn ghost sm" data-ph="' + p.id + '">📷 Selfie</button>' : '') + '</div></div>').join('') + '</div></div>' : '') +
+      Object.keys(by).map(n => { const ds = by[n], w = ds.reduce((a, x) => a + (x.worked || 0), 0), late = ds.filter(x => x.late).length, ab = ds.filter(x => x.status === 'Absent').length;
+        return '<div class="card"><h2>' + esc(n) + ' <span class="small mute">' + hmin(w) + ' worked · ' + late + ' late · ' + ab + ' absent</span></h2><div class="list">' + ds.slice().reverse().map(x => '<div class="pd" data-k="' + esc(n + '|' + x.date) + '" style="cursor:pointer">' + dayLine(x).slice(5, -6) + '</div>').join('') + '</div></div>'; }).join('');
+    $('#rb').querySelectorAll('[data-ap],[data-rj]').forEach(b => b.onclick = async () => { await run('Saving…', () => call('approvePunch', { id: b.dataset.ap || b.dataset.rj, approve: !!b.dataset.ap })); toast('Saved'); load(); });
+    $('#rb').querySelectorAll('[data-ph]').forEach(b => b.onclick = () => showPhoto({ punch: b.dataset.ph }));
+    $('#rb').querySelectorAll('.pd').forEach(el => el.onclick = () => { const [n, dt] = el.dataset.k.split('|'); personDay(r.days.find(x => x.name === n && x.date === dt), load); });
+    if (pendingFirst) window.scrollTo(0, 0);
+  };
+  $('#rgo').onclick = load; load();
+}
+
+/* ───────────── ROTA PLAN (managers) ───────────── */
+async function viewPlan(m, week) {
+  week = week || S.planWeek || monday(today());
+  S.planWeek = week;
+  m.innerHTML = '<div class="row" style="margin-bottom:10px"><button class="btn ghost sm" id="wp">‹</button><div class="grow" style="text-align:center"><b>Week of ' + esc(dLabel(week)) + '</b><div class="tiny mute" id="wst"></div></div><button class="btn ghost sm" id="wn">›</button></div><div id="pb"><div class="spin" style="margin:30px auto"></div></div>';
+  $('#wp').onclick = () => viewPlan(m, addD(week, -7)); $('#wn').onclick = () => viewPlan(m, addD(week, 7));
+  let r; try { r = await call('rotaGet', { week: week }); } catch (e) { $('#pb').innerHTML = '<p class="warnbox bad">' + esc(e.message) + '</p>'; return; }
+  S.plan = { week: week, r: r, cells: JSON.parse(JSON.stringify(r.cells)), dirty: false };
+  drawPlan();
+}
+function drawPlan() {
+  const P = S.plan, r = P.r, cells = P.cells;
+  $('#wst').innerHTML = (P.dirty ? '<span class="chip warn">Not saved</span> ' : '') + '<span class="chip ' + (r.status === 'Published' && !P.dirty ? 'ok' : r.status === 'Draft' ? 'warn' : '') + '">' + esc(r.status) + '</span>';
+  const byLoc = {}; r.staff.forEach(s => (byLoc[s.loc || 'No location set'] = byLoc[s.loc || 'No location set'] || []).push(s));
+  const head = '<tr><th class="nm"></th>' + r.days.map(d => '<th class="' + (d === today() ? 'today' : '') + '">' + DAYS[pd(d).getDay()] + '<br>' + pd(d).getDate() + '</th>').join('') + '</tr>';
+  let body = '';
+  Object.keys(byLoc).sort((a, b) => (a === 'Head Office') - (b === 'Head Office') || (a < b ? -1 : 1)).forEach(loc => {
+    body += '<tr class="loc"><td colspan="8">' + esc(loc) + '</td></tr>';
+    byLoc[loc].forEach(s => {
+      body += '<tr><td class="nm">' + esc(s.name.split(' ')[0]) + ' <span class="tiny mute">' + esc(s.name.split(' ').slice(1).join(' ').slice(0, 1)) + '</span></td>' + r.days.map(d => {
+        const c = cells[s.name + '|' + d];
+        if (!c) return '<td class="c" data-k="' + esc(s.name + '|' + d) + '">+</td>';
+        const away = c.loc && c.loc !== s.loc ? '<small>@' + esc(c.loc.split(' ')[0]) + '</small>' : c.shift === 'CUST' ? '<small>' + esc(c.start) + '</small>' : '';
+        return '<td class="c ' + esc(c.shift) + '" data-k="' + esc(s.name + '|' + d) + '">' + esc(SHORT[c.shift]) + away + '</td>';
+      }).join('') + '</tr>';
+    });
+    if (loc !== 'Head Office' && loc !== 'No location set') body += '<tr><td class="nm tiny mute">cover M/E</td>' + r.days.map(d => {
+      const here = Object.keys(cells).filter(k => k.split('|')[1] === d && (cells[k].loc || '') === loc).map(k => cells[k].shift);
+      const mm = here.filter(x => x === 'M').length, ee = here.filter(x => x === 'E').length, cu = here.filter(x => x === 'CUST').length;
+      return '<td class="cov' + (here.length && ((!mm || !ee) && !cu) ? ' bad' : '') + '">' + (here.length ? mm + '/' + ee : '') + '</td>';
+    }).join('') + '</tr>';
+  });
+  const warn = rotaWarnLocal();
+  $('#pb').innerHTML = '<div class="card" style="padding:8px"><table class="grid">' + head + body + '</table>' +
+    '<p class="tiny mute" style="margin:8px 4px 0"><span class="chip M">M</span> Morning ' + esc(r.shifts.M.start + '–' + r.shifts.M.end) + ' &nbsp; <span class="chip E">E</span> Evening ' + esc(r.shifts.E.start + '–' + r.shifts.E.end) + ' &nbsp; Off = weekly off (Tue–Thu only) · tap a box to change</p></div>' +
+    (warn.length ? '<div class="warnbox">' + warn.map(esc).join('<br>') + '</div>' : (Object.keys(cells).length ? '<div class="warnbox ok">✓ Every store covered on both shifts, one weekly off each on Tue–Thu.</div>' : '')) +
+    '<div class="row wrap" style="gap:8px"><button class="btn gold grow" id="pauto">✨ Auto-plan this week</button><button class="btn ghost grow" id="pcopy">Copy last week</button></div><div style="height:8px"></div>' +
+    '<div class="row" style="gap:8px"><button class="btn ghost grow" id="psave">Save draft</button><button class="btn ok grow" id="ppub">✓ Publish to staff</button></div>' +
+    '<p class="tiny mute">Auto-plan keeps the boxes you already changed by hand this week (clear them first for a fresh plan). Staff only see the rota after you publish.</p>';
+  $('#pb').querySelectorAll('td.c').forEach(td => td.onclick = () => editCell(td.dataset.k));
+  $('#pauto').onclick = async () => {
+    const keep = {}; Object.keys(P.cells).forEach(k => { if (P.manual && P.manual[k]) keep[k] = P.cells[k]; });
+    const a = await run('Planning…', () => call('rotaAuto', { week: P.week, keep: keep }));
+    P.cells = a.cells; P.dirty = true; drawPlan(); toast('Plan ready – check it, then Publish');
+  };
+  $('#pcopy').onclick = async () => {
+    const prev = await run('Loading last week…', () => call('rotaGet', { week: addD(P.week, -7) }));
+    if (!Object.keys(prev.cells).length) return toast('Last week has no rota.', true);
+    const n = {}; Object.keys(prev.cells).forEach(k => { const [name, d] = k.split('|'); n[name + '|' + addD(d, 7)] = Object.assign({}, prev.cells[k]); });
+    P.cells = n; P.dirty = true; drawPlan();
+  };
+  $('#psave').onclick = () => savePlan(false);
+  $('#ppub').onclick = () => savePlan(true);
+}
+function rotaWarnLocal() {
+  const P = S.plan, r = P.r, w = [];
+  r.staff.forEach(s => {
+    const mine = r.days.map(d => P.cells[s.name + '|' + d]).filter(Boolean); if (!mine.length) return;
+    const offs = r.days.filter(d => (P.cells[s.name + '|' + d] || {}).shift === 'OFF');
+    if (mine.length < 7) w.push(s.name + ': ' + (7 - mine.length) + ' day(s) not planned.');
+    if (!offs.length && !mine.some(c => ['LP', 'LU', 'HOL'].indexOf(c.shift) >= 0)) w.push(s.name + ': no weekly off.');
+    if (offs.length > 1) w.push(s.name + ': ' + offs.length + ' weekly offs (one allowed).');
+    offs.forEach(d => { const dw = pd(d).getDay(); if ([2, 3, 4].indexOf(dw) < 0) w.push(s.name + ': off on ' + DAYS[dw] + ' – only Tue/Wed/Thu.'); });
+  });
+  const locs = {}; r.staff.forEach(s => { if (s.loc && s.loc !== 'Head Office' && r.locations.some(l => l.name === s.loc && l.type === 'Store')) locs[s.loc] = 1; });
+  Object.keys(locs).forEach(loc => r.days.forEach(d => {
+    const here = Object.keys(P.cells).filter(k => k.split('|')[1] === d && (P.cells[k].loc || '') === loc).map(k => P.cells[k].shift);
+    if (!here.length) return;
+    ['M', 'E'].forEach(c => { if (here.indexOf(c) < 0 && here.indexOf('CUST') < 0) w.push(loc + ' ' + DAYS[pd(d).getDay()] + ': nobody on ' + SHIFT[c].toLowerCase() + '.'); });
+  }));
+  return w;
+}
+function editCell(k) {
+  const P = S.plan, [name, d] = k.split('|'), c = P.cells[k] || {}, s = P.r.staff.find(x => x.name === name);
+  const dw = pd(d).getDay(), offOk = [2, 3, 4].indexOf(dw) >= 0;
+  const sh = sheet(name + ' · ' + dLabel(d), '<div class="pills" id="cs">' + ['M', 'E', 'OFF', 'LP', 'LU', 'HOL', 'CUST'].map(x => '<button data-s="' + x + '"' + (c.shift === x ? ' class="on"' : '') + (x === 'OFF' && !offOk ? ' disabled style="opacity:.4"' : '') + '>' + esc(SHIFT[x]) + (x === 'M' || x === 'E' ? ' ' + esc(P.r.shifts[x].start) + '–' + esc(P.r.shifts[x].end) : '') + '</button>').join('') + '</div>' +
+    (!offOk ? '<p class="tiny mute">Weekly off only on Tue, Wed or Thu.</p>' : '') +
+    '<div id="cust" style="display:' + (c.shift === 'CUST' ? 'block' : 'none') + '"><div class="row"><div class="grow"><label class="f">Start</label><input class="i" type="time" id="cst" value="' + esc(c.start || '11:00') + '"></div><div class="grow"><label class="f">End</label><input class="i" type="time" id="cen" value="' + esc(c.end || '20:00') + '"></div></div></div>' +
+    '<label class="f">Works at</label><select class="i" id="cl">' + P.r.locations.map(l => '<option' + ((c.loc || s.loc) === l.name ? ' selected' : '') + '>' + esc(l.name) + '</option>').join('') + '</select>' +
+    '<label class="f">Note (optional)</label><input class="i" id="cn" value="' + esc(c.note || '') + '"><br><br><div class="row"><button class="btn grow" id="cok">Done</button><button class="btn ghost" id="cclr">Clear</button></div>' +
+    '<p class="tiny mute">Tip: “Apply to whole week” sets the same shift Mon–Sun except the weekly off.</p><button class="btn ghost full sm" id="cweek">Apply this shift to the whole week</button>');
+  let pick = c.shift || '';
+  sh.el.querySelectorAll('#cs button').forEach(b => b.onclick = () => { if (b.disabled) return; pick = b.dataset.s; sh.el.querySelectorAll('#cs button').forEach(x => x.classList.toggle('on', x === b)); sh.el.querySelector('#cust').style.display = pick === 'CUST' ? 'block' : 'none'; });
+  const cell = () => { const loc = sh.el.querySelector('#cl').value; const t = pick === 'M' || pick === 'E' ? P.r.shifts[pick] : pick === 'CUST' ? { start: sh.el.querySelector('#cst').value, end: sh.el.querySelector('#cen').value } : { start: '', end: '' };
+    return { shift: pick, start: t.start, end: t.end, loc: loc, note: sh.el.querySelector('#cn').value }; };
+  P.manual = P.manual || {};
+  sh.el.querySelector('#cok').onclick = () => { if (!pick) return toast('Pick a shift.', true); P.cells[k] = cell(); P.manual[k] = 1; P.dirty = true; sh.close(); drawPlan(); };
+  sh.el.querySelector('#cclr').onclick = () => { delete P.cells[k]; delete P.manual[k]; P.dirty = true; sh.close(); drawPlan(); };
+  sh.el.querySelector('#cweek').onclick = () => { if (['M', 'E', 'CUST'].indexOf(pick) < 0) return toast('Pick Morning, Evening or Custom first.', true);
+    P.r.days.forEach(dd => { const kk = name + '|' + dd; if ((P.cells[kk] || {}).shift === 'OFF') return; P.cells[kk] = cell(); P.manual[kk] = 1; }); P.dirty = true; sh.close(); drawPlan(); };
+}
+async function savePlan(publish) {
+  const P = S.plan;
+  const warn = rotaWarnLocal();
+  if (publish && warn.length && !confirm('There are ' + warn.length + ' warning(s):\n\n' + warn.slice(0, 8).join('\n') + '\n\nPublish anyway?')) return;
+  const r = await run(publish ? 'Publishing…' : 'Saving…', () => call('rotaSave', { week: P.week, cells: P.cells, publish: publish }));
+  S.plan = { week: P.week, r: r, cells: JSON.parse(JSON.stringify(r.cells)), dirty: false };
+  toast(publish ? '✓ Published – staff can see it now' : 'Draft saved'); drawPlan();
+  if (S.b.day) refreshBoot().catch(() => { });
+}
+
+/* ───────────── MORE ───────────── */
+function viewMore(m) {
+  const b = S.b, me = b.me;
+  const item = (id, ic, t, s, dot) => '<div class="person" id="' + id + '"><div class="av" style="background:var(--cream);color:var(--navy)">' + ic + '</div><div class="grow"><b>' + t + '</b><div class="tiny mute">' + s + '</div></div>' + (dot ? '<span class="chip bad">' + dot + '</span>' : '') + '<span class="mute">›</span></div>';
+  m.innerHTML = '<h1 class="pg">More</h1><div class="card">' +
+    (b.day ? item('mh', '📊', 'My hours', 'This month: days, late, breaks, travel, pay estimate') : '') +
+    (me.admin ? item('mt', '🛵', 'Trip claims', 'Approve travel money', b.pendingTrips) : '') +
+    (me.pay ? item('mp', '₹', 'Payroll', 'Monthly salary from attendance + overtime + travel') : '') +
+    (me.admin ? item('ms', '👥', 'Staff', 'Store, shifts, weekly-off choice' + (me.pay ? ', salary' : '') + ', phone reset') : '') +
+    (me.pay ? item('mset', '⚙', 'Settings & store locations', 'Geofence, shift times, rules, km rates') : '') +
+    item('mpin', '🔑', 'Change my PIN', 'Same PIN as the Nutvique billing app') +
+    item('mout', '⎋', 'Sign out', esc(me.name)) + '</div>' +
+    '<p class="tiny mute" style="text-align:center">Nutvique Staff Rota · Nutzy Foods Pvt Ltd<br>Phone ID ' + esc(phoneId().slice(-6)) + '</p>';
+  const on = (id, f) => { const el = document.getElementById(id); if (el) el.onclick = f; };
+  on('mh', () => viewMonthSheet()); on('mt', viewTripClaims); on('mp', () => viewPayroll()); on('ms', viewStaff); on('mset', viewSettings);
+  on('mpin', () => changePin(false)); on('mout', () => { if (confirm('Sign out on this phone?')) signOut(); });
+}
+async function viewTripClaims() {
+  const r = await run('Loading trips…', () => call('trips', {}));
+  const sh = sheet('Trip claims', '<div id="tcl"></div>');
+  const draw = list => {
+    const sub = list.filter(t => t.status === 'Submitted'), run_ = list.filter(t => t.status === 'Running'), rest = list.filter(t => ['Submitted', 'Running'].indexOf(t.status) < 0);
+    sh.el.querySelector('#tcl').innerHTML = (sub.length ? '<h3 style="font-size:12px;color:var(--mute)">TO APPROVE</h3>' + sub.map(t => '<div class="card"><div class="row"><div class="av">' + esc(initials(t.name)) + '</div><div class="grow"><b>' + esc(t.name) + '</b><div class="tiny mute">' + esc(dLabel(t.date)) + ' · ' + esc(t.modeLabel) + '</div></div><b>' + rs(t.claimed) + '</b></div>' +
+      '<p class="small" style="margin:8px 0 4px">' + esc(t.purpose) + '</p><div class="tiny mute">' + esc(t.startPlace) + ' → ' + esc(t.endPlace) + ' · ' + new Date(t.start).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + '–' + new Date(t.end).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + '</div>' +
+      '<div class="tiny mute">GPS: straight ' + t.straight + ' km · route ' + t.trail + ' km' + (t.km ? ' · claimed ' + t.km + ' km × ₹' + t.rate : '') + (t.fare ? ' · fare ' + rs(t.fare) : '') + ' · <a target="_blank" href="https://www.google.com/maps/dir/' + t.sLat + ',' + t.sLng + '/' + t.eLat + ',' + t.eLng + '">route on map</a></div>' +
+      (t.note ? '<div class="tiny">Note: ' + esc(t.note) + '</div>' : '') +
+      '<div class="row" style="margin-top:8px">' + (t.receipt ? '<button class="btn ghost sm" data-rc="' + t.id + '">🧾 Receipt</button>' : '<span class="tiny mute">No receipt</span>') + '<div class="grow"></div><input class="i" style="width:100px" type="number" inputmode="decimal" value="' + t.claimed + '" id="am_' + t.id + '"></div>' +
+      '<div class="row" style="margin-top:8px"><button class="btn ok grow sm" data-ok="' + t.id + '">Approve</button><button class="btn ghost grow sm" data-no="' + t.id + '">Reject</button></div></div>').join('') : '<p class="warnbox ok">Nothing waiting for approval.</p>') +
+      (run_.length ? '<h3 style="font-size:12px;color:var(--mute)">ON THE ROAD NOW</h3><div class="card"><div class="list">' + run_.map(t => '<div><b>' + esc(t.name) + '</b> · ' + esc(t.modeLabel) + '<div class="tiny mute">' + esc(t.purpose) + ' · from ' + esc(t.startPlace) + '</div></div>').join('') + '</div></div>' : '') +
+      '<h3 style="font-size:12px;color:var(--mute)">LAST 45 DAYS</h3><div class="card"><div class="list">' + (rest.map(t => tripLine(t).replace('<b>', '<b>' + esc(t.name) + ' – ')).join('') || '<p class="small mute">None.</p>') + '</div></div>';
+    sh.el.querySelectorAll('[data-rc]').forEach(b => b.onclick = () => showPhoto({ trip: b.dataset.rc }));
+    sh.el.querySelectorAll('[data-ok]').forEach(b => b.onclick = async () => { const x = await run('Approving…', () => call('tripDecide', { id: b.dataset.ok, approve: true, amount: sh.el.querySelector('#am_' + b.dataset.ok).value })); S.b.pendingTrips = x.trips.filter(t => t.status === 'Submitted').length; draw(x.trips); });
+    sh.el.querySelectorAll('[data-no]').forEach(b => b.onclick = async () => { const note = prompt('Why is it rejected?'); if (!note) return; const x = await run('Saving…', () => call('tripDecide', { id: b.dataset.no, approve: false, note: note })); S.b.pendingTrips = x.trips.filter(t => t.status === 'Submitted').length; draw(x.trips); });
+  };
+  draw(r.trips);
+}
+async function viewPayroll(month) {
+  month = month || S.payMonth || today().slice(0, 7); S.payMonth = month;
+  const r = await run('Working out salaries…', () => call('payroll', { month: month }));
+  const mm = pd(month + '-01'), prev = ymd(new Date(mm.getFullYear(), mm.getMonth() - 1, 1)).slice(0, 7), next = ymd(new Date(mm.getFullYear(), mm.getMonth() + 1, 1)).slice(0, 7);
+  const tot = r.people.reduce((a, p) => a + p.total, 0), noSal = r.people.filter(p => !p.salary);
+  const sh = sheet('Payroll – ' + MON[mm.getMonth()] + ' ' + mm.getFullYear(), '<div class="row" style="margin-bottom:8px"><button class="btn ghost sm" data-m="' + prev + '">‹ ' + MON[pd(prev + '-01').getMonth()] + '</button><div class="grow"></div>' + (next <= today().slice(0, 7) ? '<button class="btn ghost sm" data-m="' + next + '">' + MON[pd(next + '-01').getMonth()] + ' ›</button>' : '') + '</div>' +
+    (!r.complete ? '<div class="warnbox blue">Month not finished – counted up to ' + esc(dLabel(r.upTo)) + '.</div>' : '') +
+    (r.people.some(p => p.noRota) ? '<div class="warnbox bad">No published rota on some days (' + r.people.filter(p => p.noRota).map(p => esc(p.name.split(' ')[0]) + ' ' + p.noRota).join(', ') + ' days) – those days are not paid. Publish the rota for those weeks or correct the days in Team.</div>' : '') +
+    (noSal.length ? '<div class="warnbox">No salary set for: ' + noSal.map(p => esc(p.name)).join(', ') + '. Add it in Staff.</div>' : '') +
+    '<div class="kpis" style="grid-template-columns:1fr 1fr;margin-bottom:10px"><div class="kpi"><b>' + rs(tot) + '</b><span>total payable</span></div><div class="kpi"><b>' + rs(r.people.reduce((a, p) => a + p.travel, 0)) + '</b><span>of which travel</span></div></div>' +
+    '<div class="card scroll" style="padding:6px 10px"><table class="t"><tr><th>Name</th><th class="n">Paid days</th><th class="n">Salary</th><th class="n">OT</th><th class="n">Travel</th><th class="n">Total</th></tr>' +
+    r.people.map((p, i) => '<tr data-i="' + i + '" style="cursor:pointer"><td><b>' + esc(p.name) + '</b><div class="tiny mute">' + (p.salary ? rs(p.salary) + '/month' : 'no salary set') + (p.flags ? ' · ⚠ ' + p.flags : '') + '</div></td><td class="n">' + p.paidDays + '/' + p.dim + '</td><td class="n">' + rs(p.earned) + '</td><td class="n">' + rs(p.otPay) + '</td><td class="n">' + rs(p.travel) + '</td><td class="n"><b>' + rs(p.total) + '</b></td></tr>').join('') + '</table></div>' +
+    '<div class="row" style="gap:8px"><button class="btn grow" id="pw">Save to Google Sheet</button><button class="btn ghost grow" id="pcsv">⬇ Download (Excel)</button></div>' +
+    '<p class="tiny mute">Salary = monthly salary ÷ days in month × paid days. Paid days = weekly offs + holidays + paid leave + each working day\'s credit (hours inside the shift, extra break cut, late after the grace minutes cut). Overtime counts only when a manager approves it on the day.</p>');
+  sh.el.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { sh.close(); viewPayroll(b.dataset.m); });
+  sh.el.querySelectorAll('tr[data-i]').forEach(tr => tr.onclick = () => { const p = r.people[+tr.dataset.i];
+    sheet(p.name, '<table class="t">' + [['Monthly salary', p.salary ? rs(p.salary) : '–'], ['Days in month', p.dim], ['Weekly offs (paid)', p.offs], ['Holidays (paid)', p.hol], ['Paid leave', p.lp], ['Unpaid leave', p.lu], ['Absent', p.absent],
+      ['Working-day credit', p.workCredit], ['Worked on weekly off (extra days)', p.extra], ['Paid days', '<b>' + p.paidDays + '</b>'], ['Late days / minutes', p.lateDays + ' / ' + p.late], ['Extra break minutes', p.extraBreak], ['Short minutes', p.short],
+      ['Approved overtime', p.otH + ' h'], ['Day rate', rs(p.rate)], ['Salary earned', rs(p.earned)], ['Overtime pay', rs(p.otPay)], ['Travel (approved)', rs(p.travel)], ['Total payable', '<b>' + rs(p.total) + '</b>']]
+      .map(x => '<tr><td>' + x[0] + '</td><td class="n">' + x[1] + '</td></tr>').join('') + '</table>'); });
+  sh.el.querySelector('#pw').onclick = async () => { const x = await run('Saving to the sheet…', () => call('payroll', { month: month, write: true })); toast('Saved – Attendance and Payroll tabs updated'); if (x.sheetUrl) window.open(x.sheetUrl, '_blank'); };
+  sh.el.querySelector('#pcsv').onclick = () => {
+    const H = ['Month', 'Name', 'Emp ID', 'Location', 'Monthly salary', 'Days in month', 'Weekly offs', 'Holidays', 'Paid leave', 'Unpaid leave', 'Absent', 'Work-day credit', 'Worked on off', 'Paid days', 'Late days', 'Late min', 'Extra break min', 'Short min', 'OT hours', 'Day rate', 'Salary earned', 'OT pay', 'Travel', 'Total payable'];
+    const rows = r.people.map(p => [month, p.name, p.id, p.loc, p.salary, p.dim, p.offs, p.hol, p.lp, p.lu, p.absent, p.workCredit, p.extra, p.paidDays, p.lateDays, p.late, p.extraBreak, p.short, p.otH, p.rate, p.earned, p.otPay, p.travel, p.total]);
+    const csv = [H].concat(rows).map(rw => rw.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'Nutvique_Payroll_' + month + '.csv'; a.click();
+  };
+}
+async function viewStaff() {
+  const r = await run('Loading staff…', () => call('staffList'));
+  const sh = sheet('Staff', '<div id="stl"></div>');
+  const draw = r => {
+    sh.el.querySelector('#stl').innerHTML = (S.b.me.pay ? '<button class="btn ghost full sm" id="ssync">⟳ Add people from the Nutvique People list</button><div style="height:8px"></div>' : '') +
+      '<div class="card">' + r.staff.map((s, i) => '<div class="person" data-i="' + i + '"><div class="av"' + (s.active ? '' : ' style="opacity:.4"') + '>' + esc(initials(s.name)) + '</div><div class="grow"><b>' + esc(s.name) + '</b> ' + (s.active ? '' : '<span class="chip">inactive</span>') +
+        '<div class="tiny mute">' + esc(s.loc || 'No location set') + ' · ' + esc(s.pref) + ' · off ' + esc(s.offPref) + (r.canPay ? ' · ' + (s.salary ? rs(s.salary) : '<span style="color:var(--bad)">no salary</span>') : '') + (s.phone ? ' · 📱' : '') + '</div></div><span class="mute">›</span></div>').join('') + '</div>' +
+      '<button class="btn full" id="sadd">+ Add a person</button>';
+    const sy = sh.el.querySelector('#ssync'); if (sy) sy.onclick = async () => { const x = await run('Checking…', () => call('syncStaff')); draw(x); toast(x.added.length ? 'Added: ' + x.added.join(', ') : 'Everyone is already here.'); if (x.noLogin.length) setTimeout(() => toast('No Nutvique sign-in yet: ' + x.noLogin.join(', ') + ' – add them in Nutvique → More → People', true), 3300); };
+    sh.el.querySelectorAll('.person').forEach(p => p.onclick = () => editStaff(r.staff[+p.dataset.i], r, draw));
+    sh.el.querySelector('#sadd').onclick = () => editStaff(null, r, draw);
+  };
+  draw(r);
+}
+function editStaff(s, r, redraw) {
+  s = s || { name: '', id: '', loc: '', role: 'Staff', active: true, pref: 'Rotate', offPref: 'Any (Tue–Thu)', salary: '', joined: '', notes: '' };
+  const sel = (id, opts, v) => '<select class="i" id="' + id + '">' + opts.map(o => '<option' + (o === v ? ' selected' : '') + '>' + esc(o) + '</option>').join('') + '</select>';
+  const sh = sheet(s.name || 'New person', '<label class="f">Name (exactly as in the Nutvique app)</label><input class="i" id="sn" value="' + esc(s.name) + '">' +
+    '<div class="row"><div class="grow"><label class="f">Employee ID</label><input class="i" id="sid" value="' + esc(s.id) + '"></div><div class="grow"><label class="f">Role</label>' + sel('sr', ['Staff', 'Manager'], s.role) + '</div></div>' +
+    '<label class="f">Works at</label>' + sel('sl', [''].concat(r.locations), s.loc) + '<div class="row"><div class="grow"><label class="f">Shift</label>' + sel('sp', ['Rotate', 'Morning only', 'Evening only'], s.pref) + '</div>' +
+    '<div class="grow"><label class="f">Weekly off</label>' + sel('so', ['Any (Tue–Thu)', 'Tue', 'Wed', 'Thu'], s.offPref) + '</div></div>' +
+    (r.canPay ? '<label class="f">Monthly salary (₹)</label><input class="i" id="ss" type="number" inputmode="numeric" value="' + esc(s.salary || '') + '">' : '') +
+    '<label class="f">Joined on (blank = before the app)</label><input class="i" id="sj" type="date" value="' + esc(s.joined || '') + '">' +
+    '<label class="f">Notes</label><input class="i" id="snt" value="' + esc(s.notes || '') + '"><label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="sa"' + (s.active ? ' checked' : '') + '> Active</label>' +
+    (s.phone ? '<div class="warnbox blue" style="margin-top:12px">📱 Phone registered ' + (s.phoneAt ? new Date(s.phoneAt).toLocaleDateString('en-IN') : '') + '. If they changed phone: <button class="btn sm ghost" id="sph">Reset phone</button></div>' : '') +
+    '<br><button class="btn full" id="sgo">Save</button>');
+  sh.el.querySelector('#sgo').onclick = async () => {
+    const v = id => sh.el.querySelector(id) ? sh.el.querySelector(id).value : undefined;
+    const x = await run('Saving…', () => call('staffSave', { name: s.name, newName: v('#sn'), id: v('#sid'), role: v('#sr'), loc: v('#sl'), pref: v('#sp'), offPref: v('#so'), salary: r.canPay ? v('#ss') : s.salary, joined: v('#sj'), notes: v('#snt'), active: sh.el.querySelector('#sa').checked }));
+    sh.close(); redraw(x); toast('Saved');
+  };
+  const ph = sh.el.querySelector('#sph'); if (ph) ph.onclick = async () => { const x = await run('Resetting…', () => call('resetPhone', { name: s.name })); sh.close(); redraw(x); toast('Phone reset – the next phone they use is registered'); };
+}
+async function viewSettings() {
+  const r = await run('Loading…', () => call('settingsGet'));
+  const sh = sheet('Settings', '<div id="sx"></div>');
+  const draw = r => {
+    sh.el.querySelector('#sx').innerHTML = '<h3 style="font-size:12px;color:var(--mute)">STORE LOCATIONS (GEOFENCE)</h3><div class="card">' + r.locations.map((l, i) => '<div class="person" data-i="' + i + '"><div class="av" style="background:' + (l.lat != null ? 'var(--ok)' : 'var(--bad)') + '">📍</div><div class="grow"><b>' + esc(l.name) + '</b>' + (l.active ? '' : ' <span class="chip">off</span>') +
+      '<div class="tiny mute">' + (l.lat != null ? l.lat.toFixed(5) + ', ' + l.lng.toFixed(5) + ' · radius ' + l.radius + ' m' : 'Position not set') + (l.notes ? ' · ' + esc(l.notes) : '') + '</div></div><span class="mute">›</span></div>').join('') +
+      '<button class="btn ghost full sm" id="lnew" style="margin-top:8px">+ Add location</button></div><p class="tiny mute">Best: stand inside each store once and tap “Use my position here”.</p>' +
+      '<h3 style="font-size:12px;color:var(--mute)">RULES</h3><div class="card">' + r.settings.map(x => '<label class="f">' + esc(x.k) + '</label><input class="i" data-k="' + esc(x.k) + '" value="' + esc(x.v) + '"' + (x.k === 'Attendance starts on' ? ' type="date"' : '') + '><div class="tiny mute">' + esc(x.note) + '</div>').join('') +
+      '<br><button class="btn full" id="sgo">Save rules</button></div><a class="btn ghost full" target="_blank" href="' + esc(r.sheetUrl) + '">Open the Google Sheet</a>';
+    sh.el.querySelectorAll('.person').forEach(p => p.onclick = () => editLoc(r.locations[+p.dataset.i], draw));
+    sh.el.querySelector('#lnew').onclick = () => editLoc(null, draw);
+    sh.el.querySelector('#sgo').onclick = async () => { const values = {}; sh.el.querySelectorAll('[data-k]').forEach(i => values[i.dataset.k] = i.value); const x = await run('Saving…', () => call('settingsSave', { values: values })); draw(x); toast('Saved'); };
+  };
+  draw(r);
+}
+function editLoc(l, redraw) {
+  l = l || { name: '', type: 'Store', lat: null, lng: null, radius: 200, active: true, notes: '' };
+  const sh = sheet(l.name || 'New location', '<label class="f">Name (use the same store name as the billing app)</label><input class="i" id="ln" value="' + esc(l.name) + '">' +
+    '<label class="f">Type</label><select class="i" id="lt"><option' + (l.type === 'Store' ? ' selected' : '') + '>Store</option><option' + (l.type === 'Office' ? ' selected' : '') + '>Office</option></select>' +
+    '<div class="row"><div class="grow"><label class="f">Latitude</label><input class="i" id="la" inputmode="decimal" value="' + (l.lat != null ? l.lat : '') + '"></div><div class="grow"><label class="f">Longitude</label><input class="i" id="lg" inputmode="decimal" value="' + (l.lng != null ? l.lng : '') + '"></div></div>' +
+    '<button class="btn gold full" id="lme" style="margin-top:10px">📍 Use my position here</button><p class="tiny mute" id="lacc"></p>' +
+    '<label class="f">Radius (m) – how far from this point staff may clock in</label><input class="i" id="lr" type="number" value="' + l.radius + '"><label class="f">Notes</label><input class="i" id="lno" value="' + esc(l.notes || '') + '">' +
+    '<label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="lac"' + (l.active ? ' checked' : '') + '> Active</label>' +
+    (l.lat != null ? '<p><a target="_blank" href="https://maps.google.com/?q=' + l.lat + ',' + l.lng + '">See on Google Maps</a></p>' : '') + '<br><button class="btn full" id="lgo">Save location</button>');
+  sh.el.querySelector('#lme').onclick = async () => {
+    const b = busy('Reading GPS…'); let p; try { p = await getPos(x => b.set('Reading GPS… ±' + x.acc + ' m')); } catch (e) { b.done(); return toast(e.message, true); } b.done();
+    sh.el.querySelector('#la').value = p.lat.toFixed(6); sh.el.querySelector('#lg').value = p.lng.toFixed(6); sh.el.querySelector('#lacc').textContent = 'GPS accuracy ±' + p.acc + ' m' + (p.acc > 60 ? ' – try again near the entrance for a better fix' : ' ✓');
+  };
+  sh.el.querySelector('#lgo').onclick = async () => {
+    const x = await run('Saving…', () => call('locSave', { oldName: l.name, name: sh.el.querySelector('#ln').value, type: sh.el.querySelector('#lt').value, lat: sh.el.querySelector('#la').value, lng: sh.el.querySelector('#lg').value,
+      radius: sh.el.querySelector('#lr').value, notes: sh.el.querySelector('#lno').value, active: sh.el.querySelector('#lac').checked }));
+    sh.close(); redraw(x); S.b.locations = x.locations.filter(z => z.active); toast('Saved');
+  };
+}
+
+/* ───────────── start ───────────── */
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.b && S.tab === 'today') refreshBoot().then(() => go('today')).catch(() => { }); });
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => { }));
+start();
+</script>
+</body>
+</html>
