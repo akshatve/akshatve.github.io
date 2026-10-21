@@ -117,6 +117,7 @@ const toMin = hm => { const m = /^(\d{1,2}):(\d{2})/.exec(hm || ''); return m ? 
 const rs = n => '₹' + Math.round(n || 0).toLocaleString('en-IN');
 const initials = n => String(n).split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 const SHIFT = { M: 'Morning', E: 'Evening', OFF: 'Weekly off', LP: 'Leave (paid)', LU: 'Leave (unpaid)', HOL: 'Holiday', CUST: 'Custom' };
+const can = k => !!(S.b && S.b.me && (S.b.me.owner || (S.b.me.rights || []).indexOf(k) >= 0));
 const SHORT = { M: 'M', E: 'E', OFF: 'Off', LP: 'L', LU: 'LU', HOL: 'Hol', CUST: '⏱' };
 function phoneId() { let id = store.get('phone'); if (!id) { id = 'PH-' + Array.from(crypto.getRandomValues(new Uint8Array(9))).map(b => b.toString(16).padStart(2, '0')).join(''); store.set('phone', id); } return id; }
 
@@ -288,8 +289,9 @@ const ICON = {
 function tabList() {
   const b = S.b, t = [];
   if (b.day) t.push({ k: 'today', l: 'Today' }, { k: 'rota', l: 'My rota' }, { k: 'trips', l: 'Trips' });
-  if (b.me.admin) t.push({ k: 'team', l: 'Team', dot: (b.pendingPunch || 0) }, { k: 'plan', l: 'Rota plan' });
-  t.push({ k: 'more', l: 'More', dot: b.me.admin ? (b.pendingTrips || 0) : 0 });
+  if (can('team') || can('approve') || can('times') || can('payAdj')) t.push({ k: 'team', l: 'Team', dot: (b.pendingPunch || 0) });
+  if (can('rota')) t.push({ k: 'plan', l: 'Rota plan' });
+  t.push({ k: 'more', l: 'More', dot: b.pendingTrips || 0 });
   return t;
 }
 function shell() {
@@ -527,19 +529,27 @@ function personDay(x, after) {
     '<h3 style="font-size:12px;color:var(--mute)">ENTRIES</h3><div class="card" style="padding:4px 12px"><div class="list">' + (x.punches.length ? x.punches.map(p => '<div class="row"><div class="grow"><b>' + esc(p.time) + '</b> ' + esc({ IN: 'Clock in', BO: 'Break out', BI: 'Back from break', OUT: 'Clock out' }[p.type]) +
       '<div class="tiny mute">' + esc(p.loc || '?') + ' · ' + (p.dist != null ? distTxt(p.dist) : '') + (p.inside ? ' ✓ inside' : ' outside') + ' · GPS ±' + p.acc + ' m' + (p.lat != null ? ' · <a target="_blank" href="https://maps.google.com/?q=' + p.lat + ',' + p.lng + '">map</a>' : '') + '</div>' +
       (p.flags ? '<div class="tiny" style="color:var(--warn)">' + esc(p.flags) + '</div>' : '') + (p.reason ? '<div class="tiny">Reason: ' + esc(p.reason) + '</div>' : '') +
-      (p.approved === 'Pending' ? '<div class="row" style="margin-top:4px"><span class="chip warn">Waiting</span><button class="btn ok sm" data-ap="' + p.id + '">Approve</button><button class="btn ghost sm" data-rj="' + p.id + '">Reject</button></div>' : p.approved === 'No' ? '<span class="chip bad">Rejected</span>' : '') + '</div>' +
+      (p.approved === 'Pending' ? '<div class="row" style="margin-top:4px"><span class="chip warn">Waiting</span>' + (can('approve') ? '<button class="btn ok sm" data-ap="' + p.id + '">Approve</button><button class="btn ghost sm" data-rj="' + p.id + '">Reject</button>' : '') + '</div>' : p.approved === 'No' ? '<span class="chip bad">Rejected</span>' : '') + '</div>' +
       (p.selfie ? '<button class="btn ghost sm" data-ph="' + p.id + '">📷</button>' : '') + '</div>').join('') : '<p class="small mute">No entries.</p>') + '</div></div>' +
-    '<h3 style="font-size:12px;color:var(--mute)">CORRECT THIS DAY</h3><div class="card"><p class="tiny mute" style="margin-top:0">Use for a forgotten clock-out, leave, or approved overtime. Leave a box empty to keep the app\'s figure.</p>' +
-    '<label class="f">Day is</label><select class="i" id="fs">' + opts.map(o => '<option value="' + o + '">' + (o ? SHIFT[o] : 'As per rota') + '</option>').join('') + '</select>' +
-    '<div class="row"><div class="grow"><label class="f">In</label><input class="i" type="time" id="fi"></div><div class="grow"><label class="f">Out</label><input class="i" type="time" id="fo"></div></div>' +
-    '<div class="row"><div class="grow"><label class="f">Break (min)</label><input class="i" type="number" id="fb" inputmode="numeric"></div><div class="grow"><label class="f">Overtime approved (min)</label><input class="i" type="number" id="fot" inputmode="numeric" value="' + (x.otApproved || '') + '" placeholder="' + (x.ot ? 'stayed ' + x.ot + 'm extra' : '0') + '"></div></div>' +
-    '<label class="f">Reason (required)</label><input class="i" id="fn" placeholder="e.g. Forgot to clock out – left at 7 pm per manager"><br><br>' +
-    '<div class="row"><button class="btn grow" id="fgo">Save correction</button>' + (x.fixed ? '<button class="btn ghost" id="fclr">Remove</button>' : '') + '</div></div>');
+    ((can('times') || can('payAdj')) ? '<h3 style="font-size:12px;color:var(--mute)">CORRECT THIS DAY</h3><div class="card">' +
+    (can('times') ? '<p class="tiny mute" style="margin-top:0">Times – for a forgotten clock-out, leave etc. Leave a box empty to keep the app\'s figure.</p>' +
+      '<label class="f">Day is</label><select class="i" id="fs">' + opts.map(o => '<option value="' + o + '"' + ((x.fixStatus || '') === o ? ' selected' : '') + '>' + (o ? SHIFT[o] : 'As per rota') + '</option>').join('') + '</select>' +
+      '<div class="row"><div class="grow"><label class="f">In</label><input class="i" type="time" id="fi" value="' + esc(x.fixIn || '') + '"></div><div class="grow"><label class="f">Out</label><input class="i" type="time" id="fo" value="' + esc(x.fixOut || '') + '"></div></div>' +
+      '<label class="f">Break (min)</label><input class="i" type="number" id="fb" inputmode="numeric" value="' + esc(x.fixBrk === '' || x.fixBrk == null ? '' : x.fixBrk) + '">' : '') +
+    (can('payAdj') ? '<p class="tiny mute" style="margin:14px 0 0">Pay – paid break is ' + (S.b.breakAllow || 30) + ' min, late grace ' + (S.b.grace || 5) + ' min.</p>' +
+      '<label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="flate"' + (x.lateOk ? ' checked' : '') + '> Excuse late arrival (pay as on time)</label>' +
+      '<div class="row"><div class="grow"><label class="f">Pay extra break (min)</label><input class="i" type="number" id="fbp" inputmode="numeric" value="' + (x.brkPaid || '') + '" placeholder="' + ((x.extraBreak || 0) ? x.extraBreak + ' min over' : '0') + '"></div>' +
+      '<div class="grow"><label class="f">Pay overtime (min)</label><input class="i" type="number" id="fot" inputmode="numeric" value="' + (x.otApproved || '') + '" placeholder="' + (x.ot ? 'stayed ' + x.ot + 'm extra' : '0') + '"></div></div>' : '') +
+    '<label class="f">Reason (required)</label><input class="i" id="fn" placeholder="e.g. Forgot to clock out – left at 7 pm"><br><br>' +
+    '<div class="row"><button class="btn grow" id="fgo">Save</button>' + (x.fixed && can('times') && can('payAdj') ? '<button class="btn ghost" id="fclr">Remove</button>' : '') + '</div></div>'
+    : '<p class="tiny mute">Only the owner (or someone given the right) can change times or pay.</p>'));
+  const v = (id, dflt) => { const e = sh.el.querySelector(id); return e ? (e.type === 'checkbox' ? e.checked : e.value) : dflt; };
   const save = async clear => {
-    const d = { date: x.date, name: x.name, status: sh.el.querySelector('#fs').value, in: sh.el.querySelector('#fi').value, out: sh.el.querySelector('#fo').value, brk: sh.el.querySelector('#fb').value, ot: sh.el.querySelector('#fot').value, note: sh.el.querySelector('#fn').value || (clear ? 'Removed' : ''), clear: !!clear };
+    const d = { date: x.date, name: x.name, status: v('#fs', x.fixStatus || ''), in: v('#fi', x.fixIn || ''), out: v('#fo', x.fixOut || ''), brk: v('#fb', x.fixBrk == null ? '' : x.fixBrk),
+      ot: v('#fot', x.otApproved || 0), lateOk: v('#flate', !!x.lateOk), brkPaid: v('#fbp', x.brkPaid || ''), note: v('#fn', '') || (clear ? 'Removed' : ''), clear: !!clear };
     await run('Saving…', () => call('fixDay', d)); toast('Saved'); sh.close(); after && after();
   };
-  sh.el.querySelector('#fgo').onclick = () => save(false);
+  const fg = sh.el.querySelector('#fgo'); if (fg) fg.onclick = () => save(false);
   const fc = sh.el.querySelector('#fclr'); if (fc) fc.onclick = () => save(true);
   sh.el.querySelectorAll('[data-ph]').forEach(b => b.onclick = () => showPhoto({ punch: b.dataset.ph }));
   sh.el.querySelectorAll('[data-ap],[data-rj]').forEach(b => b.onclick = async () => { await run('Saving…', () => call('approvePunch', { id: b.dataset.ap || b.dataset.rj, approve: !!b.dataset.ap })); toast('Saved'); sh.close(); after && after(); });
@@ -559,7 +569,7 @@ async function viewRange(m, pendingFirst) {
     let r; try { r = await call('attendance', { from: S.rFrom, to: S.rTo, name: $('#rp').value }); } catch (e) { $('#rb').innerHTML = '<p class="warnbox bad">' + esc(e.message) + '</p>'; return; }
     const sel = $('#rp'); if (sel.options.length === 1) r.names.forEach(n => sel.add(new Option(n, n)));
     const by = {}; r.days.forEach(x => (by[x.name] = by[x.name] || []).push(x));
-    $('#rb').innerHTML = (r.pending.length ? '<div class="card"><h2>⚠ Entries outside a store – approve?</h2><div class="list">' + r.pending.map(p => '<div><b>' + esc(p.name) + '</b> · ' + esc(dLabel(p.date)) + ' ' + esc(p.time) + ' · ' + esc(p.label) +
+    $('#rb').innerHTML = (r.pending.length && can('approve') ? '<div class="card"><h2>⚠ Entries outside a store – approve?</h2><div class="list">' + r.pending.map(p => '<div><b>' + esc(p.name) + '</b> · ' + esc(dLabel(p.date)) + ' ' + esc(p.time) + ' · ' + esc(p.label) +
       '<div class="tiny mute">' + (p.dist != null ? distTxt(p.dist) + ' from ' + esc(p.loc) : '') + (p.lat != null ? ' · <a target="_blank" href="https://maps.google.com/?q=' + p.lat + ',' + p.lng + '">map</a>' : '') + '</div><div class="small">Reason: ' + esc(p.reason) + '</div>' +
       '<div class="row" style="margin-top:6px"><button class="btn ok sm" data-ap="' + p.id + '">Approve</button><button class="btn ghost sm" data-rj="' + p.id + '">Reject</button>' + (p.selfie ? '<button class="btn ghost sm" data-ph="' + p.id + '">📷 Selfie</button>' : '') + '</div></div>').join('') + '</div></div>' : '') +
       Object.keys(by).map(n => { const ds = by[n], w = ds.reduce((a, x) => a + (x.worked || 0), 0), late = ds.filter(x => x.late).length, ab = ds.filter(x => x.status === 'Absent').length;
@@ -601,17 +611,20 @@ function drawPlan() {
     if (loc !== 'Head Office' && loc !== 'No location set') body += '<tr><td class="nm tiny mute">cover M/E</td>' + r.days.map(d => {
       const here = Object.keys(cells).filter(k => k.split('|')[1] === d && (cells[k].loc || '') === loc).map(k => cells[k].shift);
       const mm = here.filter(x => x === 'M').length, ee = here.filter(x => x === 'E').length, cu = here.filter(x => x === 'CUST').length;
-      return '<td class="cov' + (here.length && ((!mm || !ee) && !cu) ? ' bad' : '') + '">' + (here.length ? mm + '/' + ee : '') + '</td>';
+      const gap = here.length && ((!mm || !ee) && !cu);
+      return '<td class="cov' + (gap ? ' bad' : '') + '"' + (gap ? ' data-cov="' + esc(loc + '|' + d + '|' + (!mm ? 'M' : 'E')) + '" style="cursor:pointer;text-decoration:underline"' : '') + '>' + (here.length ? mm + '/' + ee : '') + (gap ? '<br>cover?' : '') + '</td>';
     }).join('') + '</tr>';
   });
   const warn = rotaWarnLocal();
   $('#pb').innerHTML = '<div class="card" style="padding:8px"><table class="grid">' + head + body + '</table>' +
     '<p class="tiny mute" style="margin:8px 4px 0"><span class="chip M">M</span> Morning ' + esc(r.shifts.M.start + '–' + r.shifts.M.end) + ' &nbsp; <span class="chip E">E</span> Evening ' + esc(r.shifts.E.start + '–' + r.shifts.E.end) + ' &nbsp; Off = weekly off (Tue–Thu only) · tap a box to change</p></div>' +
-    (warn.length ? '<div class="warnbox">' + warn.map(esc).join('<br>') + '</div>' : (Object.keys(cells).length ? '<div class="warnbox ok">✓ Every store covered on both shifts, one weekly off each on Tue–Thu.</div>' : '')) +
+    (gaps().length ? '<div class="card"><h2>Shifts with nobody at the shop</h2>' + gaps().map(g => '<div class="row" style="padding:6px 0;border-top:1px solid var(--line)"><div class="grow small"><b>' + esc(g.loc) + '</b><br>' + esc(dLabel(g.date)) + ' · ' + SHIFT[g.shift] + '</div><button class="btn gold sm" data-cov="' + esc(g.loc + '|' + g.date + '|' + g.shift) + '">Who covers?</button></div>').join('') + '</div>' : '') +
+    (warn.filter(w => !/nobody on/.test(w)).length ? '<div class="warnbox">' + warn.filter(w => !/nobody on/.test(w)).map(esc).join('<br>') + '</div>' : (Object.keys(cells).length ? '<div class="warnbox ok">✓ Every store covered on both shifts, one weekly off each on Tue–Thu.</div>' : '')) +
     '<div class="row wrap" style="gap:8px"><button class="btn gold grow" id="pauto">✨ Auto-plan this week</button><button class="btn ghost grow" id="pcopy">Copy last week</button></div><div style="height:8px"></div>' +
     '<div class="row" style="gap:8px"><button class="btn ghost grow" id="psave">Save draft</button><button class="btn ok grow" id="ppub">✓ Publish to staff</button></div>' +
     '<p class="tiny mute">Auto-plan keeps the boxes you already changed by hand this week (clear them first for a fresh plan). Staff only see the rota after you publish.</p>';
   $('#pb').querySelectorAll('td.c').forEach(td => td.onclick = () => editCell(td.dataset.k));
+  $('#pb').querySelectorAll('[data-cov]').forEach(el => el.onclick = () => { const [loc, d, sh] = el.dataset.cov.split('|'); coverSheet(loc, d, sh); });
   $('#pauto').onclick = async () => {
     const keep = {}; Object.keys(P.cells).forEach(k => { if (P.manual && P.manual[k]) keep[k] = P.cells[k]; });
     const a = await run('Planning…', () => call('rotaAuto', { week: P.week, keep: keep }));
@@ -625,6 +638,37 @@ function drawPlan() {
   };
   $('#psave').onclick = () => savePlan(false);
   $('#ppub').onclick = () => savePlan(true);
+}
+/** Store shifts with nobody planned: [{loc, date, shift}] */
+function gaps() {
+  const P = S.plan, r = P.r, out = [], locs = {};
+  r.staff.forEach(s => { if (s.loc && r.locations.some(l => l.name === s.loc && l.type === 'Store')) locs[s.loc] = 1; });
+  Object.keys(locs).forEach(loc => r.days.forEach(d => {
+    const here = Object.keys(P.cells).filter(k => k.split('|')[1] === d && (P.cells[k].loc || '') === loc).map(k => P.cells[k].shift);
+    if (!here.length || here.indexOf('CUST') >= 0) return;
+    ['M', 'E'].forEach(c => { if (here.indexOf(c) < 0) out.push({ loc: loc, date: d, shift: c }); });
+  }));
+  return out;
+}
+/** Pick who covers an empty shift at a store: anyone from any store; their box for that day moves to this store and shift. */
+function coverSheet(loc, d, shift) {
+  const P = S.plan, r = P.r;
+  const cand = r.staff.map(s => { const c = P.cells[s.name + '|' + d]; return { s: s, c: c }; })
+    .filter(x => !(x.c && x.c.loc === loc && x.c.shift === shift));
+  const rank = x => !x.c ? 1 : x.c.shift === 'OFF' ? 3 : ['LP', 'LU', 'HOL'].indexOf(x.c.shift) >= 0 ? 4 : x.c.loc === loc ? 0 : 2;
+  cand.sort((a, b) => rank(a) - rank(b) || (a.s.name < b.s.name ? -1 : 1));
+  const lbl = x => !x.c ? 'not planned' : SHIFT[x.c.shift] + (x.c.loc && x.c.loc !== x.s.loc ? ' @ ' + x.c.loc : x.c.loc && x.c.loc !== loc ? ' @ ' + x.c.loc : '');
+  const sh = sheet('Who covers ' + SHIFT[shift].toLowerCase() + '?', '<p class="small" style="margin-top:0"><b>' + esc(loc) + '</b> · ' + esc(dLabel(d)) + ' · ' + esc(r.shifts[shift].start + '–' + r.shifts[shift].end) + '</p>' +
+    '<div class="seg" id="csh"><button data-s="M"' + (shift === 'M' ? ' class="on"' : '') + '>Morning</button><button data-s="E"' + (shift === 'E' ? ' class="on"' : '') + '>Evening</button></div>' +
+    '<div class="card" style="padding:4px 12px">' + cand.map((x, i) => '<div class="person" data-i="' + i + '"><div class="av">' + esc(initials(x.s.name)) + '</div><div class="grow"><b>' + esc(x.s.name) + '</b><div class="tiny mute">' + esc(x.s.loc || 'no store') + ' · that day: ' + esc(lbl(x)) + '</div>' +
+      (x.c && x.c.shift === 'OFF' ? '<div class="tiny" style="color:var(--warn)">Uses their weekly off – paid as an extra day</div>' : x.c && ['M', 'E', 'CUST'].indexOf(x.c.shift) >= 0 && x.c.loc !== loc ? '<div class="tiny" style="color:var(--warn)">Moves them from ' + esc(x.c.loc) + '</div>' : '') + '</div><span class="mute">›</span></div>').join('') + '</div>' +
+    '<p class="tiny mute">Then tap Publish so staff see it.</p>');
+  sh.el.querySelectorAll('#csh button').forEach(b => b.onclick = () => { shift = b.dataset.s; sh.el.querySelectorAll('#csh button').forEach(x => x.classList.toggle('on', x === b)); });
+  sh.el.querySelectorAll('.person').forEach(el => el.onclick = () => {
+    const x = cand[+el.dataset.i], k = x.s.name + '|' + d, t = r.shifts[shift];
+    P.cells[k] = { shift: shift, start: t.start, end: t.end, loc: loc, note: x.s.loc && x.s.loc !== loc ? 'Covering ' + loc : '' };
+    P.manual = P.manual || {}; P.manual[k] = 1; P.dirty = true; sh.close(); drawPlan(); toast(x.s.name + ' covers ' + loc + ' – remember to Publish');
+  });
 }
 function rotaWarnLocal() {
   const P = S.plan, r = P.r, w = [];
@@ -679,15 +723,17 @@ function viewMore(m) {
   const item = (id, ic, t, s, dot) => '<div class="person" id="' + id + '"><div class="av" style="background:var(--cream);color:var(--navy)">' + ic + '</div><div class="grow"><b>' + t + '</b><div class="tiny mute">' + s + '</div></div>' + (dot ? '<span class="chip bad">' + dot + '</span>' : '') + '<span class="mute">›</span></div>';
   m.innerHTML = '<h1 class="pg">More</h1><div class="card">' +
     (b.day ? item('mh', '📊', 'My hours', 'This month: days, late, breaks, travel, pay estimate') : '') +
-    (me.admin ? item('mt', '🛵', 'Trip claims', 'Approve travel money', b.pendingTrips) : '') +
-    (me.pay ? item('mp', '₹', 'Payroll', 'Monthly salary from attendance + overtime + travel') : '') +
-    (me.admin ? item('ms', '👥', 'Staff', 'Store, shifts, weekly-off choice' + (me.pay ? ', salary' : '') + ', phone reset') : '') +
-    (me.pay ? item('mset', '⚙', 'Settings & store locations', 'Geofence, shift times, rules, km rates') : '') +
+    (can('trips') ? item('mt', '🛵', 'Trip claims', 'Approve travel money', b.pendingTrips) : '') +
+    (can('pay') ? item('mp', '₹', 'Payroll', 'Monthly salary from attendance + overtime + travel') : '') +
+    (can('staff') || can('pay') ? item('ms', '👥', 'Staff', 'Store, shifts, weekly-off choice' + (can('pay') ? ', salary' : '') + ', on rota, phone reset') : '') +
+    (can('settings') ? item('mloc', '📍', 'Store locations', 'Add / move a store, set its position and radius') : '') +
+    (can('settings') ? item('mset', '⚙', 'Rules & settings', 'Paid break, late grace, shift times, km rates') : '') +
+    (me.owner ? item('mperm', '🔐', 'Permissions', 'Who can plan the rota, change times, approve, see pay…') : '') +
     item('mpin', '🔑', 'Change my PIN', 'Same PIN as the Nutvique billing app') +
     item('mout', '⎋', 'Sign out', esc(me.name)) + '</div>' +
     '<p class="tiny mute" style="text-align:center">Nutvique Staff Rota · Nutzy Foods Pvt Ltd<br>Phone ID ' + esc(phoneId().slice(-6)) + '</p>';
   const on = (id, f) => { const el = document.getElementById(id); if (el) el.onclick = f; };
-  on('mh', () => viewMonthSheet()); on('mt', viewTripClaims); on('mp', () => viewPayroll()); on('ms', viewStaff); on('mset', viewSettings);
+  on('mh', () => viewMonthSheet()); on('mt', viewTripClaims); on('mp', () => viewPayroll()); on('ms', viewStaff); on('mset', viewSettings); on('mloc', viewSettings); on('mperm', viewPerms);
   on('mpin', () => changePin(false)); on('mout', () => { if (confirm('Sign out on this phone?')) signOut(); });
 }
 async function viewTripClaims() {
@@ -741,13 +787,13 @@ async function viewStaff() {
   const r = await run('Loading staff…', () => call('staffList'));
   const sh = sheet('Staff', '<div id="stl"></div>');
   const draw = r => {
-    sh.el.querySelector('#stl').innerHTML = (S.b.me.pay ? '<button class="btn ghost full sm" id="ssync">⟳ Add people from the Nutvique People list</button><div style="height:8px"></div>' : '') +
-      '<div class="card">' + r.staff.map((s, i) => '<div class="person" data-i="' + i + '"><div class="av"' + (s.active ? '' : ' style="opacity:.4"') + '>' + esc(initials(s.name)) + '</div><div class="grow"><b>' + esc(s.name) + '</b> ' + (s.active ? '' : '<span class="chip">inactive</span>') +
+    sh.el.querySelector('#stl').innerHTML = (can('staff') ? '<button class="btn ghost full sm" id="ssync">⟳ Add people from the Nutvique People list</button><div style="height:8px"></div>' : '') +
+      '<div class="card">' + r.staff.map((s, i) => '<div class="person" data-i="' + i + '"><div class="av"' + (s.active ? '' : ' style="opacity:.4"') + '>' + esc(initials(s.name)) + '</div><div class="grow"><b>' + esc(s.name) + '</b> ' + (s.active ? '' : '<span class="chip">inactive</span>') + (s.onRota === false ? ' <span class="chip">not on rota</span>' : '') +
         '<div class="tiny mute">' + esc(s.loc || 'No location set') + ' · ' + esc(s.pref) + ' · off ' + esc(s.offPref) + (r.canPay ? ' · ' + (s.salary ? rs(s.salary) : '<span style="color:var(--bad)">no salary</span>') : '') + (s.phone ? ' · 📱' : '') + '</div></div><span class="mute">›</span></div>').join('') + '</div>' +
-      '<button class="btn full" id="sadd">+ Add a person</button>';
+      (can('staff') ? '<button class="btn full" id="sadd">+ Add a person</button>' : '');
     const sy = sh.el.querySelector('#ssync'); if (sy) sy.onclick = async () => { const x = await run('Checking…', () => call('syncStaff')); draw(x); toast(x.added.length ? 'Added: ' + x.added.join(', ') : 'Everyone is already here.'); if (x.noLogin.length) setTimeout(() => toast('No Nutvique sign-in yet: ' + x.noLogin.join(', ') + ' – add them in Nutvique → More → People', true), 3300); };
     sh.el.querySelectorAll('.person').forEach(p => p.onclick = () => editStaff(r.staff[+p.dataset.i], r, draw));
-    sh.el.querySelector('#sadd').onclick = () => editStaff(null, r, draw);
+    const sa = sh.el.querySelector('#sadd'); if (sa) sa.onclick = () => editStaff(null, r, draw);
   };
   draw(r);
 }
@@ -761,14 +807,29 @@ function editStaff(s, r, redraw) {
     (r.canPay ? '<label class="f">Monthly salary (₹)</label><input class="i" id="ss" type="number" inputmode="numeric" value="' + esc(s.salary || '') + '">' : '') +
     '<label class="f">Joined on (blank = before the app)</label><input class="i" id="sj" type="date" value="' + esc(s.joined || '') + '">' +
     '<label class="f">Notes</label><input class="i" id="snt" value="' + esc(s.notes || '') + '"><label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="sa"' + (s.active ? ' checked' : '') + '> Active</label>' +
+    '<label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="srota"' + (s.onRota !== false ? ' checked' : '') + '> On the rota (clocks in, planned, paid here)</label>' +
     (s.phone ? '<div class="warnbox blue" style="margin-top:12px">📱 Phone registered ' + (s.phoneAt ? new Date(s.phoneAt).toLocaleDateString('en-IN') : '') + '. If they changed phone: <button class="btn sm ghost" id="sph">Reset phone</button></div>' : '') +
     '<br><button class="btn full" id="sgo">Save</button>');
   sh.el.querySelector('#sgo').onclick = async () => {
     const v = id => sh.el.querySelector(id) ? sh.el.querySelector(id).value : undefined;
-    const x = await run('Saving…', () => call('staffSave', { name: s.name, newName: v('#sn'), id: v('#sid'), role: v('#sr'), loc: v('#sl'), pref: v('#sp'), offPref: v('#so'), salary: r.canPay ? v('#ss') : s.salary, joined: v('#sj'), notes: v('#snt'), active: sh.el.querySelector('#sa').checked }));
+    const x = await run('Saving…', () => call('staffSave', { name: s.name, newName: v('#sn'), id: v('#sid'), role: v('#sr'), loc: v('#sl'), pref: v('#sp'), offPref: v('#so'), salary: r.canPay ? v('#ss') : s.salary, joined: v('#sj'), notes: v('#snt'), active: sh.el.querySelector('#sa').checked, onRota: sh.el.querySelector('#srota').checked }));
     sh.close(); redraw(x); toast('Saved');
   };
   const ph = sh.el.querySelector('#sph'); if (ph) ph.onclick = async () => { const x = await run('Resetting…', () => call('resetPhone', { name: s.name })); sh.close(); redraw(x); toast('Phone reset – the next phone they use is registered'); };
+}
+async function viewPerms() {
+  const r = await run('Loading…', () => call('rightsList'));
+  const sh = sheet('Permissions', '<p class="small mute" style="margin-top:0">You (Owner) can do everything. Tick what each person may do. Managers start with “rota” only.</p><div id="pl"></div>');
+  const draw = r => {
+    sh.el.querySelector('#pl').innerHTML = r.people.map((p, i) => '<div class="card"><div class="row"><div class="av">' + esc(initials(p.name)) + '</div><div class="grow"><b>' + esc(p.name) + '</b><div class="tiny mute">' + esc(p.role) + ' · ' + esc(p.loc || 'no store') + '</div></div></div>' +
+      r.rights.map(x => '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:8px;font-size:13.5px"><input type="checkbox" data-p="' + i + '" data-k="' + x.key + '"' + (p.rights.indexOf(x.key) >= 0 ? ' checked' : '') + ' style="margin-top:2px"> ' + esc(x.label) + '</label>').join('') +
+      '<button class="btn sm" style="margin-top:10px" data-save="' + i + '">Save for ' + esc(p.name.split(' ')[0]) + '</button></div>').join('');
+    sh.el.querySelectorAll('[data-save]').forEach(b => b.onclick = async () => {
+      const i = +b.dataset.save, keys = [...sh.el.querySelectorAll('input[data-p="' + i + '"]:checked')].map(c => c.dataset.k);
+      const x = await run('Saving…', () => call('rightsSave', { name: r.people[i].name, rights: keys })); toast('Saved – applies on their next screen refresh'); draw(x);
+    });
+  };
+  draw(r);
 }
 async function viewSettings() {
   const r = await run('Loading…', () => call('settingsGet'));
