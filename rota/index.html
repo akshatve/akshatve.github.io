@@ -145,20 +145,30 @@ const inv = (action, data) => post(window.INV_API, { token: S.token, action: act
 const call = (action, data) => post(window.ROTA_API, { token: S.token, action: action, data: data || {} });
 
 /* ───────────── location + camera ───────────── */
+// GPS is switched on while the Today / Trips screen is open, so a precise position is usually ready the moment someone taps a button.
+let WARM = null, WARM_W = null;
+function warmGps() {
+  if (WARM_W != null || !navigator.geolocation) return;
+  WARM_W = navigator.geolocation.watchPosition(p => { const c = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), t: Date.now() };
+    if (!WARM || c.acc <= WARM.acc + 10 || Date.now() - WARM.t > 20000) WARM = c; }, () => { }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 });
+}
+function coolGps() { if (WARM_W != null) { navigator.geolocation.clearWatch(WARM_W); WARM_W = null; } }
 function getPos(onProgress) {
+  if (WARM && Date.now() - WARM.t < 30000 && WARM.acc <= 40) return Promise.resolve({ lat: WARM.lat, lng: WARM.lng, acc: WARM.acc });
   return new Promise((res, rej) => {
     if (!navigator.geolocation) return rej(new Error('This phone cannot share its location.'));
-    let best = null, done = false;
-    const finish = () => { if (done) return; done = true; navigator.geolocation.clearWatch(w); clearTimeout(t); best ? res(best) : rej(new Error('Could not get your location. Turn on Location / GPS and try again.')); };
+    let best = null, done = false, t2 = null;
+    const finish = () => { if (done) return; done = true; navigator.geolocation.clearWatch(w); clearTimeout(t); clearTimeout(t2); best ? res(best) : rej(new Error('Could not get your location. Turn on Location / GPS and try again.')); };
     const w = navigator.geolocation.watchPosition(p => {
       const c = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) };
       if (!best || c.acc < best.acc) best = c;
       if (onProgress) onProgress(best);
       if (best.acc <= 35) finish();
+      else if (best.acc <= 80 && !t2) t2 = setTimeout(finish, 4000);   // good enough – don't keep the person waiting
     }, e => {
       if (e.code === 1) { done = true; navigator.geolocation.clearWatch(w); clearTimeout(t); rej(new Error('Location permission is blocked. Allow Location for this app in phone Settings → Apps → Chrome (or Safari) → Location, then try again.')); }
     }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
-    const t = setTimeout(finish, 15000);
+    const t = setTimeout(finish, 12000);
   });
 }
 function haversine(a, b, c, d) { const R = 6371000, r = x => x * Math.PI / 180, dLat = r(c - a), dLng = r(d - b); const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); }
@@ -211,19 +221,34 @@ async function start() {
   S.token = store.get('token') || '';
   if (!S.token) { try { const t = localStorage.getItem('nvinv_token'); if (t) { S.token = t; S.borrowed = true; } } catch (e) { } }   // already signed in to the Nutvique app on this phone
   if (!S.token) return loginScreen();
+  let snap = null; try { snap = JSON.parse(store.get('snap') || 'null'); } catch (e) { }
+  if (snap && snap.tok === S.token.slice(-12) && snap.b && Date.now() - snap.at < 7 * 864e5) {   // show the last screen at once…
+    S.stale = true; render(snap.b);
+    boot().catch(e => { if (!S.token) return; S.stale = false; toast(e.message, true); if (S.tab === 'today') go('today'); });   // …and update it
+    return;
+  }
   try { await boot(); } catch (e) { if (!S.token) return; $('#app').innerHTML = '<div class="lock"><h1>NUTVIQUE</h1><p class="warnbox bad">' + esc(e.message) + '</p><button class="btn" onclick="location.reload()">Try again</button></div>'; }
 }
 function signOut(quiet) {
   let shared = S.borrowed; try { shared = shared || localStorage.getItem('nvinv_token') === S.token; } catch (e) { }
   if (S.token && !quiet && !shared) inv('logout').catch(() => { });   // never sign the billing app out from here
-  S.token = ''; S.borrowed = false; store.set('token', null); S.user = null; S.b = null;
+  if (S.token) post(window.ROTA_API, { token: S.token, action: 'signout' }).catch(() => { });
+  S.token = ''; S.borrowed = false; store.set('token', null); store.set('snap', null); S.user = null; S.b = null;
   stopTrail(); loginScreen();
 }
 async function loginScreen() {
   $('#app').innerHTML = '<div class="lock"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#C9A24A" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' +
     '<h1>NUTVIQUE</h1><p>Staff attendance &amp; rota</p>' + installBox() + '<div class="names"><div class="spin" style="margin:20px auto;grid-column:1/3"></div></div></div>';
+  let cached = null; try { cached = JSON.parse(store.get('names') || 'null'); } catch (e) { }
+  if (cached) drawNames(cached);
   let names;
-  try { names = await post(window.INV_API, { action: 'loginNames' }); } catch (e) { $('.names').innerHTML = '<p class="warnbox bad" style="grid-column:1/3">' + esc(e.message) + '</p><button class="btn" style="grid-column:1/3" onclick="loginScreen()">Try again</button>'; return; }
+  try { names = await post(window.INV_API, { action: 'loginNames' }); store.set('names', JSON.stringify(names)); }
+  catch (e) { if (!cached) $('.names').innerHTML = '<p class="warnbox bad" style="grid-column:1/3">' + esc(e.message) + '</p><button class="btn" style="grid-column:1/3" onclick="loginScreen()">Try again</button>'; return; }
+  if (!$('.names') || JSON.stringify(names) === JSON.stringify(cached)) return;
+  drawNames(names);
+}
+function drawNames(names) {
+  if (!$('.names')) return;
   const last = store.get('lastName');
   const list = names.names.slice().sort((a, b) => (a.name === last ? -1 : b.name === last ? 1 : a.name < b.name ? -1 : 1));
   $('.names').innerHTML = '<p class="small mute" style="grid-column:1/3;margin:0">Tap your name</p>' + list.map(n => '<button data-n="' + esc(n.name) + '"><b>' + esc(n.name) + '</b><small>' + esc(n.home || n.role) + '</small></button>').join('') +
@@ -270,8 +295,22 @@ function changePin(forced) {
 async function boot() {
   const t0 = Date.now();
   const b = await call('boot');
-  S.b = b; S.user = b.me;
   if (b.day && b.day.now) S.offset = new Date(b.day.now).getTime() - (t0 + Date.now()) / 2;
+  try { store.set('snap', JSON.stringify({ tok: S.token.slice(-12), at: Date.now(), b: b })); } catch (e) { }
+  const wasStale = S.stale; S.stale = false;
+  if (wasStale && S.b && document.querySelector('nav.tabs')) {          // already showing the saved screen: update quietly
+    S.b = b; S.user = b.me;
+    const tabs = tabList();
+    if (document.querySelectorAll('nav.tabs button').length !== tabs.length || !tabs.some(t => t.k === S.tab)) { if (!tabs.some(t => t.k === S.tab)) S.tab = tabs[0].k; shell(); go(S.tab); }
+    else if (!document.querySelector('.sheet') && (S.tab === 'today' || S.tab === 'rota')) go(S.tab);
+    else document.querySelectorAll('nav.tabs .dot').forEach(d => d.remove());
+    if (b.day && b.day.trip) startTrail(b.day.trip);
+    return;
+  }
+  render(b);
+}
+function render(b) {
+  S.b = b; S.user = b.me;
   if (!b.day && !b.me.admin) { $('#app').innerHTML = '<div class="lock"><h1>NUTVIQUE</h1><p class="warnbox">You are not on the staff list yet. Ask head office.</p><button class="btn ghost" onclick="signOut()">Sign out</button></div>'; return; }
   const tabs = tabList();
   if (!tabs.some(t => t.k === S.tab)) S.tab = tabs[0].k;
@@ -302,15 +341,17 @@ function shell() {
 }
 function go(t) {
   S.tab = t; clearInterval(S.tick);
+  if (t === 'today' || t === 'trips') { if (S.b && S.b.day) warmGps(); } else coolGps();
   document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   const m = $('#main'); m.innerHTML = ''; window.scrollTo(0, 0);
   ({ today: viewToday, rota: viewRota, trips: viewTrips, team: viewTeam, plan: viewPlan, more: viewMore })[t](m);
 }
-async function refreshBoot() { const b = await call('boot'); S.b = b; const tb = document.querySelectorAll('nav.tabs button'); if (tb.length !== tabList().length) shell(); return b; }
+async function refreshBoot() { const b = await call('boot'); S.b = b; try { store.set('snap', JSON.stringify({ tok: S.token.slice(-12), at: Date.now(), b: b })); } catch (e) { } const tb = document.querySelectorAll('nav.tabs button'); if (tb.length !== tabList().length) shell(); return b; }
 
 /* ───────────── TODAY (clock in / break / out) ───────────── */
 function viewToday(m) {
   const d = S.b.day;
+  if (S.stale && d.date !== today()) { m.innerHTML = '<div class="card clock"><div class="date">' + esc(dLabel(today())) + '</div><div class="st">Loading today…</div><div class="spin" style="margin:14px 0"></div></div>'; return; }
   const sh = d.shift;
   const st = d.state, c = d.calc || {};
   const shiftTxt = sh ? (sh.start ? sh.label + ' ' + sh.start + '–' + sh.end : sh.label) + (sh.loc ? ' · ' + sh.loc : '') : 'No shift on the rota today';
@@ -332,12 +373,12 @@ function viewToday(m) {
     (st !== 'OUT_NONE' ? '<div class="meter"><i style="width:' + pct + '%"></i></div><div class="sub" style="margin-top:4px">' + hmin(c.credited) + ' of ' + hmin(shiftLen) + ' shift' + (c.late ? ' · late ' + c.late + ' min' : '') + '</div>' : '') +
     (st === 'BREAK' ? '<div class="sub" id="brk" style="margin-top:6px"></div>' : '') + '</div>' +
     (d.trip ? '<div class="warnbox blue">🛵 Trip running: ' + esc(d.trip.purpose) + ' – <a href="#" onclick="go(\'trips\');return false">open</a></div>' : '') +
-    '<div class="card" style="background:none;border:0;padding:4px 0">' + btns + '</div>' +
+    '<div class="card" style="background:none;border:0;padding:4px 0">' + (S.stale ? '<div class="small mute" style="text-align:center;margin-bottom:6px"><span class="spin" style="display:inline-block;width:12px;height:12px;border-width:2px;vertical-align:-2px"></span> Updating…</div>' : '') + btns + '</div>' +
     '<div class="card"><h2>Today</h2>' + (d.punches.length ? '<div class="tl">' + d.punches.map(p => '<div><b>' + esc(p.time) + '</b> · ' + esc(p.label) +
       '<div class="small mute">' + esc(p.loc || '') + (p.inside ? ' ✓' : ' – outside store') + (p.approved === 'Pending' ? ' · <span class="chip warn">waiting for approval</span>' : '') + (p.flags ? ' · ' + esc(p.flags) : '') + '</div></div>').join('') + '</div>'
       : '<p class="mute small">Nothing yet. Clock in when you reach the store – the app checks your location and takes a selfie.</p>') + '</div>' +
     '<button class="btn ghost full" onclick="viewMonthSheet()">📊 My hours this month</button>' + installBox();
-  m.querySelectorAll('[data-p]').forEach(b => b.onclick = () => doPunch(b.dataset.p));
+  m.querySelectorAll('[data-p]').forEach(b => { if (S.stale) b.disabled = true; b.onclick = () => doPunch(b.dataset.p); });
   const tick = () => {
     const n = now(); const el = $('#clk'); if (!el) return clearInterval(S.tick);
     el.textContent = pad(n.getHours()) + ':' + pad(n.getMinutes()) + ':' + pad(n.getSeconds());
@@ -348,14 +389,17 @@ function viewToday(m) {
 async function doPunch(type, reason, selfieData) {
   const label = { IN: 'Clock in', BO: 'Start break', BI: 'Back from break', OUT: 'Clock out' }[type];
   if (type === 'OUT' && !reason && !confirm('Clock out for the day?')) return;
-  let pos;
-  const b = busy('Finding your location…');
-  try { pos = await getPos(p => { const n = nearestLoc(p); b.set('Finding your location… ±' + p.acc + ' m' + (n ? ' · ' + distTxt(n.d) + ' from ' + n.name : '')); }); }
-  catch (e) { b.done(); return toast(e.message, true); }
-  b.done();
-  if (pos.acc > (S.b.maxAcc || 250)) return toast('GPS is not precise yet (±' + pos.acc + ' m). Step near the store entrance or a window and try again.', true);
+  // location is found while the selfie is being taken (both at once = no extra waiting)
+  let prog = null, lastP = null;
+  const posP = getPos(p => { lastP = p; if (prog) { const n = nearestLoc(p); prog.set('Finding your location… ±' + p.acc + ' m' + (n ? ' · ' + distTxt(n.d) + ' from ' + n.name : '')); } });
+  posP.catch(() => { });
   let pic = selfieData || '';
   if (S.b.selfie && !pic) { try { pic = await selfie(label + ' – selfie'); } catch (e) { return toast(e.message, true); } }
+  let pos;
+  prog = busy('Finding your location…' + (lastP ? ' ±' + lastP.acc + ' m' : ''));
+  try { pos = await posP; } catch (e) { prog.done(); return toast(e.message, true); }
+  prog.done();
+  if (pos.acc > (S.b.maxAcc || 250)) return toast('GPS is not precise yet (±' + pos.acc + ' m). Step near the store entrance or a window and try again.', true);
   let r;
   try { r = await run('Saving…', () => call('punch', { type: type, lat: pos.lat, lng: pos.lng, acc: pos.acc, selfie: pic, phone: phoneId(), reason: reason || '' })); }
   catch (e) { return; }
@@ -367,6 +411,7 @@ async function doPunch(type, reason, selfieData) {
     return;
   }
   S.b.day = r; if (navigator.vibrate) navigator.vibrate([20, 40, 20]);
+  try { store.set('snap', JSON.stringify({ tok: S.token.slice(-12), at: Date.now(), b: S.b })); } catch (e) { }
   toast('✓ ' + r.saved.label + ' at ' + r.saved.time + (r.saved.flags.length ? ' – ' + r.saved.flags.join(', ') : ''));
   go('today');
 }
