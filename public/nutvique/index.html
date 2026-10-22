@@ -2127,8 +2127,8 @@ function drawSales() {
   if (SR.tab === 'staff') body = r.byStaff.length ? head('Billed by') + r.byStaff.map(x => row(esc(x.by), x)).join('') + '</table>' : '<div class="empty small">No bills.</div>';
   if (SR.tab === 'event') body = head('Event') + r.byEvent.map(x => row(esc(x.event), x)).join('') + '</table>';
   $('#sr_body').innerHTML =
-    '<div class="tiny mute" style="margin-bottom:6px">' + esc(span) + ' · ' + esc(r.loc === 'All' ? 'all stores and events' : r.loc) + ' · app bills + QueueBuster</div>' +
-    (t.qb && t.qb.bills ? '<div class="tiny" style="margin-bottom:6px">This app: <b>' + rs(t.app.total) + '</b> (' + t.app.bills + ' bills) · QueueBuster: <b>' + rs(t.qb.total) + '</b> (' + t.qb.bills + ' bills)' + (t.qb.also ? ' · ' + t.qb.also + ' billed in both, counted once' : '') + '</div>' : '') +
+    '<div class="tiny mute" style="margin-bottom:6px">' + esc(span) + ' · ' + esc(r.loc === 'All' ? 'all stores and events' : r.loc) + ' · app bills + QueueBuster + event memos</div>' +
+    (t.qb && (t.qb.bills || (t.memo && t.memo.bills)) ? '<div class="tiny" style="margin-bottom:6px">This app: <b>' + rs(t.app.total) + '</b> (' + t.app.bills + ' bills) · QueueBuster: <b>' + rs(t.qb.total) + '</b> (' + t.qb.bills + ' bills)' + (t.memo && t.memo.bills ? ' · Event memos: <b>' + rs(t.memo.total) + '</b> (' + t.memo.bills + ')' : '') + (t.qb.also ? ' · ' + t.qb.also + ' billed in both, counted once' : '') + '</div>' : '') +
     '<div class="bigp"><div><span>Total sales</span><b>' + rs(t.total) + '</b></div><div><span>Bills</span><b>' + t.bills + '</b></div><div><span>Average bill</span><b>' + rs(t.avg) + '</b></div></div>' +
     '<div class="bigp"><div><span>Cash</span><b>' + rs(t.cash) + '</b></div><div><span>UPI</span><b>' + rs(t.upi) + '</b></div><div><span>Card</span><b>' + rs(t.card) + '</b></div></div>' +
     '<div class="card" style="padding:10px 12px"><div class="kv"><div>Discount given</div><div>' + rs(t.disc) + '</div><div>Taxable value</div><div>' + rs(t.taxable) + '</div>' +
