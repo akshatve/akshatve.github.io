@@ -23,7 +23,15 @@ header{position:sticky;top:0;z-index:20;background:var(--navy);color:var(--cream
 header .brand{font-weight:700;letter-spacing:.06em;font-size:15px}header .brand small{display:block;font-weight:400;letter-spacing:0;opacity:.75;font-size:11px}
 header .sp{flex:1}.hbtn{background:transparent;border:1px solid rgba(247,241,222,.35);color:var(--cream);border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer}
 main{max-width:1180px;margin:0 auto;padding:12px 16px 96px}
-table.cnt td{vertical-align:middle;white-space:nowrap}table.cnt .cn_nm{position:sticky;left:0;background:#fff;z-index:1;white-space:normal;min-width:130px;max-width:170px}table.cnt thead .cn_nm{z-index:2}table.cnt tr.cn_cat td.cn_nm{background:var(--cream)}.cnwrap{max-height:calc(100vh - 330px);overflow:auto}table.cnt tr.cn_cat td{background:var(--cream);font-weight:700;font-size:12px;color:var(--navy);padding:5px 8px}table.cnt thead th{position:sticky;top:0;background:#fff;z-index:1}
+table.cnt td{vertical-align:middle}table.cnt td.n{white-space:nowrap}table.cnt tr.cn_cat td{background:var(--cream);font-weight:700;font-size:12px;color:var(--navy);padding:5px 8px}table.cnt .cn_in{width:84px;min-height:34px;padding:4px 6px;text-align:right}table.cnt .cn_rm{width:100%;min-width:130px;min-height:34px;padding:4px 6px}
+.cnhead{display:grid;grid-template-columns:1fr 150px auto;gap:8px;align-items:center;margin-bottom:6px}.cnhead .i{min-width:0}
+.cnlist{display:flex;flex-direction:column;gap:6px;padding-bottom:8px}.cn_catm{font-weight:700;font-size:12px;color:var(--navy);background:var(--cream);padding:5px 8px;border-radius:6px;margin-top:4px}
+.cnr{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px}.cnr1{display:flex;align-items:center;gap:8px;font-size:14px;line-height:1.25}
+.cnrm{border:1px solid var(--line);background:#fff;border-radius:8px;width:30px;height:30px;color:var(--mute);flex:none}.cnrm.on{color:var(--navy);border-color:var(--gold);background:var(--cream)}
+.cnr2{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:6px;margin-top:6px}.cnr3{display:flex;align-items:center;gap:10px;margin-top:6px}.cnr3 label{font-size:12px;color:var(--mute);white-space:nowrap}.cnr3 .cn_in{width:110px;min-height:36px;padding:4px 8px;text-align:right}.cnr3 .cn_d{font-size:14px;margin-left:auto}
+.cnk{display:flex;flex-direction:column;min-width:0}.cnk span{font-size:10.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cnk b{font-size:13px;font-weight:600;white-space:nowrap}
+.cnr .cn_rm{margin-top:6px;min-height:34px;padding:4px 8px;width:100%}
+@media(max-width:380px){.cnhead{grid-template-columns:1fr 130px auto}}
 nav.tabs{position:fixed;bottom:0;left:0;right:0;z-index:30;background:#fff;border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
 nav.tabs button{flex:1;border:0;background:none;padding:8px 2px 9px;font-size:11.5px;color:var(--mute);cursor:pointer;position:relative}
 nav.tabs button svg{display:block;margin:0 auto 2px;width:22px;height:22px}
@@ -952,11 +960,10 @@ function cnRestore() { try { const o = JSON.parse(localStorage.getItem(cnKey()) 
 async function stockCount() {
   const locs = S.locations.filter(l => l !== 'Event');
   if (!CN.loc || locs.indexOf(CN.loc) < 0) CN.loc = S.user && locs.indexOf(S.user.home) >= 0 ? S.user.home : (locs.length === 1 ? locs[0] : '');
-  $('#sk_b').innerHTML = '<div class="card"><div class="grid3">' +
-    fld('Store / location', '<select class="i" id="cn_loc"><option value="">Pick…</option>' + locs.map(l => '<option' + (l === CN.loc ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>') +
-    fld('Count date', '<input class="i" type="date" id="cn_date" value="' + esc(CN.date || today()) + '">') +
-    '<div style="align-self:end"><button class="btn ghost sm" id="cn_load">' + (CN.data ? '↻ Reload system qty' : 'Open count sheet') + '</button></div></div>' +
-    '<div class="tiny mute" style="margin-top:6px">Last inventory = stock after the item\'s last count · Sold and Adjusted (stock in, transfers, stock out) since then · System = what the app has now. Type the physical stock (kg for loose, pieces for packs); leave blank if not counted – it is not changed. Enter jumps to the next item. Entries stay on this phone until you save.</div></div><div id="cn_b"></div>';
+  $('#sk_b').innerHTML = '<div class="cnhead"><select class="i" id="cn_loc"><option value="">Pick store…</option>' + locs.map(l => '<option value="' + esc(l) + '"' + (l === CN.loc ? ' selected' : '') + '>' + esc(l === 'Central Warehouse' ? 'Warehouse' : (LOC_SHORT[l] || l)) + '</option>').join('') + '</select>' +
+    '<input class="i" type="date" id="cn_date" value="' + esc(CN.date || today()) + '" title="Count date">' +
+    '<button class="btn ghost sm" id="cn_load" title="Reload system stock">↻</button></div>' +
+    '<details class="tiny mute" style="margin:2px 0 8px"><summary>How it works</summary>Last inventory = stock right after the item\'s last count. Sold and Adjusted (stock in, transfers, stock out) are since then. System = what the app has now. Type the physical stock (kg for loose, pieces for packs); leave an item blank if you did not count it – it is not changed. Enter jumps to the next item. Entries stay on this phone until you save.</details><div id="cn_b"></div>';
   $('#cn_loc').onchange = e => { CN.loc = e.target.value; CN.data = null; CN.vals = {}; CN.rem = {}; stockCount(); };
   $('#cn_date').onchange = e => { CN.date = e.target.value; cnStore(); };
   $('#cn_load').onclick = () => cnLoad();
@@ -968,8 +975,10 @@ async function cnLoad() {
   try { CN.data = await call('countSheet', { location: CN.loc }); } catch (e) { $('#cn_b').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
   const saved = cnRestore();
   if (saved && saved.vals && Object.keys(saved.vals).length && !Object.keys(CN.vals).length) { CN.vals = saved.vals; CN.rem = saved.rem || {}; if (saved.date) CN.date = saved.date; toast('Your unsaved count was restored'); }
-  if (S.view === 'count') { const lb = $('#cn_load'); if (lb) lb.textContent = '↻ Reload system qty'; cnDraw(); }
+  if (S.view === 'count') cnDraw();
 }
+function cnWide() { return window.innerWidth >= 760; }
+function cnDiffHtml(it) { const d = cnDiff(it); return d === null ? '' : '<span style="color:' + (Math.abs(d) < 0.0005 ? 'var(--mute)' : d < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + (Math.abs(d) < 0.0005 ? '✓' : (d > 0 ? '+' : '') + qfmt(d)) + '</span>'; }
 function cnDiff(it) { const v = CN.vals[it.sku]; return v === undefined || v === '' ? null : Math.round((num(v) - it.sys) * 1000) / 1000; }
 function cnDraw() {
   const items = CN.data.items, q = CN.q.trim().toUpperCase();
@@ -981,18 +990,31 @@ function cnDraw() {
   let lastCat = null;
   $('#cn_b').innerHTML = '<div class="row" style="margin:4px 0 8px"><input class="i grow" id="cn_q" type="search" placeholder="Find item, SKU or barcode…" value="' + esc(CN.q) + '">' + (IN_APP ? '<button class="btn sm ghost" id="cn_scan">📷</button>' : '') + '</div>' +
     '<div class="chips" id="cn_f" style="margin-bottom:8px">' + [['all', 'All ' + items.length], ['sys', 'In system'], ['todo', 'Not counted ' + (items.length - done)], ['diff', 'Differences ' + diffs.length]].map(c => '<button data-f="' + c[0] + '" class="' + (CN.f === c[0] ? 'on' : '') + '">' + c[1] + '</button>').join('') + '</div>' +
-    '<div class="tscroll cnwrap"><table class="t cnt"><thead><tr><th class="cn_nm">Product</th><th class="n">Last inventory</th><th class="n">Sold</th><th class="n">Adjusted</th><th class="n">System stock</th><th class="n">Physical stock</th><th class="n">Difference</th><th>Remarks</th></tr></thead><tbody>' +
+    (cnWide() ? '<div class="tscroll"><table class="t cnt"><thead><tr><th>Product</th><th class="n">Last inventory</th><th class="n">Sold</th><th class="n">Adjusted</th><th class="n">System stock</th><th class="n">Physical stock</th><th class="n">Difference</th><th>Remarks</th></tr></thead><tbody>' +
     list.map((it, i) => {
-      const d = cnDiff(it), v = CN.vals[it.sku], rm = CN.rem[it.sku] || '';
-      const cat = it.cat || 'Other', head = cat !== lastCat && !q ? '<tr class="cn_cat"><td class="cn_nm">' + esc(cat) + '</td><td colspan="7"></td></tr>' : ''; lastCat = cat;
-      return head + '<tr data-sku="' + esc(it.sku) + '"><td class="cn_nm">' + esc(it.name.replace(/^Nutvique\s+/, '')) + '<div class="tiny mute">' + esc(it.sku) + ' · ' + esc(it.unit) + '</div></td>' +
-        '<td class="n">' + qfmt(it.last) + (it.lastDate ? '<div class="tiny mute">' + esc(it.lastDate.slice(8, 10) + '/' + it.lastDate.slice(5, 7)) + '</div>' : '<div class="tiny mute">never</div>') + '</td>' +
+      const v = CN.vals[it.sku], rm = CN.rem[it.sku] || '';
+      const cat = it.cat || 'Other', head = cat !== lastCat && !q ? '<tr class="cn_cat"><td colspan="8">' + esc(cat) + '</td></tr>' : ''; lastCat = cat;
+      return head + '<tr data-sku="' + esc(it.sku) + '"><td>' + esc(it.name.replace(/^Nutvique\s+/, '')) + '<div class="tiny mute">' + esc(it.sku) + ' · ' + esc(it.unit) + '</div></td>' +
+        '<td class="n">' + qfmt(it.last) + '<div class="tiny mute">' + (it.lastDate ? esc(it.lastDate.slice(8, 10) + '/' + it.lastDate.slice(5, 7)) : 'never') + '</div></td>' +
         '<td class="n">' + (it.sold ? qfmt(it.sold) : '–') + '</td><td class="n">' + (it.adj ? (it.adj > 0 ? '+' : '') + qfmt(it.adj) : '–') + '</td>' +
         '<td class="n ' + (it.sys < 0 ? 'neg' : '') + '"><b>' + qfmt(it.sys) + '</b></td>' +
-        '<td class="n"><input class="i num cn_in" data-sku="' + esc(it.sku) + '" data-i="' + i + '" inputmode="decimal" enterkeyhint="next" style="width:84px;min-height:34px;padding:4px 6px;text-align:right" value="' + esc(v === undefined ? '' : v) + '"></td>' +
-        '<td class="n cn_d" style="font-weight:600;color:' + (d === null || Math.abs(d) < 0.0005 ? 'var(--mute)' : d < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + (d === null ? '' : Math.abs(d) < 0.0005 ? '✓' : (d > 0 ? '+' : '') + qfmt(d)) + '</td>' +
-        '<td><input class="i cn_rm" data-sku="' + esc(it.sku) + '" style="width:150px;min-height:34px;padding:4px 6px" placeholder="remark" value="' + esc(rm) + '"></td></tr>';
-    }).join('') + '</tbody></table></div>' + (list.length ? '' : '<div class="empty">Nothing here.</div>') +
+        '<td class="n"><input class="i num cn_in" data-sku="' + esc(it.sku) + '" data-i="' + i + '" inputmode="decimal" enterkeyhint="next" value="' + esc(v === undefined ? '' : v) + '"></td>' +
+        '<td class="n cn_d">' + cnDiffHtml(it) + '</td>' +
+        '<td><input class="i cn_rm" data-sku="' + esc(it.sku) + '" placeholder="remark" value="' + esc(rm) + '"></td></tr>';
+    }).join('') + '</tbody></table></div>'
+  : '<div class="cnlist">' + list.map((it, i) => {
+      const v = CN.vals[it.sku], rm = CN.rem[it.sku] || '';
+      const cat = it.cat || 'Other', head = cat !== lastCat && !q ? '<div class="cn_catm">' + esc(cat) + '</div>' : ''; lastCat = cat;
+      return head + '<div class="cnr" data-sku="' + esc(it.sku) + '"><div class="cnr1"><div class="grow"><b>' + esc(it.name.replace(/^Nutvique\s+/, '')) + '</b> <span class="tiny mute">' + esc(it.unit) + '</span></div>' +
+        '<button class="cnrm' + (rm ? ' on' : '') + '" data-rmt="' + esc(it.sku) + '" title="Remark">✎</button></div>' +
+        '<div class="cnr2"><div class="cnk"><span>Last count' + (it.lastDate ? ' ' + esc(it.lastDate.slice(8, 10) + '/' + it.lastDate.slice(5, 7)) : '') + '</span><b>' + qfmt(it.last) + '</b></div>' +
+        '<div class="cnk"><span>Sold</span><b>' + (it.sold ? qfmt(it.sold) : '–') + '</b></div>' +
+        '<div class="cnk"><span>Adjusted</span><b>' + (it.adj ? (it.adj > 0 ? '+' : '') + qfmt(it.adj) : '–') + '</b></div>' +
+        '<div class="cnk"><span>System</span><b class="' + (it.sys < 0 ? 'neg' : '') + '">' + qfmt(it.sys) + '</b></div>' +
+        '</div><div class="cnr3"><label>Physical stock</label><input class="i num cn_in" data-sku="' + esc(it.sku) + '" data-i="' + i + '" inputmode="decimal" enterkeyhint="next" placeholder="' + esc(it.unit) + '" value="' + esc(v === undefined ? '' : v) + '">' +
+        '<b class="cn_d">' + cnDiffHtml(it) + '</b></div>' +
+        '<input class="i cn_rm' + (rm ? '' : ' hide') + '" data-sku="' + esc(it.sku) + '" placeholder="Remark" value="' + esc(rm) + '"></div>';
+    }).join('') + '</div>') + (list.length ? '' : '<div class="empty">Nothing here.</div>') +
     '<div class="foot"><div class="st">' + done + ' of ' + items.length + ' counted · ' + diffs.length + ' difference' + (diffs.length === 1 ? '' : 's') + (can('costs') && diffs.length ? '<br>Value ' + (val < 0 ? '−' : '+') + inr(Math.abs(val), 0) : '') + '</div>' +
     '<button class="btn ghost sm" id="cn_more">⋯</button><button class="btn gold" id="cn_save"' + (done ? '' : ' disabled') + '>Save count</button></div>';
   $('#cn_q').oninput = e => { CN.q = e.target.value; cnDraw(); const x = $('#cn_q'); x.focus(); x.setSelectionRange(x.value.length, x.value.length); };
@@ -1005,14 +1027,14 @@ function cnDraw() {
     el.onfocus = () => el.select();
     el.onblur = () => cnFoot();
   });
+  $$('[data-rmt]').forEach(b => b.onclick = () => { const x = b.closest('.cnr').querySelector('.cn_rm'); x.classList.toggle('hide'); if (!x.classList.contains('hide')) x.focus(); });
   $$('.cn_rm').forEach(el => el.oninput = () => { const s = el.dataset.sku; if (el.value.trim()) CN.rem[s] = el.value; else delete CN.rem[s]; cnStore(); });
   $('#cn_more').onclick = cnMore;
   $('#cn_save').onclick = cnConfirm;
 }
 function cnRow(el) {
-  const it = CN.data.items.find(x => x.sku === el.dataset.sku), d = cnDiff(it), td = el.closest('tr').querySelector('.cn_d');
-  td.textContent = d === null ? '' : Math.abs(d) < 0.0005 ? '✓' : (d > 0 ? '+' : '') + qfmt(d);
-  td.style.color = d === null || Math.abs(d) < 0.0005 ? 'var(--mute)' : d < 0 ? 'var(--bad)' : 'var(--ok)';
+  const it = CN.data.items.find(x => x.sku === el.dataset.sku), td = el.closest('tr, .cnr').querySelector('.cn_d');
+  td.innerHTML = cnDiffHtml(it);
   cnFoot();
 }
 function cnFoot() {
