@@ -299,7 +299,7 @@ function startDone(r, wasShown) {
 }
 function applyBoot(b) {
   S.role = b.role; if (b.user) S.user = b.user; S.products = b.products; S.bySku = {}; b.products.forEach(p => S.bySku[p.sku] = p);
-  S.stock = b.stock || {}; S.locations = b.locations || []; S.at = b.at;
+  S.stock = b.stock || {}; S.locations = b.locations || []; S.at = b.at; S.storePrices = b.storePrices || {};
   if (b.settings) S.settings = b.settings; if (b.categories) S.categories = b.categories;
   S.drafts = b.drafts || 0; S.gs1Pending = b.gs1Pending || 0;
   if (b.pv != null) { S.pv = b.pv; S.lv = b.lv; }
@@ -410,6 +410,10 @@ function drawResults() {
     (shown.length ? '<div class="plist">' + shown.map(cardHtml).join('') + '</div>' : '<div class="empty">No product found.' + (can('newProduct') ? '<br><br><button class="btn sm" onclick="newProductSheet()">+ Create a new product</button>' : '') + '</div>');
   $$('#res .pc').forEach(c => c.onclick = () => productSheet(c.dataset.sku));
 }
+function storeTags(p) {
+  const sp = S.storePrices || {};
+  return Object.keys(sp).filter(l => sp[l][p.sku]).map(l => '<div class="tiny" style="color:var(--warn)">' + esc(LOC_SHORT[l] || l) + ': ' + inr(sp[l][p.sku].sell, 0) + ' · MRP ' + inr(sp[l][p.sku].mrp, 0) + '</div>').join('');
+}
 function cardHtml(p) {
   const st = stockOf(p.sku), u = unitOf(p);
   const m = marginPct(p.cost, p.sell);
@@ -417,7 +421,7 @@ function cardHtml(p) {
     (p.seller ? '<div class="sel">Seller: ' + esc(p.seller) + '</div>' : '') +
     '<div class="tiny mute" style="margin-top:3px">' + esc(p.sku) + (p.gtin ? ' · ' + esc(p.gtin) : '') + (p.gs1 === 'Other brand' ? ' <span class="pill p-mute">Other brand</span>' : p.gs1 && p.gs1 !== 'Registered' ? ' <span class="pill p-new">GS1: ' + esc(p.gs1) + '</span>' : '') + (p.status === 'Discontinued' ? ' <span class="pill p-mute">Discontinued</span>' : '') + '</div>' +
     '<div class="locs">' + locChips(p.sku) + '</div></div>' +
-    '<div class="px"><b>' + inr(p.sell, 0) + '</b><span class="tiny mute">per ' + (u === 'kg' ? 'kg' : 'pc') + ' · MRP ' + inr(p.mrp, 0) + '</span>' +
+    '<div class="px"><b>' + inr(p.sell, 0) + '</b><span class="tiny mute">per ' + (u === 'kg' ? 'kg' : 'pc') + ' · MRP ' + inr(p.mrp, 0) + '</span>' + storeTags(p) +
     '<div class="qty ' + (st.t < 0 ? 'neg' : '') + '" style="margin-top:6px">' + qfmt(st.t) + ' ' + u + '</div>' +
     (can('costs') && p.cost ? '<div class="tiny mute">Cost ' + inr(p.cost, 0) + (m != null ? ' · <span class="' + (m < S.settings.minMargin ? 'neg' : '') + '">' + m + '%</span>' : '') + '</div>' : '') + '</div></div>';
 }
@@ -1487,6 +1491,14 @@ async function customersScreen() {
 }
 
 /* ───────────── MORE ───────────── */
+async function storePriceSheet(loc) {
+  const r = await run('Loading…', () => call('storePrices')), list = r[loc] || [];
+  const m = modal('Store-only prices – ' + loc, '<div class="tscroll"><table class="t"><tr><th>Product</th><th class="n">Normal</th><th class="n">Here</th><th class="n">MRP here</th><th></th></tr>' +
+    list.map(x => '<tr><td>' + esc(x.name.replace(/^Nutvique\s+/, '')) + '</td><td class="n">' + inr(x.baseSell, 0) + '</td><td class="n"><b>' + inr(x.sell, 0) + '</b></td><td class="n">' + inr(x.mrp, 0) + '</td><td><button class="btn sm ghost" data-spx="' + esc(x.sku) + '">×</button></td></tr>').join('') + '</table></div>' +
+    '<button class="btn ghost block" id="spclr" style="margin-top:12px">Remove all store-only prices here</button>', { wide: true });
+  $$('[data-spx]', m).forEach(b => b.onclick = async e => { if (!confirmTwice(e.target)) return; await run('Removing…', () => call('clearStorePrices', { location: loc, sku: b.dataset.spx })); await refresh(true); m.close(); storePriceSheet(loc); });
+  $('#spclr', m).onclick = async e => { if (!confirmTwice(e.target)) return; await run('Removing…', () => call('clearStorePrices', { location: loc })); await refresh(true); m.close(); viewMore(); };
+}
 async function viewMore() {
   const u = S.user || {};
   const rl = u.role === 'Owner' ? 'everything' : (u.rights || []).length + ' right' + ((u.rights || []).length === 1 ? '' : 's');
@@ -1494,6 +1506,9 @@ async function viewMore() {
     (u.home ? '<div>Home store</div><div>' + esc(u.home) + '</div>' : '') + '<div>Products</div><div>' + S.products.length + '</div><div>Last refresh</div><div>' + (S.at ? new Date(S.at).toLocaleString('en-IN') : '') + '</div></div>' +
     '<div class="row" style="margin-top:12px"><button class="btn sm ghost" id="cpin">Change my PIN</button><button class="btn sm ghost" id="lo">Sign out / switch person</button></div></div>';
   if (can('people')) h += '<div class="card"><h3>People, PINs and rights</h3><div class="small mute">Add employees, give each a PIN, choose Manager / Staff and tick exactly what each person may do.</div><button class="btn sm" id="ppl" style="margin-top:10px">Open People</button></div>';
+  if (can('prices')) { const sp = S.storePrices || {}, ls = Object.keys(sp).filter(l => Object.keys(sp[l]).length);
+    h += '<div class="card"><h3>Store-only prices</h3><div class="small mute">New prices that apply at one store before the others. Bills at that store use them; other stores keep the normal price.</div>' +
+      (ls.length ? ls.map(l => '<div class="row" style="margin-top:10px"><div class="grow"><b>' + esc(l) + '</b> · ' + Object.keys(sp[l]).length + ' items</div><button class="btn sm ghost" data-spv="' + esc(l) + '">View</button><button class="btn sm gold" data-spa="' + esc(l) + '">Apply to all stores</button></div>').join('') : '<div class="small" style="margin-top:8px">None at the moment.</div>') + '</div>'; }
   if (can('customers')) h += '<div class="card"><h3>Customers &amp; referrals</h3><div class="small mute">Referral codes, who referred whom, coupons issued and used.</div><button class="btn sm" id="cust" style="margin-top:10px">Open</button></div>';
   if (can('approve')) h += '<div class="card"><h3>Discount approvals</h3><div class="small mute">Requests from managers for more than ' + 10 + '% appear on your screen within seconds. One-time codes are a back-up you can read out on the phone (each works once, up to 25%).</div>' +
     '<div class="row" style="margin-top:10px"><button class="btn sm" id="apv">Requests</button><button class="btn sm ghost" id="apc">One-time codes</button></div></div>';
@@ -1505,6 +1520,12 @@ async function viewMore() {
   $('#lo').onclick = signOut; $('#cpin').onclick = changePinSheet;
   if ($('#ppl')) $('#ppl').onclick = peopleScreen;
   if ($('#cust')) $('#cust').onclick = customersScreen;
+  $$('[data-spv]').forEach(b => b.onclick = () => storePriceSheet(b.dataset.spv));
+  $$('[data-spa]').forEach(b => b.onclick = e => {
+    const l = b.dataset.spa, n = Object.keys((S.storePrices || {})[l] || {}).length;
+    const m = modal('Apply ' + (LOC_SHORT[l] || l) + ' prices to all stores', '<div class="small">The ' + n + ' store-only prices of <b>' + esc(l) + '</b> become the normal price at every store (Products, price history, QueueBuster update list and Night Closing).</div><button class="btn gold block" id="spgo" style="margin-top:12px">Apply to all stores</button>');
+    $('#spgo', m).onclick = async () => { m.close(); const r = await run('Applying prices…', () => call('applyStorePrices', { location: l })); await refresh(true); toast(r.applied + ' prices now apply at every store'); viewMore(); };
+  });
   if ($('#apv')) $('#apv').onclick = () => approvalsSheet(true);
   if ($('#apc')) $('#apc').onclick = codesSheet;
   if (!can('settings')) return;
@@ -1707,6 +1728,7 @@ function pickBillLoc() {
 function locLabel(l) { return l === 'Event' ? 'Event stall' + (B.event ? ' – ' + B.event : '') : l; }
 
 function drawBill() {
+  B.lines.forEach(l => { const p = l.sku && S.bySku[l.sku]; if (p && p.sell) l.rate = priceAt(p); });   // store-only prices follow the chosen store
   const c = calcNow(), t = c.totals;
   const prev = document.activeElement && document.activeElement.id;
   $('#view').innerHTML =
@@ -1857,6 +1879,7 @@ function bindBill() {
   refreshTotals();
   scaleShow();
 }
+function priceAt(p, loc) { const sp = (S.storePrices || {})[loc || B.loc]; return sp && sp[p.sku] ? sp[p.sku].sell : p.sell; }
 function resList(q) {
   return S.products.filter(p => p.status !== 'Discontinued' && p.sell && matchQ(p, q))
     .sort((a, b) => (b.name.toUpperCase().indexOf(q.toUpperCase()) >= 0) - (a.name.toUpperCase().indexOf(q.toUpperCase()) >= 0) || a.name.localeCompare(b.name)).slice(0, 40);
@@ -1866,7 +1889,7 @@ function drawRes() {
   if (!q) { box.innerHTML = ''; return; }
   const list = resList(q);
   box.innerHTML = '<div class="bres">' + (list.length ? list.map(p => '<div class="li" data-sku="' + esc(p.sku) + '"><div class="grow"><b>' + esc(p.name) + '</b><div class="tiny mute">' + esc(p.sku) +
-    (B.loc !== 'Event' ? ' · here ' + qfmt(((stockOf(p.sku).q || {})[B.loc]) || 0) + ' ' + unitOf(p) : '') + '</div></div><div class="nowrap"><b>₹' + money(p.sell) + '</b><span class="tiny mute">/' + unitOf(p) + '</span></div></div>').join('')
+    (B.loc !== 'Event' ? ' · here ' + qfmt(((stockOf(p.sku).q || {})[B.loc]) || 0) + ' ' + unitOf(p) : '') + '</div></div><div class="nowrap"><b>₹' + money(priceAt(p)) + '</b><span class="tiny mute">/' + unitOf(p) + '</span></div></div>').join('')
     : '<div class="empty small">No product matches “' + esc(q) + '”.</div>') + '</div>';
   $$('.li', box).forEach(li => li.onmousedown = e => { e.preventDefault(); addItem(li.dataset.sku); });
 }
@@ -1877,7 +1900,7 @@ function addItem(sku, scanning) {
   else if (ex && kg) { ex.inUnit = kg >= 1 ? 'kg' : 'g'; ex.inQty = String(kg >= 1 ? Math.round(kg * 1000) / 1000 : Math.round(kg * 1000)); }
   else if (!ex) B.lines.push({ sku: sku, name: p.name, hsn: p.hsn, unit: unitOf(p) === 'kg' ? 'kg' : 'pcs',
     inQty: unitOf(p) === 'kg' ? (kg ? String(kg >= 1 ? Math.round(kg * 1000) / 1000 : Math.round(kg * 1000)) : '250') : '1', inUnit: unitOf(p) === 'kg' ? (kg >= 1 ? 'kg' : 'g') : 'pcs',
-    rate: p.sell, gst: p.gst || dfltGst(), discPct: '' });
+    rate: priceAt(p), gst: p.gst || dfltGst(), discPct: '' });
   B.search = '';
   drawBill();
   if (scanning) return;
@@ -1901,7 +1924,7 @@ function takeHeld(id) {
   const all = getHolds(), h = all.find(x => x.id === id); if (!h) return;
   if (B.lines.length) holdBill(true);                      // swap: the bill on screen is held first
   setHolds(getHolds().filter(x => x.id !== id));
-  B.lines = h.lines.map(l => { const p = l.sku && S.bySku[l.sku]; return Object.assign({}, l, p && p.sell ? { rate: p.sell, name: p.name } : {}); });
+  B.lines = h.lines.map(l => { const p = l.sku && S.bySku[l.sku]; return Object.assign({}, l, p && p.sell ? { rate: priceAt(p), name: p.name } : {}); });
   B.cust = h.cust || { name: '', phone: '', gstin: '', address: '' }; B.noDetails = !!h.noDetails; B.biz = !!h.biz; B.billDisc = h.billDisc || 0;
   B.pay = { mode: (h.pay && h.pay.mode) || 'Cash', cash: '', upi: '', card: '', other: '', got: '' }; B.refBy = h.refBy || ''; B.coupon = h.coupon || null;
   if (h.loc === 'Event' && h.event) B.event = h.event;
