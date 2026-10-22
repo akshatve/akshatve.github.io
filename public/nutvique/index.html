@@ -499,35 +499,50 @@ function pickProduct(opts) {
 }
 
 /* ───────────── INVOICES ───────────── */
+const PU = { tab: 'inv', boot: null, q: '' };
+function puTabs() {
+  return '<div class="chips" id="pu_t" style="margin-bottom:10px">' + [['inv', 'Invoices'], ['dc', 'Porter / packing charges'], ['cost', 'Cost prices']].map(t => '<button data-t="' + t[0] + '" class="' + (PU.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div>';
+}
+function bindPuTabs() { $$('#pu_t button').forEach(b => b.onclick = () => { PU.tab = b.dataset.t; viewInvoices(); }); }
 async function viewInvoices() {
   if (S.inv) return drawReview();
-  $('#view').innerHTML = '<h2>Supplier invoices</h2>' +
+  if (PU.tab === 'dc') return viewCharges();
+  if (PU.tab === 'cost') return viewCosts();
+  $('#view').innerHTML = puTabs() + '<h2>Supplier invoices</h2>' +
     '<label class="upl" for="file"><b>⬆ Upload invoice</b><span class="mute small">PDF, or a photo taken on your phone. The system reads it, matches each item to the Nutvique product and shows cost, selling price and MRP.</span></label>' +
     '<input type="file" id="file" accept="application/pdf,image/*" class="hide">' +
     '<div class="row" style="margin:10px 0 16px"><button class="btn ghost sm" id="manual">Enter an invoice by hand</button>' + (S.settings.hasKey ? '' : '<span class="pill p-warn">Invoice reading is off – add the Gemini key in More → Settings</span>') + '</div>' +
+    '<div class="row" style="margin:-6px 0 16px"><button class="btn ghost sm" id="noinv">Stock came in without an invoice</button></div>' +
     '<div id="ilist"><div class="empty"><span class="spin dk"></span></div></div>';
+  bindPuTabs();
+  $('#noinv').onclick = () => { S.inv = { supplier: '', gstin: '', invoiceNo: '', invoiceDate: today(), taxable: 0, gst: 0, charges: [], roundOff: 0, total: 0, receivedAt: 'Central Warehouse', lines: [], notes: '', awaiting: true }; S.invWarn = []; addLine(); drawReview(); };
   $('#file').onchange = e => { const f = e.target.files[0]; if (f) uploadInvoice(f); };
   $('#manual').onclick = () => { S.inv = { supplier: '', gstin: '', invoiceNo: '', invoiceDate: today(), taxable: 0, gst: 0, charges: [], roundOff: 0, total: 0, receivedAt: 'Central Warehouse', lines: [], notes: '' }; S.invWarn = []; addLine(); drawReview(); };
   try {
     const list = await call('listInvoices');
-    const dr = list.filter(x => x.status === 'Draft'), po = list.filter(x => x.status === 'Posted');
+    const dr = list.filter(x => x.status === 'Draft'), po = list.filter(x => x.status === 'Posted'), aw = list.filter(x => x.status === 'Awaiting invoice');
     S.drafts = dr.length; renderNav();
     $('#ilist').innerHTML = (dr.length ? '<div class="card"><h3>Drafts – not posted yet</h3>' + dr.map(invRow).join('') + '</div>' : '') +
+      (aw.length ? '<div class="card"><h3>Stock in – supplier invoice still to come</h3><div class="tiny mute" style="margin-bottom:6px">Costs are provisional. When the invoice arrives, open it and tap “Invoice received”.</div>' + aw.map(invRow).join('') + '</div>' : '') +
       '<div class="card"><h3>Posted invoices</h3>' + (po.length ? po.map(invRow).join('') : '<div class="mute small">None yet.</div>') + '</div>';
     $$('#ilist .li').forEach(li => li.onclick = () => openInvoice(li.dataset.id));
   } catch (e) { $('#ilist').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; }
 }
 function invRow(x) {
-  return '<div class="li" data-id="' + esc(x.id) + '"><div class="grow"><b>' + esc(x.supplier || '(no supplier)') + '</b> <span class="mute small">' + esc(x.no || '') + '</span><div class="tiny mute">' + esc(x.date) + ' · ' + x.lines + ' lines · ' + qfmt(x.qty) + ' qty' + (x.newProducts ? ' · new: ' + esc(x.newProducts) : '') + '</div></div><div class="right"><b>' + inr(x.total, 0) + '</b><div><span class="pill ' + (x.status === 'Draft' ? 'p-warn' : 'p-ok') + '">' + x.status + '</span></div></div></div>';
+  return '<div class="li" data-id="' + esc(x.id) + '"><div class="grow"><b>' + esc(x.supplier || '(no supplier)') + '</b> <span class="mute small">' + esc(x.no || '') + '</span><div class="tiny mute">' + esc(x.date) + ' · ' + x.lines + ' lines · ' + qfmt(x.qty) + ' qty' + (x.newProducts ? ' · new: ' + esc(x.newProducts) : '') + '</div></div><div class="right"><b>' + inr(x.total, 0) + '</b><div><span class="pill ' + (x.status === 'Draft' ? 'p-warn' : x.status === 'Posted' ? 'p-ok' : 'p-new') + '">' + x.status + '</span></div></div></div>';
 }
 async function openInvoice(id) {
   const r = await run('Opening…', () => call('getInvoice', { id: id }));
   if (r.draft) { S.inv = r.draft; S.invWarn = r.warnings || []; S.inv.lines.forEach(primeLine); drawReview(); return; }
   const p = r.posted;
-  modal('Invoice ' + p.no + ' · ' + p.supplier, '<div class="kv"><div>Date</div><div>' + esc(p.date) + '</div><div>Received at</div><div>' + esc(p.at) + '</div><div>Taxable</div><div>' + inr(p.taxable) + '</div><div>GST</div><div>' + inr(p.gst) + '</div><div>Charges</div><div>' + inr(p.charges) + '</div><div>Total</div><div><b>' + inr(p.total) + '</b></div><div>Stock added</div><div>' + esc(p.stockAdded) + '</div><div>Posted</div><div>' + esc((p.postedAt || '').slice(0, 16).replace('T', ' ')) + '</div>' +
+  const m = modal('Invoice ' + p.no + ' · ' + p.supplier, '<div class="kv"><div>Date</div><div>' + esc(p.date) + '</div><div>Received at</div><div>' + esc(p.at) + '</div><div>Taxable</div><div>' + inr(p.taxable) + '</div><div>GST</div><div>' + inr(p.gst) + '</div><div>Charges</div><div>' + inr(p.charges) + '</div><div>Total</div><div><b>' + inr(p.total) + '</b></div><div>Stock added</div><div>' + esc(p.stockAdded) + '</div><div>Posted</div><div>' + esc((p.postedAt || '').slice(0, 16).replace('T', ' ')) + '</div>' +
     (p.file ? '<div>File</div><div><a href="' + esc(p.file) + '" target="_blank">Open invoice</a></div>' : '') + '</div>' +
     '<div class="tscroll" style="margin-top:12px"><table class="t"><tr><th>#</th><th>Seller name</th><th>Nutvique product</th><th class="n">Qty</th><th class="n">Landed</th><th class="n">Selling</th><th class="n">MRP</th><th class="n">Margin</th></tr>' +
-    p.lines.map(l => '<tr><td>' + l.line + '</td><td>' + esc(l.seller) + '<div class="tiny mute">' + esc(l.hsn) + ' · ' + qfmt(l.qty) + ' ' + esc(l.unit) + ' × ' + inr(l.rate) + '</div></td><td>' + esc(l.name) + (l.isNew ? ' <span class="pill p-new">new</span>' : '') + '<div class="tiny mute">' + esc(l.sku) + '</div></td><td class="n">' + qfmt(l.booked) + ' ' + esc(l.punit) + '</td><td class="n">' + inr(l.cost) + '</td><td class="n">' + inr(l.sell, 0) + '</td><td class="n">' + inr(l.mrp, 0) + '</td><td class="n">' + (l.margin === '' ? '–' : l.margin + '%') + '</td></tr>').join('') + '</table></div>', { wide: true });
+    p.lines.map(l => '<tr><td>' + l.line + '</td><td>' + esc(l.seller) + '<div class="tiny mute">' + esc(l.hsn) + ' · ' + qfmt(l.qty) + ' ' + esc(l.unit) + ' × ' + inr(l.rate) + '</div></td><td>' + esc(l.name) + (l.isNew ? ' <span class="pill p-new">new</span>' : '') + '<div class="tiny mute">' + esc(l.sku) + '</div></td><td class="n">' + qfmt(l.booked) + ' ' + esc(l.punit) + '</td><td class="n">' + inr(l.cost) + '</td><td class="n">' + inr(l.sell, 0) + '</td><td class="n">' + inr(l.mrp, 0) + '</td><td class="n">' + (l.margin === '' ? '–' : l.margin + '%') + '</td></tr>').join('') + '</table></div>' +
+    '<div class="row" style="margin-top:14px">' + (p.status === 'Awaiting invoice' ? '<button class="btn gold" id="ie_go">Invoice received – enter it</button>' : '<button class="btn ghost" id="ie_go">Edit / correct this invoice</button>') +
+    '<button class="btn ghost" id="ie_dc">+ Porter / packing charge</button></div><div class="tiny mute" style="margin-top:6px">Editing changes the lines, rates and charges. Only the difference in quantity is moved in stock; cost prices are recalculated.</div>', { wide: true });
+  $('#ie_go', m).onclick = async () => { const e = await run('Opening…', () => call('invoiceForEdit', { id: id })); m.close(); S.inv = e.draft; S.invWarn = []; S.inv.lines.forEach(primeLine); drawReview(); };
+  $('#ie_dc', m).onclick = () => { m.close(); PU.tab = 'dc'; PU.pre = id; viewInvoices(); };
 }
 function fileToBase64(f) {
   return new Promise((res, rej) => {
@@ -581,7 +596,7 @@ function drawReview() {
   const d = S.inv; if (!d) return viewInvoices();
   const lc = landed(d);
   const w = checks(d);
-  let h = '<div class="row" style="margin-bottom:8px"><button class="btn ghost sm" id="back">← Invoices</button><h2 class="grow" style="margin:0">Check invoice</h2>' + (d.file ? '<a class="small" href="' + esc(d.file.url) + '" target="_blank">Open file</a>' : '') + '</div>';
+  let h = '<div class="row" style="margin-bottom:8px"><button class="btn ghost sm" id="back">← Invoices</button><h2 class="grow" style="margin:0">' + (d.revise ? (d.awaiting ? 'Stock without invoice – edit' : 'Edit posted invoice') : d.awaiting ? 'Stock in without invoice' : 'Check invoice') + '</h2>' + (d.file ? '<a class="small" href="' + esc(d.file.url) + '" target="_blank">Open file</a>' : '') + '</div>';
   h += '<div class="card"><div class="grid3">' +
     fld('Supplier', '<input class="i" data-h="supplier" value="' + esc(d.supplier) + '">') + fld('Supplier GSTIN', '<input class="i" data-h="gstin" value="' + esc(d.gstin) + '">') +
     fld('Invoice no.', '<input class="i" data-h="invoiceNo" value="' + esc(d.invoiceNo) + '">') + fld('Invoice date', '<input class="i" type="date" data-h="invoiceDate" value="' + esc(d.invoiceDate) + '">') +
@@ -590,15 +605,17 @@ function drawReview() {
     fld('Stock goes into', '<select class="i" data-h="receivedAt">' + S.locations.map(l => '<option' + (l === (d.receivedAt || 'Central Warehouse') ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>') + '</div>' +
     '<div style="margin-top:10px"><label class="f">Other charges on the bill (packing, freight…) – shared into the cost of the items</label>' +
     (d.charges || []).map((c, i) => '<div class="row" style="margin-bottom:6px"><input class="i grow" data-c="' + i + '" data-k="label" value="' + esc(c.label) + '"><input class="i num" style="width:120px" data-c="' + i + '" data-k="amount" inputmode="decimal" value="' + esc(c.amount) + '"><button class="btn sm ghost" data-delc="' + i + '">×</button></div>').join('') +
-    '<button class="btn sm ghost" id="addc">+ Add charge</button></div></div>';
+    '<button class="btn sm ghost" id="addc">+ Add charge</button></div>' +
+    '<label class="row" style="margin-top:12px"><input type="checkbox" id="awt"' + (d.awaiting ? ' checked' : '') + ' style="width:20px;height:20px"> <span><b>Supplier invoice not received yet</b> <span class="small mute">– stock is booked now with the rates you expect; enter the real invoice later (Invoices → open it → Invoice received)</span></span></label>' +
+    (d.revise ? '<div class="warnbox" style="margin-top:10px">Editing a posted invoice. ' + (d.stockAdded ? 'Only the change in quantity is added to / taken out of stock at ' + esc(d.receivedAt || 'Central Warehouse') + '.' : 'Stock is not touched (this invoice was posted without adding stock).') + ' Cost prices are recalculated.</div>' : '') + '</div>';
   h += w.length ? w.map(x => '<div class="warnbox' + (/DUPLICATE/.test(x) ? ' bad' : '') + '">⚠ ' + esc(x) + '</div>').join('') : (d.lines.length ? '<div class="okbox">✓ Every line adds up and the invoice total reconciles (' + inr(d.total) + ').</div>' : '');
   h += d.lines.map((l, i) => lineHtml(l, i, lc[i])).join('');
   h += '<button class="btn ghost sm" id="addl">+ Add a line</button>';
   const st = reviewStatus(d, lc);
   h += '<div class="foot"><div class="st">' + st.lines + ' lines · ' + qfmt(st.qty) + ' qty · ' + inr(st.value, 0) + '<br>' +
     (st.todo ? '<b style="color:#ffd27a">' + st.todo + ' line' + (st.todo > 1 ? 's' : '') + ' to decide</b>' : '✓ all decided') + (st.newCount ? ' · ' + st.newCount + ' new' : '') + '</div>' +
-    '<button class="btn ghost sm" id="save">Save</button><button class="btn gold" id="post"' + (st.todo ? ' disabled' : '') + '>Post</button></div>' +
-    '<div style="margin-top:14px"><button class="btn ghost sm" id="del">Delete this draft</button></div>';
+    (d.revise ? '' : '<button class="btn ghost sm" id="save">Save</button>') + '<button class="btn gold" id="post"' + (st.todo ? ' disabled' : '') + '>' + (d.revise ? 'Save changes' : 'Post') + '</button></div>' +
+    (d.revise ? '' : '<div style="margin-top:14px"><button class="btn ghost sm" id="del">Delete this draft</button></div>');
   $('#view').innerHTML = h;
   bindReview();
 }
@@ -687,6 +704,7 @@ function bindReview() {
   $$('[data-c]', v).forEach(el => el.onchange = () => { const c = d.charges[+el.dataset.c]; c[el.dataset.k] = el.dataset.k === 'amount' ? num(el.value) : el.value; drawReview(); });
   $$('[data-delc]', v).forEach(el => el.onclick = () => { d.charges.splice(+el.dataset.delc, 1); drawReview(); });
   $('#addc').onclick = () => { d.charges.push({ label: 'Freight', amount: 0 }); drawReview(); };
+  $('#awt').onchange = e => { d.awaiting = e.target.checked; drawReview(); };
   $('#addl').onclick = () => { addLine(); drawReview(); };
   $$('.line', v).forEach(box => {
     const i = +box.dataset.i, l = d.lines[i];
@@ -736,8 +754,8 @@ function bindReview() {
       drawReview();
     });
   });
-  $('#save').onclick = async () => { const r = await run('Saving draft…', () => call('saveDraft', d)); S.inv.id = r.draft.id; S.invWarn = r.warnings || []; toast('Draft saved'); drawReview(); };
-  $('#del').onclick = async e => { if (!d.id) { S.inv = null; return viewInvoices(); } if (!confirmTwice(e.target)) return; await run('Deleting…', () => call('deleteDraft', { id: d.id })); S.inv = null; S.drafts = Math.max(0, S.drafts - 1); viewInvoices(); };
+  if ($('#save')) $('#save').onclick = async () => { const r = await run('Saving draft…', () => call('saveDraft', d)); S.inv.id = r.draft.id; S.invWarn = r.warnings || []; toast('Draft saved'); drawReview(); };
+  if ($('#del')) $('#del').onclick = async e => { if (!d.id) { S.inv = null; return viewInvoices(); } if (!confirmTwice(e.target)) return; await run('Deleting…', () => call('deleteDraft', { id: d.id })); S.inv = null; S.drafts = Math.max(0, S.drafts - 1); viewInvoices(); };
   $('#post').onclick = () => confirmPost();
 }
 function confirmTwice(btn) { if (btn.dataset.sure) return true; btn.dataset.sure = 1; const t = btn.textContent; btn.textContent = 'Tap again to confirm'; setTimeout(() => { delete btn.dataset.sure; btn.textContent = t; }, 3000); return false; }
@@ -752,6 +770,7 @@ async function refreshNew(l) {
 }
 function confirmPost() {
   const d = S.inv, lc = landed(d), st = reviewStatus(d, lc);
+  if (d.revise) return confirmRevise();
   const news = d.lines.filter(l => !l.skip && l.how === 'new' && l.create);
   const bad = news.filter(l => !/^nutvique\s+\S/i.test(l.create.name || '') || !l.create.cat || !num(l.create.sell) || !num(l.create.mrp));
   if (bad.length) return toast('New product on line ' + bad[0].no + ': name must start with “Nutvique”, and category, selling price and MRP are needed.', true);
@@ -775,6 +794,104 @@ function confirmPost() {
       (ok ? '<div class="small mute" style="margin-top:10px">Night Closing app updated.</div>' : '<div class="warnbox" style="margin-top:10px">Night Closing app not updated: ' + esc(r.sync.ledger || '') + ' ' + esc(r.sync.products || '') + '. Use More → Sync with Night Closing.</div>'));
     if (r.created.length) { $('#g1').onclick = () => downloadExport('gs1', r.created.map(c => c.sku)); $('#q1').onclick = () => downloadExport('qb', r.created.map(c => c.sku)); }
     renderNav(); go('invoices');
+  };
+}
+function confirmRevise() {
+  const d = S.inv;
+  const news = d.lines.filter(l => !l.skip && l.how === 'new' && l.create);
+  const bad = news.filter(l => !/^nutvique\s+\S/i.test(l.create.name || '') || !l.create.cat || !num(l.create.sell) || !num(l.create.mrp));
+  if (bad.length) return toast('New product on line ' + bad[0].no + ': name must start with “Nutvique”, and category, selling price and MRP are needed.', true);
+  if (!d.awaiting && !String(d.invoiceNo || '').trim()) return toast('Enter the supplier’s invoice number (or tick “Supplier invoice not received yet”).', true);
+  const m = modal('Save changes to ' + (d.invoiceNo || 'this delivery'), '<div class="small">' + (d.awaiting ? 'It stays in “Supplier invoice still to come”.' : 'It becomes a posted invoice.') + ' Cost prices of its items are recalculated' + (d.stockAdded ? ', and only the change in quantity moves in stock.' : '.') + '</div><button class="btn gold block" id="go" style="margin-top:14px">Save changes</button>');
+  $('#go', m).onclick = async () => {
+    m.close();
+    const r = await run('Saving the invoice and recalculating costs…', () => call('reviseInvoice', d));
+    S.inv = null; await refresh(true);
+    modal('Invoice saved ✓', '<div class="okbox">' + esc(r.status) + ' · ' + r.costChanges + ' cost price(s) updated</div>' +
+      (r.moved.length ? '<h3>Stock moved</h3><table class="t">' + r.moved.map(x => '<tr><td>' + esc(x.name) + '<div class="tiny mute">' + esc(x.loc) + '</div></td><td class="n ' + (x.qty < 0 ? 'neg' : '') + '">' + (x.qty > 0 ? '+' : '') + qfmt(x.qty) + '</td></tr>').join('') + '</table>' : '<div class="small mute" style="margin-top:8px">No stock change.</div>'));
+    go('invoices');
+  };
+}
+
+/* ───────────── porter / packing charges ───────────── */
+async function puBoot(force) { if (!PU.boot || force) PU.boot = await call('purchaseBoot'); return PU.boot; }
+async function viewCharges() {
+  $('#view').innerHTML = puTabs() + '<h2>Porter, packing &amp; delivery charges</h2><div class="small mute" style="margin:-4px 0 10px">Enter what you paid when a delivery came in. It is shared over the items of that delivery by value and added to their cost price.</div><div id="dc_b"><div class="empty"><span class="spin dk"></span></div></div>';
+  bindPuTabs();
+  let b; try { b = await puBoot(true); } catch (e) { $('#dc_b').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+  if (PU.tab !== 'dc' || S.view !== 'invoices') return;
+  const opt = b.invoices.map(x => '<option value="' + esc(x.id) + '"' + (PU.pre === x.id ? ' selected' : '') + '>' + esc(x.date + ' · ' + x.supplier + ' · ' + x.no + (x.status !== 'Posted' ? ' (invoice to come)' : '')) + '</option>').join('');
+  $('#dc_b').innerHTML = '<div class="card"><h3>Add a charge</h3><div class="grid3">' +
+    fld('Delivery / invoice', '<select class="i" id="dc_inv"><option value="">Pick the delivery…</option>' + opt + '</select>', 2) +
+    fld('Date', '<input class="i" type="date" id="dc_date" value="' + today() + '">') +
+    fld('Type', '<select class="i" id="dc_type">' + b.types.map(t => '<option>' + esc(t) + '</option>').join('') + '</select>') +
+    fld('Amount ₹', '<input class="i num" id="dc_amt" inputmode="decimal">') +
+    fld('Paid by', '<input class="i" id="dc_by" placeholder="e.g. cash by Vikas, UPI">') +
+    fld('Note', '<input class="i" id="dc_note" placeholder="optional">', 3) + '</div>' +
+    '<div class="tiny mute" style="margin:6px 0 10px">The delivery isn’t in the list? Post it first under Invoices (if its invoice hasn’t come, use “Stock came in without an invoice”).</div>' +
+    '<button class="btn gold" id="dc_save">Add charge</button></div>' +
+    '<div class="card"><h3>Charges entered</h3>' + (b.charges.length ? '<div class="tscroll"><table class="t"><tr><th>Date</th><th>Type</th><th>Delivery</th><th class="n">₹</th><th></th></tr>' +
+      b.charges.map(c => '<tr><td>' + esc(c.date) + '</td><td>' + esc(c.type) + (c.paidBy ? '<div class="tiny mute">' + esc(c.paidBy) + '</div>' : '') + '</td><td>' + esc(c.supplier) + '<div class="tiny mute">' + esc(c.no) + (c.note ? ' · ' + esc(c.note) : '') + '</div></td><td class="n"><b>' + inr(c.amount) + '</b></td><td><button class="btn sm ghost" data-rm="' + esc(c.id) + '">Remove</button></td></tr>').join('') + '</table></div>' : '<div class="mute small">None yet.</div>') + '</div>';
+  PU.pre = null;
+  $('#dc_save').onclick = async () => {
+    const d = { invoiceId: $('#dc_inv').value, date: $('#dc_date').value, type: $('#dc_type').value, amount: num($('#dc_amt').value), paidBy: $('#dc_by').value, note: $('#dc_note').value };
+    if (!d.invoiceId) return toast('Pick the delivery these charges belong to.', true);
+    if (!(d.amount > 0)) return toast('Enter the amount.', true);
+    const r = await run('Adding the charge and updating cost prices…', () => call('addDeliveryCharge', d));
+    PU.boot = r.boot; toast('Charge added · ' + r.costChanges + ' cost price(s) updated'); refresh(true); viewCharges();
+  };
+  $$('[data-rm]', $('#dc_b')).forEach(el => el.onclick = async () => {
+    if (!confirmTwice(el)) return;
+    const r = await run('Removing…', () => call('removeDeliveryCharge', { id: el.dataset.rm }));
+    PU.boot = r.boot; toast('Removed · ' + r.costChanges + ' cost price(s) updated'); refresh(true); viewCharges();
+  });
+}
+
+/* ───────────── cost prices ───────────── */
+async function viewCosts() {
+  $('#view').innerHTML = puTabs() + '<h2>Cost prices</h2><div class="small mute" style="margin:-4px 0 10px">Cost = landed cost of the latest invoice (rate + share of charges). Average = across all invoices. Set a cost by hand to override it.</div>' +
+    '<div class="search"><input id="cq" type="search" placeholder="Search product or SKU…" value="' + esc(PU.q) + '"></div><div class="chips" id="cf" style="margin:8px 0">' +
+    [['all', 'All'], ['inv', 'From invoices'], ['await', 'Invoice to come'], ['hand', 'Set by hand'], ['none', 'No invoice yet']].map(c => '<button data-f="' + c[0] + '" class="' + ((PU.f || 'all') === c[0] ? 'on' : '') + '">' + c[1] + '</button>').join('') + '</div><div id="cl"><div class="empty"><span class="spin dk"></span></div></div>';
+  bindPuTabs();
+  let b; try { b = await puBoot(true); } catch (e) { $('#cl').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+  if (PU.tab !== 'cost' || S.view !== 'invoices') return;
+  $('#cq').oninput = e => { PU.q = e.target.value; drawCosts(); };
+  $$('#cf button').forEach(x => x.onclick = () => { PU.f = x.dataset.f; viewCosts(); });
+  drawCosts();
+}
+function costKind(p) {
+  const b = PU.boot, o = b.overrides[p.sku], s = b.src[p.sku];
+  return o ? 'hand' : s ? (s.st === 'Posted' ? 'inv' : 'await') : 'none';
+}
+function drawCosts() {
+  const b = PU.boot, f = PU.f || 'all';
+  const list = S.products.filter(p => p.status !== 'Discontinued' && matchQ(p, PU.q.trim()) && (f === 'all' || costKind(p) === f))
+    .sort((a, c) => (stockOf(c.sku).t > 0) - (stockOf(a.sku).t > 0) || a.name.localeCompare(c.name)).slice(0, 200);
+  const lbl = { hand: ['p-warn', 'Set by hand'], inv: ['p-ok', 'Invoice'], await: ['p-new', 'Invoice to come'], none: ['p-mute', 'No invoice'] };
+  $('#cl').innerHTML = list.length ? '<div class="tscroll"><table class="t"><tr><th>Product</th><th class="n">Cost</th><th class="n">Avg</th><th class="n">Selling</th><th class="n">Margin</th><th>From</th><th></th></tr>' + list.map(p => {
+    const k = costKind(p), s = b.src[p.sku], o = b.overrides[p.sku], m = marginPct(p.cost, p.sell);
+    return '<tr><td>' + esc(p.name) + '<div class="tiny mute">' + esc(p.sku) + ' · ' + qfmt(stockOf(p.sku).t) + ' ' + unitOf(p) + ' in stock</div></td><td class="n"><b>' + (p.cost ? inr(p.cost) : '–') + '</b></td><td class="n">' + (p.avg ? inr(p.avg) : '–') + '</td><td class="n">' + inr(p.sell, 0) + '</td>' +
+      '<td class="n ' + (m != null && m < S.settings.minMargin ? 'neg' : '') + '">' + (m == null ? '–' : m + '%') + '</td>' +
+      '<td><span class="pill ' + lbl[k][0] + '">' + lbl[k][1] + '</span><div class="tiny mute">' + (o ? esc(o.reason || '') : s ? esc(s.sup + ' · ' + s.no + ' · ' + s.date) + (s.share ? ' · incl. ₹' + Math.round(s.share) + ' charges' : '') : '') + '</div></td>' +
+      '<td><button class="btn sm ghost" data-set="' + esc(p.sku) + '">' + (o ? 'Change' : 'Set') + '</button>' + (o ? ' <button class="btn sm ghost" data-clr="' + esc(p.sku) + '">Use invoice</button>' : '') + '</td></tr>';
+  }).join('') + '</table></div>' : '<div class="empty">Nothing here.</div>';
+  $$('[data-set]', $('#cl')).forEach(el => el.onclick = () => costSheet(el.dataset.set));
+  $$('[data-clr]', $('#cl')).forEach(el => el.onclick = async () => {
+    if (!confirmTwice(el)) return;
+    const r = await run('Going back to the invoice cost…', () => call('clearCostOverride', { sku: el.dataset.clr }));
+    PU.boot = r.boot; await refresh(true); drawCosts();
+  });
+}
+function costSheet(sku) {
+  const p = S.bySku[sku], o = PU.boot.overrides[sku];
+  const m = modal('Set cost price', '<div><b>' + esc(p.name) + '</b><div class="tiny mute">' + esc(sku) + ' · now ' + (p.cost ? inr(p.cost) : 'no cost') + '</div></div><div class="grid2" style="margin-top:10px">' +
+    fld('Cost price ₹ per ' + unitOf(p), '<input class="i num" id="co_c" inputmode="decimal" value="' + esc(o ? o.cost : p.cost || '') + '">') +
+    fld('Reason', '<input class="i" id="co_r" placeholder="e.g. invoice pending, supplier rate" value="' + esc(o ? o.reason : '') + '">') + '</div>' +
+    '<div class="tiny mute" style="margin-top:6px">This cost is used until you tap “Use invoice” – new invoices will not change it.</div><button class="btn gold block" id="co_go" style="margin-top:12px">Save cost</button>');
+  $('#co_go', m).onclick = async () => {
+    const c = num($('#co_c', m).value); if (!(c > 0)) return toast('Enter the cost.', true);
+    const r = await run('Saving…', () => call('setCostOverride', { sku: sku, cost: c, reason: $('#co_r', m).value }));
+    m.close(); PU.boot = r.boot; await refresh(true); drawCosts(); toast('Cost saved');
   };
 }
 async function downloadExport(kind, skus) {
