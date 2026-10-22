@@ -90,9 +90,11 @@ function doGet() {
   return HtmlService.createHtmlOutput('<p style="font:16px sans-serif;padding:24px">' + APP + ' – open the app at <a href="https://vermakshat.com/rota/">vermakshat.com/rota</a>.</p>').setTitle(APP);
 }
 function doPost(e) {
-  let out;
-  try { out = { ok: true, r: api_(JSON.parse((e && e.postData && e.postData.contents) || '{}')) }; }
+  let out; const t0 = Date.now(); let action = '';
+  try { const req = JSON.parse((e && e.postData && e.postData.contents) || '{}'); action = String(req.action || ''); out = { ok: true, r: api_(req) }; }
   catch (err) { out = { ok: false, e: String((err && err.message) || err).replace(/^(Error|Exception):\s*/, '') }; }
+  out.ms = Date.now() - t0;
+  if (out.ms > 6000) log_('Slow ' + action + ' ' + out.ms + ' ms', '');
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -122,6 +124,8 @@ function can_(me, need) {
 
 function api_(req) {
   const action = String(req.action || '');
+  resetMemo_(!(READ_ONLY[action] || (action === 'payroll' && !(req.data || {}).write)));
+  if (action === 'signout') { try { CacheService.getScriptCache().remove('u_' + digest_(String(req.token || '')).slice(0, 40)); } catch (e) { } return { ok: true }; }
   if (action === 'ping') return { at: new Date().toISOString() };
   const me = who_(req.token);
   ensureSetup_();
@@ -175,7 +179,7 @@ function who_(token) {
     if (!j) throw new Error('Could not reach the Nutvique sign-in (' + res.getResponseCode() + '). Try again.');
     if (!j.ok) throw new Error(/Signed out/i.test(j.e || '') ? 'Signed out – please sign in again.' : (j.e || 'Sign-in failed.'));
     u = j.r.user;
-    c.put(key, JSON.stringify(u), 600);
+    c.put(key, JSON.stringify(u), 10800);         // 3 h: saves a 1–2 s call to the billing app on most opens
   }
   const owner = u.role === 'Owner', invRights = u.rights || [];
   const me = { name: u.name, role: u.role, home: u.home || '', owner: owner };
@@ -189,15 +193,34 @@ function who_(token) {
 function inScope_(me, loc) { return !me.scope || me.scope.indexOf(loc) >= 0; }
 
 // ───────────────────────────── sheet plumbing ─────────────────────────────
+// ── speed: the spreadsheet, each tab and each tab's rows are read once per request (MEMO);
+//    small tabs (staff, locations, settings) are also kept in the script cache between requests (XCACHE).
+//    Every write goes through append_ / w_() / dirty_(), which drop the copies.
+let MEMO = { book: null, tabs: {}, rows: {}, fresh: false };
+// Actions that only read; every other action reads the sheet fresh (never the between-request cache) before writing.
+const READ_ONLY = { boot: 1, myDay: 1, myMonth: 1, myRota: 1, myTrips: 1, board: 1, rotaGet: 1, rotaAuto: 1, attendance: 1, trips: 1, photo: 1,
+  staffList: 1, settingsGet: 1, rightsList: 1 };
+const XCACHE = { staff: 1, locs: 1, set: 1 };
+function resetMemo_(fresh) { MEMO = { book: null, tabs: {}, rows: {}, fresh: !!fresh }; }
+function xver_() { return PropertiesService.getScriptProperties().getProperty('XVER') || '0'; }
+function dirty_(k) {
+  if (k) delete MEMO.rows[k]; else MEMO.rows = {};
+  if (!k || XCACHE[k]) PropertiesService.getScriptProperties().setProperty('XVER', String(Date.now()) + Math.random().toString(36).slice(2, 6));
+  if (!k || k === 'set') CacheService.getScriptCache().remove('settings');
+}
+/** Tab for writing: same as tab_ but marks its cached rows stale. */
+function w_(k) { dirty_(k); return tab_(k); }
 function book_() {
+  if (MEMO.book) return MEMO.book;
   const p = PropertiesService.getScriptProperties(), id = p.getProperty('BOOK_ID');
-  if (id) return SpreadsheetApp.openById(id);
+  if (id) return (MEMO.book = SpreadsheetApp.openById(id));
   const ss = SpreadsheetApp.getActive();
   if (!ss) throw new Error('Open the script from its Google Sheet and run setup once.');
   p.setProperty('BOOK_ID', ss.getId());
   return ss;
 }
 function tab_(k) {
+  if (MEMO.tabs[k]) return MEMO.tabs[k];
   const ss = book_(), name = T[k][0], head = T[k][1];
   let sh = ss.getSheetByName(name);
   if (!sh) {
@@ -210,21 +233,33 @@ function tab_(k) {
     if (k === 'trips') sh.hideColumns(head.length);
     if (k === 'set') { sh.setColumnWidth(1, 260); sh.setColumnWidth(2, 220); sh.setColumnWidth(3, 560); }
   }
-  return sh;
+  return (MEMO.tabs[k] = sh);
 }
-function rows_(k) { const sh = tab_(k), n = sh.getLastRow() - 1; return n < 1 ? [] : sh.getRange(2, 1, n, T[k][1].length).getValues(); }
-function append_(k, rows) { if (!rows.length) return; const sh = tab_(k); sh.getRange(sh.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows); }
-function lock_(fn) { const l = LockService.getScriptLock(); l.waitLock(30000); try { return fn(); } finally { l.releaseLock(); } }
+function rows_(k) {
+  if (MEMO.rows[k]) return MEMO.rows[k];
+  const c = CacheService.getScriptCache(), key = 'rows_' + k + '_' + xver_();
+  if (XCACHE[k] && !MEMO.fresh) {
+    const hit = c.get(key);
+    if (hit) { try { return (MEMO.rows[k] = JSON.parse(hit).map(r => r.map(v => (typeof v === 'string' && /^\u0001D/.test(v)) ? new Date(v.slice(2)) : v))); } catch (e) { } }
+  }
+  const sh = tab_(k), n = sh.getLastRow() - 1;
+  const v = n < 1 ? [] : sh.getRange(2, 1, n, T[k][1].length).getValues();
+  if (XCACHE[k]) { try { const j = JSON.stringify(v.map(r => r.map(x => x instanceof Date ? '\u0001D' + x.toISOString() : x))); if (j.length < 90000) c.put(key, j, 300); } catch (e) { } }
+  return (MEMO.rows[k] = v);
+}
+function append_(k, rows) { if (!rows.length) return; const sh = w_(k); sh.getRange(sh.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows); dirty_(k); }
+function lock_(fn) { const l = LockService.getScriptLock(); l.waitLock(30000); try { MEMO.rows = {}; return fn(); } finally { l.releaseLock(); } }
 
 /** Run once from the editor (also runs by itself the first time the app is used). */
 function setup() {
+  resetMemo_();
   Object.keys(T).forEach(k => tab_(k));
   const st = tab_('set'), have = rows_('set').map(r => s_(r[0]));
   const add = DEFAULT_SETTINGS.filter(x => have.indexOf(x[0]) < 0).map(x => [x[0], String(x[1]), x[2]]);
-  if (add.length) st.getRange(st.getLastRow() + 1, 1, add.length, 3).setValues(add);
+  if (add.length) { st.getRange(st.getLastRow() + 1, 1, add.length, 3).setValues(add); dirty_('set'); }
   if (!rows_('locs').length) append_('locs', SEED_LOCS);
   const ss = book_(); ['Sheet1'].forEach(n => { const s = ss.getSheetByName(n); if (s && s.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(s); });
-  CacheService.getScriptCache().remove('settings');
+  dirty_();
   return 'Setup done.';
 }
 function ensureSetup_() {
@@ -242,13 +277,13 @@ function ensureSetup_() {
       if (norm_(x.name) === norm_('Pankaj Verma')) st.getRange(x.row, C.staff['On rota'] + 1).setValue('No');
       if (st.getRange(x.row, C.staff['On rota'] + 1).getValue() === '') st.getRange(x.row, C.staff['On rota'] + 1).setValue(norm_(x.name) === norm_('Pankaj Verma') ? 'No' : 'Yes');
     });
-    CacheService.getScriptCache().remove('settings');
+    dirty_();
     log_('v2: break 30 min, grace 5 min, rights, Jitender → City Galleria, Pankaj Verma off the rota', 'system');
   }
   if (!p.getProperty('GOLIVE_V1')) {                 // the day the app is first used = "Attendance starts on" (earlier days count as paid)
     p.setProperty('GOLIVE_V1', '1');
     if (!setv_('Attendance starts on')) { const sh = tab_('set'), keys = rows_('set').map(r => s_(r[0])), i = keys.indexOf('Attendance starts on');
-      if (i >= 0) sh.getRange(i + 2, 2).setValue(today_()); CacheService.getScriptCache().remove('settings'); }
+      if (i >= 0) sh.getRange(i + 2, 2).setValue(today_()); dirty_('set'); }
   }
 }
 
@@ -282,8 +317,9 @@ function settingsSave_(d, me) {
     if (k === 'Attendance starts on' && v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Attendance starts on: pick a date.');
     const i = cur.indexOf(k);
     if (i >= 0) sh.getRange(i + 2, 2).setValue(v); else { sh.appendRow([k, v, '']); cur.push(k); }
+    dirty_('set');
   });
-  CacheService.getScriptCache().remove('settings');
+  dirty_('set');
   log_('Settings saved', me.name);
   return settingsGet_();
 }
@@ -310,8 +346,8 @@ function rightsList_() {
 function rightsSave_(d, me) {
   const s = staffByName_(d.name); if (!s) throw new Error('Person not found.');
   const list = (d.rights || []).filter(k => RRIGHT_LABEL[k]);
-  tab_('staff').getRange(s.row, C.staff['App rights'] + 1).setValue(list.length ? list.join(', ') : '-');
-  CacheService.getScriptCache().remove('staff');
+  w_('staff').getRange(s.row, C.staff['App rights'] + 1).setValue(list.length ? list.join(', ') : '-');
+  dirty_('staff');
   log_('Rights for ' + s.name + ': ' + (list.join(', ') || 'none'), me.name);
   return rightsList_();
 }
@@ -354,14 +390,14 @@ function staffSave_(d, me) {
       const keep = rows_('staff')[s.row - 2].slice(); keep[7] = row[7]; keep[12] = new Date(); row.splice(0, row.length, ...keep);
     }
     const sh = tab_('staff');
-    if (s) sh.getRange(s.row, 1, 1, row.length).setValues([row]); else append_('staff', [row]);
+    if (s) { sh.getRange(s.row, 1, 1, row.length).setValues([row]); dirty_('staff'); } else append_('staff', [row]);
     log_('Staff saved: ' + newName, me.name);
     return staffList_(me);
   });
 }
 function resetPhone_(d, me) {
   const s = staffByName_(d.name); if (!s) throw new Error('Not found.');
-  tab_('staff').getRange(s.row, C.staff['Phone ID'] + 1, 1, 2).setValues([['', '']]);
+  w_('staff').getRange(s.row, C.staff['Phone ID'] + 1, 1, 2).setValues([['', '']]); dirty_('staff');
   log_('Phone reset: ' + s.name, me.name);
   return staffList_(me);
 }
@@ -389,7 +425,7 @@ function locSave_(d, me) {
     const lat = d.lat === '' || d.lat == null ? '' : n_(d.lat), lng = d.lng === '' || d.lng == null ? '' : n_(d.lng);
     if (lat !== '' && (Math.abs(lat) > 90 || Math.abs(lng) > 180)) throw new Error('Position looks wrong.');
     const row = [name, d.type === 'Office' ? 'Office' : 'Store', lat, lng, Math.max(30, n_(d.radius) || 200), d.active === false ? 'No' : 'Yes', txt_(d.notes, 200)];
-    if (i >= 0) sh.getRange(i + 2, 1, 1, row.length).setValues([row]); else append_('locs', [row]);
+    if (i >= 0) { sh.getRange(i + 2, 1, 1, row.length).setValues([row]); dirty_('locs'); } else append_('locs', [row]);
     log_('Location saved: ' + name + ' ' + lat + ',' + lng + ' r' + row[4], me.name);
     return settingsGet_();
   });
@@ -514,7 +550,7 @@ function rotaSave_(d, me) {
       sh.getRange(2, 1, Math.max(all.length, 1), T.rota[1].length).clearContent();
       if (keep.length) sh.getRange(2, 1, keep.length, T.rota[1].length).setValues(keep.map(r => r.map((v, i) => (i === 0 || i === 1) ? ymd_(v) : (i === 6 || i === 7) ? hm_(v) : v)));
     }
-    append_('rota', out);
+    append_('rota', out); dirty_('rota');
   });
   log_('Rota ' + week + ' ' + status + ' (' + out.length + ' cells)', me.name);
   return rotaGet_({ week: week }, me);
@@ -576,7 +612,7 @@ function punch_(d, me) {
     // phone
     const phone = txt_(d.phone, 64), rule = setv_('One phone per person');
     if (rule !== 'Off' && phone) {
-      if (!s.phone) tab_('staff').getRange(s.row, C.staff['Phone ID'] + 1, 1, 2).setValues([[phone, new Date()]]);
+      if (!s.phone) w_('staff').getRange(s.row, C.staff['Phone ID'] + 1, 1, 2).setValues([[phone, new Date()]]);
       else if (s.phone !== phone) { if (rule === 'Block') throw new Error('This is not your registered phone. Ask head office to reset your phone.'); flags.push('Different phone'); }
     }
     // selfie
@@ -773,6 +809,7 @@ function fixDay_(d, me) {
     row[7] = txt_(d.note, 200); row[8] = me.name; row[9] = new Date();
     if (d.clear) { if (!canT || !canP) throw new Error('Only the owner can remove a correction.'); if (i >= 0) sh.deleteRow(i + 2); }
     else if (i >= 0) sh.getRange(i + 2, 1, 1, row.length).setValues([row]); else append_('fix', [row]);
+    dirty_('fix');
   });
   log_('Day corrected ' + d.date + ' ' + s.name + (d.clear ? ' (cleared)' : ''), me.name);
   return { day: daysFor_([s.name], d.date, d.date, true)[0] };
@@ -782,7 +819,7 @@ function approvePunch_(d, me) {
   if (!p) throw new Error('Entry not found.');
   const s = staffByName_(p.name); if (s && s.loc && !inScope_(me, s.loc)) throw new Error('Not your store.');
   if (norm_(p.name) === norm_(me.name) && !me.owner) throw new Error('Someone else must approve your own entry.');
-  sh.getRange(p.row, C.punch['Approved'] + 1, 1, 2).setValues([[d.approve ? 'Yes' : 'No', me.name]]);
+  sh.getRange(p.row, C.punch['Approved'] + 1, 1, 2).setValues([[d.approve ? 'Yes' : 'No', me.name]]); dirty_('punch');
   return attendance_({ from: d.from, to: d.to }, me);
 }
 /** A selfie or receipt (base64) for managers. */
@@ -873,8 +910,8 @@ function tripEnd_(d, me) {
     const now = new Date(), r = t.row, sh = tab_('trips');
     const vals = [now, placeName_(lat, lng), lat, lng, straight, trail, km || '', rate || '', fare || '', receipt, claimed, kind === 'free' ? 0 : '', kind === 'free' ? 'No cost' : '', '', txt_(d.note, 200), '',
       JSON.stringify(pts.slice(0, 400).map(p => [round5_(p[0]), round5_(p[1])])).slice(0, 45000)];
-    sh.getRange(r, C.trips['End time'] + 1, 1, vals.length).setValues([vals]);
-    sh.getRange(r, C.trips['Status'] + 1).setValue(kind === 'free' ? 'Approved' : 'Submitted');
+    sh.getRange(r, C.trips['End time'] + 1, 1, vals.length).setValues([vals]); dirty_('trips');
+    sh.getRange(r, C.trips['Status'] + 1).setValue(kind === 'free' ? 'Approved' : 'Submitted'); dirty_('trips');
     return { trip: tripPub_(tripRows_().find(x => x.id === t.id)), trips: tripsFor_(s.name, 60) };
   });
 }
@@ -882,7 +919,7 @@ function tripCancel_(d, me) {
   return lock_(() => {
     const t = tripRows_().find(x => x.id === d.id && norm_(x.name) === norm_(me.name));
     if (!t || t.status !== 'Running') throw new Error('Only a running trip can be cancelled.');
-    tab_('trips').getRange(t.row, C.trips['Status'] + 1).setValue('Cancelled');
+    w_('trips').getRange(t.row, C.trips['Status'] + 1).setValue('Cancelled'); dirty_('trips');
     return { trips: tripsFor_(me.name, 60) };
   });
 }
@@ -904,8 +941,8 @@ function tripDecide_(d, me) {
     if (d.approve && amt < 0) throw new Error('Amount cannot be negative.');
     if (!d.approve && !txt_(d.note, 200)) throw new Error('Write why it is rejected.');
     tab_('trips').getRange(t.row, C.trips['Status'] + 1).setValue(d.approve ? 'Approved' : 'Rejected');
-    tab_('trips').getRange(t.row, C.trips['Approved ₹'] + 1, 1, 3).setValues([[amt, me.name, new Date()]]);
-    tab_('trips').getRange(t.row, C.trips['Manager note'] + 1).setValue(txt_(d.note, 200));
+    tab_('trips').getRange(t.row, C.trips['Approved ₹'] + 1, 1, 3).setValues([[amt, me.name, new Date()]]); dirty_('trips');
+    tab_('trips').getRange(t.row, C.trips['Manager note'] + 1).setValue(txt_(d.note, 200)); dirty_('trips');
     return tripsAdmin_({}, me);
   });
 }
@@ -964,6 +1001,7 @@ function payroll_(d, me) {
     const rowsP = keepP.concat(list.map(p => [m, p.name, p.id, p.loc, p.salary || '', p.dim, p.offs, p.hol, p.lp, p.lu, p.absent, p.workCredit, p.extra, p.paidDays,
       p.lateDays, p.late, p.extraBreak, p.short, p.otH, p.rate || '', p.earned || '', p.otPay || '', p.travel, p.total, p.flags, at]));
     if (rowsP.length) pay.getRange(2, 1, rowsP.length, T.pay[1].length).setValues(rowsP);
+    dirty_('att'); dirty_('pay');
   });
   return { month: m, upTo: to, complete: to === last, people: list, sheetUrl: d.write ? book_().getUrl() : '' };
 }
@@ -1020,6 +1058,7 @@ function photoFolder_(sub) {
     root = DriveApp.createFolder(APP + ' – Photos');
     const sh = tab_('set'), keys = rows_('set').map(r => s_(r[0])), i = keys.indexOf('Photo folder ID');
     if (i >= 0) sh.getRange(i + 2, 2).setValue(root.getId()); else sh.appendRow(['Photo folder ID', root.getId(), '']);
+    dirty_('set');
     CacheService.getScriptCache().remove('settings');
   }
   const name = sub + ' ' + today_().slice(0, 7), it = root.getFoldersByName(name);
