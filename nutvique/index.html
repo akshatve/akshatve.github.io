@@ -23,7 +23,7 @@ header{position:sticky;top:0;z-index:20;background:var(--navy);color:var(--cream
 header .brand{font-weight:700;letter-spacing:.06em;font-size:15px}header .brand small{display:block;font-weight:400;letter-spacing:0;opacity:.75;font-size:11px}
 header .sp{flex:1}.hbtn{background:transparent;border:1px solid rgba(247,241,222,.35);color:var(--cream);border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer}
 main{max-width:1180px;margin:0 auto;padding:12px 16px 96px}
-table.cnt td{vertical-align:middle}table.cnt tr.cn_cat td{background:var(--cream);font-weight:700;font-size:12px;color:var(--navy);padding:5px 8px}table.cnt thead th{position:sticky;top:0;background:#fff;z-index:1}
+table.cnt td{vertical-align:middle;white-space:nowrap}table.cnt .cn_nm{position:sticky;left:0;background:#fff;z-index:1;white-space:normal;min-width:130px;max-width:170px}table.cnt thead .cn_nm{z-index:2}table.cnt tr.cn_cat td.cn_nm{background:var(--cream)}.cnwrap{max-height:calc(100vh - 330px);overflow:auto}table.cnt tr.cn_cat td{background:var(--cream);font-weight:700;font-size:12px;color:var(--navy);padding:5px 8px}table.cnt thead th{position:sticky;top:0;background:#fff;z-index:1}
 nav.tabs{position:fixed;bottom:0;left:0;right:0;z-index:30;background:#fff;border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
 nav.tabs button{flex:1;border:0;background:none;padding:8px 2px 9px;font-size:11.5px;color:var(--mute);cursor:pointer;position:relative}
 nav.tabs button svg{display:block;margin:0 auto 2px;width:22px;height:22px}
@@ -286,7 +286,7 @@ function startDone(r, wasShown) {
   if (!wasShown) return shell();
   renderNav();
   const a = document.activeElement, typing = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.value;
-  if (!$('.modal') && !$('.busy') && !typing && !(S.view === 'bill' && typeof B !== 'undefined' && B.lines && B.lines.length)) renderView();
+  if (!$('.modal') && !$('.busy') && !typing && S.view !== 'count' && !(S.view === 'bill' && typeof B !== 'undefined' && B.lines && B.lines.length)) renderView();
   else if (S.view === 'bill' && typeof drawToday === 'function') try { drawToday(); } catch (e) { }
 }
 function applyBoot(b) {
@@ -311,7 +311,7 @@ async function pingVer() {
     if (S.pv != null && v.pv !== S.pv) {
       const b = await call('boot'); applyBoot(b); renderNav();
       const a = document.activeElement, typing = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.value;
-      if (!$('.modal') && !typing && S.view !== 'invoices' && S.view !== 'sales') renderView();
+      if (!$('.modal') && !typing && S.view !== 'invoices' && S.view !== 'sales' && S.view !== 'count') renderView();
       toast('Prices / products updated');
     }
     S.pv = v.pv;
@@ -325,6 +325,7 @@ async function refresh(silent) {
 const ICONS = {
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
   invoices: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h8M9 17h8"/></svg>',
+  count: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>',
   stock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4-9 4z"/><path d="M3 7v10l9 4 9-4V7M12 11v10"/></svg>',
   gs1: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5v14M7 5v14M11 5v14M14 5v14M18 5v14M20 5v14"/></svg>',
   sales: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
@@ -337,7 +338,7 @@ function shell() {
   renderNav(); go(S.view);
   if (!S.timers) {
     S.timers = true;
-    setInterval(() => { if (S.user && !document.hidden && !$('.modal') && !$('.busy') && S.view !== 'invoices' && S.view !== 'bill' && S.view !== 'sales') refresh(true).catch(() => { }); }, 120000);
+    setInterval(() => { if (S.user && !document.hidden && !$('.modal') && !$('.busy') && S.view !== 'invoices' && S.view !== 'bill' && S.view !== 'sales' && S.view !== 'count') refresh(true).catch(() => { }); }, 120000);
     setInterval(() => { if (!can('approve') || (S.tick = (S.tick || 0) + 1) % 2 === 0) pingVer(); }, 10000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) pingVer(); });
   }
@@ -346,7 +347,7 @@ function shell() {
 }
 function renderNav() {
   const tabs = [can('bill') && ['bill', 'Bill'], can('sales') && ['sales', 'Sales'], ['search', 'Search'], can('invoices') && ['invoices', 'Invoices', S.drafts],
-    can('stockView') && ['stock', 'Stock', S.trWait], can('gs1') && ['gs1', 'GS1', S.gs1Pending], ['more', 'More']].filter(Boolean);
+    can('stockView') && ['stock', 'Stock', S.trWait], (can('stock') || can('count')) && ['count', 'Inventory'], can('gs1') && ['gs1', 'GS1', S.gs1Pending], ['more', 'More']].filter(Boolean);
   if (!tabs.some(t => t[0] === S.view)) S.view = tabs[0][0];
   $('#nav').innerHTML = tabs.map(t => '<button data-v="' + t[0] + '" class="' + (S.view === t[0] ? 'on' : '') + '">' + ICONS[t[0]] + t[1] + (t[2] ? '<span class="badge">' + t[2] + '</span>' : '') + '</button>').join('');
   $$('#nav button').forEach(b => b.onclick = () => go(b.dataset.v));
@@ -354,7 +355,7 @@ function renderNav() {
 }
 function go(v) { S.view = v; renderNav(); renderView(); window.scrollTo(0, 0); }
 function renderView() {
-  ({ bill: viewBill, sales: viewSales, search: viewSearch, invoices: viewInvoices, stock: viewStock, gs1: viewGs1, more: viewMore }[S.view] || viewSearch)();
+  ({ bill: viewBill, sales: viewSales, search: viewSearch, invoices: viewInvoices, stock: viewStock, count: viewCount, gs1: viewGs1, more: viewMore }[S.view] || viewSearch)();
 }
 
 /* ───────────── stock helpers ───────────── */
@@ -914,7 +915,7 @@ const SK = { tab: 'stock', boot: null };
 async function viewStock() {
   if (!can('stockView')) { $('#view').innerHTML = '<div class="warnbox">You do not have the right to see stock. Ask the owner.</div>'; return; }
   const tabs = [['stock', 'Stock'], can('goodsIn') && ['in', 'Stock in'], can('transfer') && ['tr', 'Transfer'], (can('checkTransfer') || can('transfer')) && ['ck', 'Check'],
-    can('stock') && ['out', 'Stock out'], (can('stock') || can('count')) && ['cnt', 'Count sheet'], ['hist', 'History']].filter(Boolean);
+    can('stock') && ['out', 'Stock out'], ['hist', 'History']].filter(Boolean);
   if (!tabs.some(t => t[0] === SK.tab)) SK.tab = 'stock';
   const wait = SK.boot ? SK.boot.transfers.waiting.filter(t => t.canCheck).length : 0;
   $('#view').innerHTML = '<div class="chips" id="sk_t" style="margin-bottom:10px">' + tabs.map(t => '<button data-t="' + t[0] + '" class="' + (SK.tab === t[0] ? 'on' : '') + '">' + t[1] + (t[0] === 'ck' && wait ? ' <span class="badge" style="position:static">' + wait + '</span>' : '') + '</button>').join('') + '</div><div id="sk_b"></div>';
@@ -926,7 +927,7 @@ async function viewStock() {
     const w2 = SK.boot.transfers.waiting.filter(t => t.canCheck).length;
     const ckb = $('#sk_t [data-t="ck"]'); if (ckb) ckb.innerHTML = 'Check' + (w2 ? ' <span class="badge" style="position:static">' + w2 + '</span>' : '');
   }
-  ({ stock: stockList, in: stockIn, tr: stockTransfer, ck: stockCheck, out: stockOutForm, cnt: stockCount, hist: stockHistory }[SK.tab])();
+  ({ stock: stockList, in: stockIn, tr: stockTransfer, ck: stockCheck, out: stockOutForm, hist: stockHistory }[SK.tab])();
 }
 function stockList() {
   const locs = S.locations;
@@ -942,10 +943,11 @@ function stockList() {
   if (can('stock')) { $('#adj').onclick = () => adjustSheet(); $('#imp').onclick = importSheet; }
   drawStock();
 }
-/* ───────────── stock count sheet (v18) – one list, type what is on the shelf ───────────── */
-const CN = { loc: '', data: null, q: '', f: 'all', vals: {} };
+/* ───────────── INVENTORY sheet (v18.2) – one Excel-like list per store ───────────── */
+function viewCount() { $('#view').innerHTML = '<h2 style="margin:0 0 8px">Inventory</h2><div id="sk_b"></div>'; stockCount(); }
+const CN = { loc: '', data: null, q: '', f: 'all', vals: {}, rem: {} };
 function cnKey() { return 'nvcount_' + CN.loc; }
-function cnStore() { try { localStorage.setItem(cnKey(), JSON.stringify({ at: CN.data && CN.data.at, vals: CN.vals, date: CN.date })); } catch (e) { } }
+function cnStore() { try { localStorage.setItem(cnKey(), JSON.stringify({ at: CN.data && CN.data.at, vals: CN.vals, rem: CN.rem, date: CN.date })); } catch (e) { } }
 function cnRestore() { try { const o = JSON.parse(localStorage.getItem(cnKey()) || 'null'); return o; } catch (e) { return null; } }
 async function stockCount() {
   const locs = S.locations.filter(l => l !== 'Event');
@@ -954,8 +956,8 @@ async function stockCount() {
     fld('Store / location', '<select class="i" id="cn_loc"><option value="">Pick…</option>' + locs.map(l => '<option' + (l === CN.loc ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>') +
     fld('Count date', '<input class="i" type="date" id="cn_date" value="' + esc(CN.date || today()) + '">') +
     '<div style="align-self:end"><button class="btn ghost sm" id="cn_load">' + (CN.data ? '↻ Reload system qty' : 'Open count sheet') + '</button></div></div>' +
-    '<div class="tiny mute" style="margin-top:6px">Type the quantity on the shelf for each item (kg for loose, pieces for packs). Leave an item blank if you did not count it – it is not changed. Enter jumps to the next item. Your entries stay on this phone until you save.</div></div><div id="cn_b"></div>';
-  $('#cn_loc').onchange = e => { CN.loc = e.target.value; CN.data = null; CN.vals = {}; stockCount(); };
+    '<div class="tiny mute" style="margin-top:6px">Last inventory = stock after the item\'s last count · Sold and Adjusted (stock in, transfers, stock out) since then · System = what the app has now. Type the physical stock (kg for loose, pieces for packs); leave blank if not counted – it is not changed. Enter jumps to the next item. Entries stay on this phone until you save.</div></div><div id="cn_b"></div>';
+  $('#cn_loc').onchange = e => { CN.loc = e.target.value; CN.data = null; CN.vals = {}; CN.rem = {}; stockCount(); };
   $('#cn_date').onchange = e => { CN.date = e.target.value; cnStore(); };
   $('#cn_load').onclick = () => cnLoad();
   if (CN.loc && !CN.data) cnLoad(); else if (CN.data) cnDraw();
@@ -965,8 +967,8 @@ async function cnLoad() {
   $('#cn_b').innerHTML = '<div class="empty"><span class="spin dk"></span></div>';
   try { CN.data = await call('countSheet', { location: CN.loc }); } catch (e) { $('#cn_b').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
   const saved = cnRestore();
-  if (saved && saved.vals && Object.keys(saved.vals).length && !Object.keys(CN.vals).length) { CN.vals = saved.vals; if (saved.date) CN.date = saved.date; toast('Your unsaved count was restored'); }
-  if (S.view === 'stock' && SK.tab === 'cnt') { const lb = $('#cn_load'); if (lb) lb.textContent = '↻ Reload system qty'; cnDraw(); }
+  if (saved && saved.vals && Object.keys(saved.vals).length && !Object.keys(CN.vals).length) { CN.vals = saved.vals; CN.rem = saved.rem || {}; if (saved.date) CN.date = saved.date; toast('Your unsaved count was restored'); }
+  if (S.view === 'count') { const lb = $('#cn_load'); if (lb) lb.textContent = '↻ Reload system qty'; cnDraw(); }
 }
 function cnDiff(it) { const v = CN.vals[it.sku]; return v === undefined || v === '' ? null : Math.round((num(v) - it.sys) * 1000) / 1000; }
 function cnDraw() {
@@ -979,13 +981,17 @@ function cnDraw() {
   let lastCat = null;
   $('#cn_b').innerHTML = '<div class="row" style="margin:4px 0 8px"><input class="i grow" id="cn_q" type="search" placeholder="Find item, SKU or barcode…" value="' + esc(CN.q) + '">' + (IN_APP ? '<button class="btn sm ghost" id="cn_scan">📷</button>' : '') + '</div>' +
     '<div class="chips" id="cn_f" style="margin-bottom:8px">' + [['all', 'All ' + items.length], ['sys', 'In system'], ['todo', 'Not counted ' + (items.length - done)], ['diff', 'Differences ' + diffs.length]].map(c => '<button data-f="' + c[0] + '" class="' + (CN.f === c[0] ? 'on' : '') + '">' + c[1] + '</button>').join('') + '</div>' +
-    '<div class="tscroll"><table class="t cnt"><thead><tr><th>Item</th><th class="n">System</th><th class="n" style="width:96px">Counted</th><th class="n">Diff.</th></tr></thead><tbody>' +
+    '<div class="tscroll cnwrap"><table class="t cnt"><thead><tr><th class="cn_nm">Product</th><th class="n">Last inventory</th><th class="n">Sold</th><th class="n">Adjusted</th><th class="n">System stock</th><th class="n">Physical stock</th><th class="n">Difference</th><th>Remarks</th></tr></thead><tbody>' +
     list.map((it, i) => {
-      const d = cnDiff(it), v = CN.vals[it.sku];
-      const cat = it.cat || 'Other', head = cat !== lastCat && !q ? '<tr class="cn_cat"><td colspan="4">' + esc(cat) + '</td></tr>' : ''; lastCat = cat;
-      return head + '<tr data-sku="' + esc(it.sku) + '"><td>' + esc(it.name.replace(/^Nutvique\s+/, '')) + '<div class="tiny mute">' + esc(it.sku) + ' · ' + esc(it.unit) + '</div></td><td class="n ' + (it.sys < 0 ? 'neg' : '') + '">' + qfmt(it.sys) + '</td>' +
-        '<td class="n"><input class="i num cn_in" data-sku="' + esc(it.sku) + '" data-i="' + i + '" inputmode="decimal" enterkeyhint="next" style="width:88px;min-height:34px;padding:4px 6px;text-align:right" value="' + esc(v === undefined ? '' : v) + '"></td>' +
-        '<td class="n cn_d" style="font-weight:600;color:' + (d === null || Math.abs(d) < 0.0005 ? 'var(--mute)' : d < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + (d === null ? '' : Math.abs(d) < 0.0005 ? '✓' : (d > 0 ? '+' : '') + qfmt(d)) + '</td></tr>';
+      const d = cnDiff(it), v = CN.vals[it.sku], rm = CN.rem[it.sku] || '';
+      const cat = it.cat || 'Other', head = cat !== lastCat && !q ? '<tr class="cn_cat"><td class="cn_nm">' + esc(cat) + '</td><td colspan="7"></td></tr>' : ''; lastCat = cat;
+      return head + '<tr data-sku="' + esc(it.sku) + '"><td class="cn_nm">' + esc(it.name.replace(/^Nutvique\s+/, '')) + '<div class="tiny mute">' + esc(it.sku) + ' · ' + esc(it.unit) + '</div></td>' +
+        '<td class="n">' + qfmt(it.last) + (it.lastDate ? '<div class="tiny mute">' + esc(it.lastDate.slice(8, 10) + '/' + it.lastDate.slice(5, 7)) + '</div>' : '<div class="tiny mute">never</div>') + '</td>' +
+        '<td class="n">' + (it.sold ? qfmt(it.sold) : '–') + '</td><td class="n">' + (it.adj ? (it.adj > 0 ? '+' : '') + qfmt(it.adj) : '–') + '</td>' +
+        '<td class="n ' + (it.sys < 0 ? 'neg' : '') + '"><b>' + qfmt(it.sys) + '</b></td>' +
+        '<td class="n"><input class="i num cn_in" data-sku="' + esc(it.sku) + '" data-i="' + i + '" inputmode="decimal" enterkeyhint="next" style="width:84px;min-height:34px;padding:4px 6px;text-align:right" value="' + esc(v === undefined ? '' : v) + '"></td>' +
+        '<td class="n cn_d" style="font-weight:600;color:' + (d === null || Math.abs(d) < 0.0005 ? 'var(--mute)' : d < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + (d === null ? '' : Math.abs(d) < 0.0005 ? '✓' : (d > 0 ? '+' : '') + qfmt(d)) + '</td>' +
+        '<td><input class="i cn_rm" data-sku="' + esc(it.sku) + '" style="width:150px;min-height:34px;padding:4px 6px" placeholder="remark" value="' + esc(rm) + '"></td></tr>';
     }).join('') + '</tbody></table></div>' + (list.length ? '' : '<div class="empty">Nothing here.</div>') +
     '<div class="foot"><div class="st">' + done + ' of ' + items.length + ' counted · ' + diffs.length + ' difference' + (diffs.length === 1 ? '' : 's') + (can('costs') && diffs.length ? '<br>Value ' + (val < 0 ? '−' : '+') + inr(Math.abs(val), 0) : '') + '</div>' +
     '<button class="btn ghost sm" id="cn_more">⋯</button><button class="btn gold" id="cn_save"' + (done ? '' : ' disabled') + '>Save count</button></div>';
@@ -999,6 +1005,7 @@ function cnDraw() {
     el.onfocus = () => el.select();
     el.onblur = () => cnFoot();
   });
+  $$('.cn_rm').forEach(el => el.oninput = () => { const s = el.dataset.sku; if (el.value.trim()) CN.rem[s] = el.value; else delete CN.rem[s]; cnStore(); });
   $('#cn_more').onclick = cnMore;
   $('#cn_save').onclick = cnConfirm;
 }
@@ -1022,17 +1029,22 @@ function cnMore() {
     '<button class="btn ghost" id="cm_csv">Download the sheet (Excel / CSV) to print</button>' +
     '<button class="btn ghost" id="cm_zero">Full count: set every blank item to 0</button>' +
     '<button class="btn ghost" id="cm_same">Copy system qty into every blank item</button>' +
-    '<button class="btn ghost" id="cm_clear">Clear all my entries</button></div>' +
+    '<button class="btn ghost" id="cm_clear">Clear all my entries</button>' +
+    '<button class="btn ghost" id="cm_hist">Past inventory counts of this store</button></div>' +
     '<div class="tiny mute" style="margin-top:8px">“Full count” is for when you counted the whole store: anything you did not find becomes 0.</div>');
   $('#cm_csv', m).onclick = () => {
-    const rows = [['SKU', 'Item', 'Category', 'Unit', 'System qty', 'Counted qty', 'Difference']].concat(CN.data.items.map(it => { const d = cnDiff(it); return [it.sku, it.name, it.cat, it.unit, it.sys, CN.vals[it.sku] || '', d === null ? '' : d]; }));
+    const rows = [['SKU', 'Product', 'Category', 'Unit', 'Last inventory', 'Last inventory date', 'Sold', 'Adjusted', 'System stock', 'Physical stock', 'Difference', 'Remarks']].concat(CN.data.items.map(it => { const d = cnDiff(it); return [it.sku, it.name, it.cat, it.unit, it.last, it.lastDate, it.sold, it.adj, it.sys, CN.vals[it.sku] || '', d === null ? '' : d, CN.rem[it.sku] || '']; }));
     const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'Stock count ' + CN.loc + ' ' + (CN.date || today()) + '.csv'; document.body.appendChild(a); a.click(); a.remove();
     m.close();
   };
   $('#cm_zero', m).onclick = e => { if (!confirmTwice(e.target)) return; CN.data.items.forEach(it => { if (CN.vals[it.sku] === undefined || CN.vals[it.sku] === '') CN.vals[it.sku] = '0'; }); cnStore(); m.close(); cnDraw(); };
   $('#cm_same', m).onclick = e => { if (!confirmTwice(e.target)) return; CN.data.items.forEach(it => { if ((CN.vals[it.sku] === undefined || CN.vals[it.sku] === '') && it.sys > 0) CN.vals[it.sku] = String(it.sys); }); cnStore(); m.close(); cnDraw(); };
-  $('#cm_clear', m).onclick = e => { if (!confirmTwice(e.target)) return; CN.vals = {}; cnStore(); m.close(); cnDraw(); };
+  $('#cm_clear', m).onclick = e => { if (!confirmTwice(e.target)) return; CN.vals = {}; CN.rem = {}; cnStore(); m.close(); cnDraw(); };
+  $('#cm_hist', m).onclick = async () => { m.close(); const h = await run('Loading…', () => call('countHistory', { location: CN.loc }));
+    modal('Inventory counts – ' + CN.loc, h.length ? h.map(c => { const df = c.lines.filter(l => Math.abs(l.diff) >= 0.0005);
+      return '<details class="card" style="margin-bottom:8px"><summary><b>' + esc(c.date) + '</b> · ' + esc(c.by) + ' · ' + c.lines.length + ' counted · ' + df.length + ' differences</summary><div class="tscroll" style="margin-top:8px"><table class="t"><tr><th>Product</th><th class="n">Last</th><th class="n">Sold</th><th class="n">Adj.</th><th class="n">System</th><th class="n">Physical</th><th class="n">Diff.</th><th>Remarks</th></tr>' +
+        c.lines.map(l => '<tr><td>' + esc(l.name.replace(/^Nutvique\s+/, '')) + '</td><td class="n">' + qfmt(l.last) + '</td><td class="n">' + qfmt(l.sold) + '</td><td class="n">' + qfmt(l.adj) + '</td><td class="n">' + qfmt(l.sys) + '</td><td class="n">' + qfmt(l.counted) + '</td><td class="n" style="color:' + (l.diff < 0 ? 'var(--bad)' : l.diff > 0 ? 'var(--ok)' : '') + '">' + (Math.abs(l.diff) < 0.0005 ? '✓' : (l.diff > 0 ? '+' : '') + qfmt(l.diff)) + '</td><td>' + esc(l.remark) + '</td></tr>').join('') + '</table></div></details>'; }).join('') : '<div class="empty">No counts saved with the inventory sheet yet.</div>', { wide: true }); };
 }
 function cnConfirm() {
   const items = CN.data.items;
@@ -1041,16 +1053,16 @@ function cnConfirm() {
   const done = items.filter(it => CN.vals[it.sku] !== undefined && CN.vals[it.sku] !== '');
   const diffs = done.filter(it => Math.abs(cnDiff(it)) >= 0.0005).sort((a, b) => cnDiff(a) - cnDiff(b));
   const m = modal('Save stock count – ' + CN.loc, '<div class="kv"><div>Date</div><div>' + esc(CN.date || today()) + '</div><div>Items counted</div><div>' + done.length + ' of ' + items.length + '</div><div>Matching</div><div>' + (done.length - diffs.length) + '</div><div>Differences</div><div><b>' + diffs.length + '</b></div></div>' +
-    (diffs.length ? '<div class="tscroll" style="margin-top:10px;max-height:45vh"><table class="t"><tr><th>Item</th><th class="n">System</th><th class="n">Counted</th><th class="n">Diff.</th></tr>' + diffs.map(it => { const d = cnDiff(it); return '<tr><td>' + esc(it.name.replace(/^Nutvique\s+/, '')) + '</td><td class="n">' + qfmt(it.sys) + '</td><td class="n">' + esc(CN.vals[it.sku]) + '</td><td class="n" style="color:' + (d < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + (d > 0 ? '+' : '') + qfmt(d) + '</td></tr>'; }).join('') + '</table></div>' : '<div class="okbox" style="margin-top:10px">Everything you counted matches the system.</div>') +
+    (diffs.length ? '<div class="tscroll" style="margin-top:10px;max-height:45vh"><table class="t"><tr><th>Product</th><th class="n">System</th><th class="n">Physical</th><th class="n">Diff.</th></tr>' + diffs.map(it => { const d = cnDiff(it); return '<tr><td>' + esc(it.name.replace(/^Nutvique\s+/, '')) + (CN.rem[it.sku] ? '<div class="tiny mute">' + esc(CN.rem[it.sku]) + '</div>' : '') + '</td><td class="n">' + qfmt(it.sys) + '</td><td class="n">' + esc(CN.vals[it.sku]) + '</td><td class="n" style="color:' + (d < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + (d > 0 ? '+' : '') + qfmt(d) + '</td></tr>'; }).join('') + '</table></div>' : '<div class="okbox" style="margin-top:10px">Everything you counted matches the system.</div>') +
     fld('Note (optional)', '<input class="i" id="cn_note" placeholder="e.g. full store count by …">') +
     '<div class="tiny mute" style="margin-top:6px">Stock of ' + esc(CN.loc) + ' is corrected by the differences only. Items left blank are not changed, and sales made while counting are kept.</div>' +
     '<button class="btn gold block" id="cn_go" style="margin-top:12px">Save count</button>');
   $('#cn_go', m).onclick = async () => {
-    const lines = done.map(it => ({ sku: it.sku, counted: CN.vals[it.sku], sys: it.sys }));
+    const lines = done.map(it => ({ sku: it.sku, counted: CN.vals[it.sku], sys: it.sys, last: it.last, lastDate: it.lastDate, sold: it.sold, adj: it.adj, remark: CN.rem[it.sku] || '' }));
     const r = await run('Saving the count…', () => call('saveCount', { location: CN.loc, date: CN.date || today(), note: $('#cn_note', m).value, lines: lines }));
-    m.close(); CN.vals = {}; cnStore(); CN.data = null;
+    m.close(); CN.vals = {}; CN.rem = {}; cnStore(); CN.data = null;
     modal('Count saved ✓', '<div class="okbox">' + r.counted + ' items counted · ' + r.changed + ' corrected' + (r.changed ? ' (+' + qfmt(r.plus) + ' / ' + qfmt(r.minus) + ')' : '') + '</div><div class="tiny mute" style="margin-top:6px">Ref ' + esc(r.ref) + ' – see Stock → History.</div>');
-    refresh(true); SK.tab = 'cnt'; viewStock();
+    refresh(true); go('count');
   };
 }
 /* product lines editor used by Stock in / Transfer / Stock out */
