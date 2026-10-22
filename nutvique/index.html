@@ -138,7 +138,7 @@ const IN_APP = !!window.NV_APP;   // true in the installed app (camera + Bluetoo
 function call(action, data) {
   const body = { token: S.token || '', pin: S.token ? '' : (S.pin || ''), action: action, data: data || {} };
   const fail = m => {
-    if (/Signed out/.test(m) && ['hello', 'login', 'loginNames', 'logout'].indexOf(action) < 0) { S.token = ''; store.set('token', null); S.user = null; setTimeout(lockScreen, 0); }
+    if (/Signed out/.test(m) && ['hello', 'login', 'loginNames', 'logout'].indexOf(action) < 0) { S.token = ''; store.set('token', null); store.set('cache', null); S.user = null; setTimeout(lockScreen, 0); }
     return new Error(m);
   };
   if (window.NV_API) {
@@ -168,10 +168,17 @@ async function start() {
       try { const r = await call('login', { name: 'Owner', pin: oldPin }); S.token = r.token; store.set('token', S.token); } catch (e) { }
       store.set('pin', null);
     }
-    const h = await call('hello');
-    if (h.needOwnerPin) return firstPin();
-    if (h.user) { S.user = h.user; return h.user.mustChange ? forcePinChange() : boot(); }
-    lockScreen();
+    if (S.token) {                                     // signed in on this phone: show the last data at once, refresh in one call
+      const c = appCache();
+      if (c) { S.user = c.user; applyBoot(c.boot); useBillBoot(c.bill); shell(); }
+      else $('#app').innerHTML = '<div class="empty" style="margin-top:30vh"><span class="spin dk"></span><div style="margin-top:10px">Loading products and stock…</div></div>';
+      let r;
+      try { r = await call('start', { loc: (typeof B !== 'undefined' && B.loc) || store.get('bloc') || '' }); }
+      catch (e) { if (!S.token) return; if (c) { toast(e.message, true); return; } throw e; }
+      return startDone(r, !!c);
+    }
+    lockScreen();                                      // sign-in screen at once; first-ever set-up (no owner PIN yet) is checked alongside
+    call('hello').then(h => { if (h.needOwnerPin) firstPin(); }).catch(() => { });
   } catch (e) { $('#app').innerHTML = '<div class="lock"><h1>NUTVIQUE</h1><p class="warnbox bad">' + esc(e.message) + '</p><button class="btn" onclick="location.reload()">Try again</button></div>'; }
 }
 function pinPad(title, sub, onDone, extra) {
@@ -190,12 +197,18 @@ async function lockScreen(pickName) {
   const last = store.get('lastName');
   if (last && !pickName) return pinFor(last);
   $('#app').innerHTML = '<div class="lock"><h1>NUTVIQUE</h1><div class="mute small" style="letter-spacing:.2em">INVENTORY · BILLING</div><h3 style="margin-top:24px">Who is signing in?</h3><div id="names"><div class="empty"><span class="spin dk"></span></div></div></div>';
-  let r; try { r = await call('loginNames'); } catch (e) { $('#names').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div><button class="btn" onclick="lockScreen(true)">Try again</button>'; return; }
+  const draw = r => {
   const names = r.names.slice().sort((a, b) => a.name.localeCompare(b.name));
   $('#names').innerHTML = '<div class="nlist">' + names.map(n => '<button data-n="' + esc(n.name) + '"><b>' + esc(n.name) + '</b><span>' + esc(n.role + (n.home ? ' · ' + (LOC_SHORT[n.home] || n.home) : '')) + '</span></button>').join('') +
     (r.owner ? '<button data-n="Owner" class="own"><b>Owner</b><span>Head office</span></button>' : '') + '</div>' +
     '<div class="tiny mute" style="margin-top:12px">Your name is not here? Ask head office to add you.</div>';
   $$('#names [data-n]').forEach(b => b.onclick = () => pinFor(b.dataset.n));
+  };
+  let had = null; try { had = JSON.parse(store.get('names') || 'null'); } catch (e) { }
+  if (had) draw(had);
+  let r; try { r = await call('loginNames'); } catch (e) { if (!had) $('#names').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div><button class="btn" onclick="lockScreen(true)">Try again</button>'; return; }
+  store.set('names', JSON.stringify(r));
+  if ($('#names') && JSON.stringify(r) !== JSON.stringify(had)) draw(r);
 }
 function pinFor(name) {
   pinPad(name === 'Owner' ? 'Owner' : 'Hi ' + name.split(' ')[0], 'Enter your PIN', async pin => {
@@ -230,7 +243,7 @@ function firstPin() {
 }
 async function signOut() {
   try { await call('logout'); } catch (e) { }
-  S.token = ''; S.user = null; store.set('token', null);
+  S.token = ''; S.user = null; store.set('token', null); store.set('cache', null);
   if (typeof B !== 'undefined') { B.boot = null; B.loc = ''; B.today = null; B.lines = []; store.set('bloc', null); }
   SK.boot = null; S.stock = {}; S.trWait = 0; lockScreen();
 }
@@ -251,9 +264,29 @@ function changePinSheet() {
 async function boot() {
   document.onkeydown = null;
   $('#app').innerHTML = '<div class="empty" style="margin-top:30vh"><span class="spin dk"></span><div style="margin-top:10px">Loading products and stock…</div></div>';
-  const b = await call('boot');
-  applyBoot(b);
-  shell();
+  const r = await call('start', { loc: (typeof B !== 'undefined' && B.loc) || store.get('bloc') || '' });
+  startDone(r, false);
+}
+/* Fast start: the last products, stock and bill set-up are kept on the phone, so the app opens at once;
+   one call to the server then brings everything up to date (prices are always re-checked by the server when a bill is saved). */
+function appCache() {
+  try { const c = JSON.parse(store.get('cache') || 'null'); return c && c.token === S.token && c.boot && c.user ? c : null; } catch (e) { return null; }
+}
+function useBillBoot(bb) {
+  if (!bb || typeof B === 'undefined') return;
+  B.boot = bb; if (bb.today) { B.today = bb.today; B.todayDate = bb.today.date || today(); }
+}
+function startDone(r, wasShown) {
+  const b = r.boot;
+  S.user = b.user;
+  if (S.user.mustChange) return forcePinChange();
+  applyBoot(b); useBillBoot(r.bill);
+  try { store.set('cache', JSON.stringify({ token: S.token, user: S.user, boot: b, bill: r.bill, at: Date.now() })); } catch (e) { store.set('cache', null); }
+  if (!wasShown) return shell();
+  renderNav();
+  const a = document.activeElement, typing = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.value;
+  if (!$('.modal') && !$('.busy') && !typing && !(S.view === 'bill' && typeof B !== 'undefined' && B.lines && B.lines.length)) renderView();
+  else if (S.view === 'bill' && typeof drawToday === 'function') try { drawToday(); } catch (e) { }
 }
 function applyBoot(b) {
   S.role = b.role; if (b.user) S.user = b.user; S.products = b.products; S.bySku = {}; b.products.forEach(p => S.bySku[p.sku] = p);
@@ -1239,7 +1272,7 @@ async function viewMore() {
   $('#t_g').onchange = up('gs1'); $('#t_q').onchange = up('qb');
 }
 
-start();
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else setTimeout(start, 0);
 </script>
 <style>
 /* ───────────── BILLING ───────────── */
