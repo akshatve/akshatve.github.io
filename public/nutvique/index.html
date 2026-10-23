@@ -2840,6 +2840,15 @@ $('#img').onclick = async () => {
 <\/script></body></html>`;
 </script>
 
-<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () { });</script>
+<div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
+<script>window.NV_BUILD = '53a025740e';
+if ('serviceWorker' in navigator) {
+  var nvHad = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (!nvHad) { nvHad = true; return; }
+    var b = document.getElementById('nv_upd'); b.style.display = 'block'; b.onclick = function () { location.reload(); };
+  });
+}</script>
 </body>
 </html>
