@@ -1399,6 +1399,7 @@ async function peopleScreen() {
       fld('Status', '<select class="i" id="pe_a"><option value="Yes"' + (u.active ? ' selected' : '') + '>Active – can sign in</option><option value="No"' + (!u.active ? ' selected' : '') + '>Left / blocked</option></select>') + '</div>' +
       '<h3 style="margin:14px 0 4px">Rights</h3><div class="row" style="margin-bottom:6px"><button class="btn sm ghost" id="pe_ps">Staff set</button><button class="btn sm ghost" id="pe_pm">Manager set</button><button class="btn sm ghost" id="pe_pn">None</button></div>' +
       D.rights.map(r => '<label class="chk"><input type="checkbox" class="rk" value="' + r.key + '"' + (u.rights.indexOf(r.key) >= 0 ? ' checked' : '') + (can(r.key) ? '' : ' disabled') + '>' + esc(r.label) + '</label>').join('') +
+      fld('Email (gets discount-approval requests if they have "Approve discounts")', '<input class="i" id="pe_em" type="email" value="' + esc(u.email || '') + '" placeholder="name@gmail.com">') +
       fld('Notes', '<input class="i" id="pe_no" value="' + esc(u.notes || '') + '">') +
       '<div class="row" style="margin-top:14px">' + (isNew ? '' : '<button class="btn ghost sm" id="pe_pin">Reset PIN</button>') + '<div class="grow"></div><button class="btn" id="pe_go">' + (isNew ? 'Add & make PIN' : 'Save') + '</button></div>');
     const preset = keys => $$('.rk', e).forEach(c => { if (!c.disabled) c.checked = keys.indexOf(c.value) >= 0; });
@@ -1408,7 +1409,7 @@ async function peopleScreen() {
     $('#pe_r', e).onchange = ev => preset(ev.target.value === 'Manager' ? ['bill', 'disc10', 'otherItem', 'events', 'sales', 'stockView', 'transfer', 'checkTransfer', 'customers'] : ['bill', 'stockView', 'events', 'transfer', 'checkTransfer']);
     $('#pe_go', e).onclick = async () => {
       const d = { name: isNew ? '' : u.name, newName: $('#pe_n', e).value.trim(), role: $('#pe_r', e).value, home: $('#pe_h', e).value, active: $('#pe_a', e).value,
-        notes: $('#pe_no', e).value, rights: $$('.rk', e).filter(c => c.checked).map(c => c.value) };
+        notes: $('#pe_no', e).value, email: $('#pe_em', e).value.trim(), rights: $$('.rk', e).filter(c => c.checked).map(c => c.value) };
       if (!d.newName) return toast('Type the name', true);
       const r = await run('Saving…', () => call('saveUser', d)).catch(() => null);
       if (!r) return;
@@ -1646,7 +1647,8 @@ function billCalc(lines, billDisc, inter) {
   return { lines: out, totals: t };
 }
 
-function noDisc() { return !can('disc10'); }
+function noDisc() { return false; }                     // v18.8: everyone who bills can type a discount; staff need approval for any discount
+function discNeedsOk() { return !isOwner() && !can('disc10') && !can('approve'); }
 function discLimits() { const d = (B.boot && B.boot.disc) || { self: 10, max: 25 }; return d; }
 function listsOk() {
   if (!B.boot) return;
@@ -1764,7 +1766,7 @@ function drawBill() {
     shortBox() +
     '<div class="row" style="margin-top:8px">' + (noDisc() || B.coupon ? '' : '<div class="grow"><label class="f">Bill discount ₹</label><input class="i num" id="b_bd" inputmode="decimal" value="' + (B.billDisc || '') + '"></div>') +
     '<div class="grow"><label class="f">Billed by</label><div class="i" style="background:#f4f2ec">' + esc(S.user ? S.user.name : '') + '</div></div></div>' +
-    (B.coupon ? '<div class="tiny" style="margin-top:6px">Coupon ' + esc(B.coupon.code) + ' applied – ' + B.coupon.pct + '% off (no other discount with a coupon).</div>' : noDisc() ? '<div class="tiny mute" style="margin-top:6px">Discounts: only managers can give them.</div>' : '<div class="tiny mute" style="margin-top:6px" id="b_dh"></div>') +
+    (B.coupon ? '<div class="tiny" style="margin-top:6px">Coupon ' + esc(B.coupon.code) + ' applied – ' + B.coupon.pct + '% off (no other discount with a coupon).</div>' : discNeedsOk() ? '<div class="tiny mute" style="margin-top:6px">Discount: type it here – when you save, it is sent to the owner / managers for approval (in their app and by email).</div>' : '<div class="tiny mute" style="margin-top:6px" id="b_dh"></div>') +
     '</div>' +
     '<div class="card btot" id="b_tot">' + totHtml(t) + '</div>' +
     '<button class="btn gold block" id="b_save" style="min-height:52px;font-size:17px"' + (B.lines.length ? '' : ' disabled') + '>Save bill · ₹' + money(t.total) + '</button>' +
@@ -1781,6 +1783,7 @@ function discInfo(t) {
   if (!(t.disc > 0) || B.coupon) return { pct: 0, need: '' };
   if (isOwner()) return { pct: pct, need: '' };
   if (pct > L.max + 0.01) return { pct: pct, need: 'max' };
+  if (discNeedsOk()) return { pct: pct, need: 'approval' };
   if (pct > L.self + 0.01 && !can('approve')) return { pct: pct, need: 'approval' };
   return { pct: pct, need: '' };
 }
@@ -2129,6 +2132,8 @@ function billDone(b, fresh) {
     (b.customer.phone && live ? '<a class="btn ' + (waOn() ? 'ghost' : 'wa') + ' block" id="bd_wa" target="_blank" rel="noopener" href="' + esc(waLink(b)) + '">' + (waOn() ? 'Send manually (opens WhatsApp)' : 'Send bill on WhatsApp') + '</a>' : '') +
     '<button class="btn block" id="bd_pr">Print bill</button>' +
     '<a class="btn ghost block" target="_blank" rel="noopener" href="' + esc(b.url) + '">Open full bill (PDF)</a>' +
+    (b.payChanges && b.payChanges.length ? '<div class="tiny mute" style="margin-top:6px">Payment changed: ' + esc(b.payChanges[b.payChanges.length - 1].from) + ' → ' + esc(b.payChanges[b.payChanges.length - 1].to) + ' by ' + esc(b.payChanges[b.payChanges.length - 1].by) + ' (' + esc(b.payChanges[b.payChanges.length - 1].reason) + ')</div>' : '') +
+    (live && can('payEdit') && !fresh ? '<button class="btn ghost block" id="bd_pay">Change payment method</button>' : '') +
     (live && can('bill') ? (b.short ? '<div class="row"><button class="btn ghost grow" id="bd_shok">Balance received</button><button class="btn ghost grow" id="bd_shed">Change short</button></div>' : '<button class="btn ghost block" id="bd_sh">Customer paid less – record short payment</button>') : '') +
     (!fresh && can('cancelBill') && live ? '<button class="btn ghost block" id="bd_cx" style="color:var(--bad)">Cancel this bill…</button>' : '') +
     (fresh ? '<button class="btn gold block" id="bd_new">New bill</button>' : '') + '</div></div>');
@@ -2141,11 +2146,35 @@ function billDone(b, fresh) {
   if ($('#bd_new', m)) $('#bd_new', m).onclick = () => { m.close(); $('#bq') && $('#bq').focus(); };
   if ($('#bd_cx', m)) $('#bd_cx', m).onclick = () => { m.close(); cancelSheet(b); };
   if ($('#bd_sh', m)) $('#bd_sh', m).onclick = () => { m.close(); shortSheet(b); };
+  if ($('#bd_pay', m)) $('#bd_pay', m).onclick = () => { m.close(); paySheet(b); };
   if ($('#bd_shed', m)) $('#bd_shed', m).onclick = () => { m.close(); shortSheet(b); };
   if ($('#bd_shok', m)) $('#bd_shok', m).onclick = async e => {
     if (!confirmTwice(e.target)) return;
     const r = await run('Saving…', () => call('clearShort', { no: b.no, recovered: true })).catch(() => null);
     if (!r) return; m.close(); toast('Balance received – bill is fully paid'); B.today = null; loadToday(); billDone(r.bill, false);
+  };
+}
+function paySheet(b) {
+  const sh = b.short, rec = Math.round((b.totals.total - (sh ? sh.short : 0)) * 100) / 100, cur = b.pay;
+  const st = { mode: cur.mode, cash: cur.cash || '', upi: cur.upi || '', card: cur.card || '' };
+  const m = modal('Change payment – ' + b.no, '<div class="kv"><div>Bill total</div><div><b>₹' + money(b.totals.total) + '</b></div>' + (sh ? '<div>Short payment</div><div>₹' + money(sh.short) + ' (stays)</div>' : '') +
+    '<div>Received</div><div><b>₹' + money(rec) + '</b></div><div>Now</div><div>' + esc(cur.mode === 'Split' ? ['cash', 'upi', 'card'].filter(k => cur[k]).map(k => k.toUpperCase() + ' ₹' + money(cur[k])).join(' + ') : cur.mode) + '</div></div>' +
+    '<div class="seg" id="pc_m" style="margin-top:12px">' + ['Cash', 'UPI', 'Card', 'Split'].map(x => '<button data-m="' + x + '">' + x + '</button>').join('') + '</div><div id="pc_sp"></div>' +
+    fld('Reason for the change', '<input class="i" id="pc_r" placeholder="e.g. customer paid by UPI, not cash">') +
+    '<button class="btn gold block" id="pc_go" style="margin-top:12px">Save new payment</button>');
+  const draw = () => {
+    $$('#pc_m button', m).forEach(x => x.classList.toggle('on', x.dataset.m === st.mode));
+    $('#pc_sp', m).innerHTML = st.mode === 'Split' ? '<div class="grid3" style="margin-top:8px">' + [['cash', 'Cash'], ['upi', 'UPI'], ['card', 'Card']].map(k => '<div><label class="f">' + k[1] + ' ₹</label><input class="i num" data-k="' + k[0] + '" inputmode="decimal" value="' + esc(st[k[0]]) + '"></div>').join('') + '</div><div class="tiny" id="pc_left" style="margin-top:4px"></div>' : '<div class="tiny mute" style="margin-top:6px">All ₹' + money(rec) + ' by ' + esc(st.mode) + '.</div>';
+    const left = () => { const l = Math.round((rec - num(st.cash) - num(st.upi) - num(st.card)) * 100) / 100; const e = $('#pc_left', m); if (e) e.innerHTML = l ? '<span class="neg">₹' + money(l) + ' still to split</span>' : 'Adds up ✓'; };
+    $$('[data-k]', m).forEach(i => i.oninput = () => { st[i.dataset.k] = i.value; left(); }); left();
+  };
+  $$('#pc_m button', m).forEach(x => x.onclick = () => { st.mode = x.dataset.m; draw(); });
+  draw();
+  $('#pc_go', m).onclick = async () => {
+    const reason = $('#pc_r', m).value.trim(); if (!reason) return toast('Type the reason', true);
+    if (st.mode === 'Split' && Math.abs(rec - num(st.cash) - num(st.upi) - num(st.card)) > 0.009) return toast('Cash + UPI + Card must add up to ₹' + money(rec), true);
+    const r = await run('Saving…', () => call('changePayment', { no: b.no, mode: st.mode, cash: num(st.cash), upi: num(st.upi), card: num(st.card), reason: reason })).catch(() => null);
+    if (!r) return; m.close(); toast('Payment changed'); B.today = null; loadToday(); billDone(r.bill, false);
   };
 }
 function shortSheet(b) {
@@ -2198,7 +2227,8 @@ async function loadToday() {
 function drawToday() {
   const box = $('#b_today'); if (!box || !B.today) return;
   const r = B.today, s = r.sum;
-  box.innerHTML = '<div class="row"><h3 class="grow" style="margin:0">' + (r.q ? 'Search: ' + esc(r.q) : 'Today\'s bills · ' + esc(LOC_SHORT[B.loc] || locLabel(B.loc))) + '</h3>' +
+  box.innerHTML = '<div class="row"><h3 class="grow" style="margin:0">' + (r.q ? 'Search: ' + esc(r.q) : (r.date && r.date !== today() ? 'Bills of ' + esc(r.date.split('-').reverse().join('-')) : 'Today\'s bills') + ' · ' + esc(LOC_SHORT[B.loc] || locLabel(B.loc))) + '</h3>' +
+    '<input class="i" type="date" id="b_day" style="max-width:150px" value="' + esc(r.q ? '' : (r.date || today())) + '" title="Show bills of another day">' +
     '<input class="i" id="b_find" style="max-width:220px" placeholder="Find bill no. / mobile" value="' + esc(r.q || '') + '"></div>' +
     (s ? '<div class="bigp"><div><span>' + s.bills + ' bill' + (s.bills === 1 ? '' : 's') + '</span><b>₹' + money(s.total) + '</b></div><div><span>Cash</span><b>₹' + money(s.cash) + '</b></div><div><span>UPI</span><b>₹' + money(s.upi) + '</b></div><div><span>Card</span><b>₹' + money(s.card) + '</b></div></div>' +
       (s.short ? '<div class="tiny" style="color:var(--bad)">Short payments: ₹' + money(s.short) + ' on ' + s.shortBills + ' bill' + (s.shortBills === 1 ? '' : 's') + ' (Cash / UPI / Card show what was actually received)</div>' : '') +
@@ -2207,6 +2237,7 @@ function drawToday() {
       '<div class="tiny mute">' + (x.name ? esc(x.name) + ' · ' : '') + (x.phone ? esc(x.phone) + ' · ' : '') + x.items + ' item' + (x.items === 1 ? '' : 's') + ' · ' + esc(x.pay) + ' · ' + esc(x.by) + (x.sent ? ' · WhatsApp ✓' : '') + (x.short ? ' · <span style="color:var(--bad)">short ₹' + money(x.short) + '</span>' : '') + '</div></div>' +
       '<div class="nowrap"><b class="' + (x.status === 'Cancelled' ? 'cx' : '') + '">₹' + money(x.total) + '</b></div></div>').join('') : '<div class="empty small">No bills yet.</div>') + '</div>';
   $$('.li', box).forEach(li => li.onclick = () => openBill(li.dataset.no));
+  $('#b_day').onchange = async e => { const v = e.target.value || today(); const res = await run('Loading…', () => call('listBills', { date: v, loc: B.loc })).catch(() => null); if (res) { B.today = res; drawToday(); } };
   const f = $('#b_find');
   f.onkeydown = async e => {
     if (e.key !== 'Enter') return;
@@ -2220,9 +2251,9 @@ function drawToday() {
 function askApproval(t, pct) {
   let timer = null, closed = false;
   const items = B.lines.map(l => (l.name || 'Item') + ' ' + (l.unit === 'kg' ? (l.inUnit === 'g' ? l.inQty + ' g' : l.inQty + ' kg') : l.inQty + ' pcs')).join(', ').slice(0, 380);
-  const m = modal('Owner approval needed', '<div class="bigp"><div><span>Discount</span><b>' + pct + '%</b><span>₹' + money(t.disc) + ' off ₹' + money(t.gross) + '</span></div></div>' +
-    '<div id="ap_st"><button class="btn gold block" id="ap_ask">Ask the owner now</button><div class="tiny mute" style="margin-top:6px">The owner sees it on their phone within seconds. This screen unlocks by itself when they approve.</div></div>' +
-    '<h3 style="margin-top:16px">Or: one-time code from the owner</h3><div class="row"><input class="i grow" id="ap_code" inputmode="numeric" maxlength="7" placeholder="6-digit code"><button class="btn" id="ap_use">Use code</button></div>' +
+  const m = modal('Discount approval needed', '<div class="bigp"><div><span>Discount</span><b>' + pct + '%</b><span>₹' + money(t.disc) + ' off ₹' + money(t.gross) + '</span></div></div>' +
+    '<div id="ap_st"><button class="btn gold block" id="ap_ask">Ask for approval now</button><div class="tiny mute" style="margin-top:6px">Goes at once to the owner and every manager who can approve – a red banner in their app and an email with an Approve button. This screen unlocks by itself when one of them approves.</div></div>' +
+    '<h3 style="margin-top:16px">Or: one-time code (ask on the phone)</h3><div class="row"><input class="i grow" id="ap_code" inputmode="numeric" maxlength="7" placeholder="6-digit code"><button class="btn" id="ap_use">Use code</button></div>' +
     '<div class="tiny mute" style="margin-top:6px">Each code works once, for up to ' + discLimits().max + '% on this bill.</div>', { onClose: () => { closed = true; clearTimeout(timer); } });
   $('#ap_use', m).onclick = () => {
     const c = $('#ap_code', m).value.replace(/\D/g, '');
@@ -2230,15 +2261,15 @@ function askApproval(t, pct) {
     B.approval = { code: c, pct: discLimits().max, gross: Infinity }; m.close(); saveBill();
   };
   $('#ap_ask', m).onclick = async () => {
-    const r = await run('Sending to the owner…', () => call('requestApproval', { loc: B.loc, event: B.event, gross: t.gross, disc: t.disc, items: items })).catch(() => null);
+    const r = await run('Sending the request…', () => call('requestApproval', { loc: B.loc, event: B.event, gross: t.gross, disc: t.disc, items: items })).catch(() => null);
     if (!r) return;
-    $('#ap_st', m).innerHTML = '<div class="empty small"><span class="spin dk"></span><div>Waiting for the owner… (request ' + esc(r.id) + ')</div><div class="tiny mute">Keep this screen open. You can also call the owner for a code.</div></div>';
+    $('#ap_st', m).innerHTML = '<div class="empty small"><span class="spin dk"></span><div>Waiting for approval… (request ' + esc(r.id) + ')</div><div class="tiny mute">Sent in the app' + (/^OK: [1-9]/.test(r.emailed || '') ? ' and by email' : '') + '. Keep this screen open – the bill saves by itself once approved. You can also call them for a one-time code.</div></div>';
     const poll = async () => {
       if (closed) return;
       let x; try { x = await call('approvalStatus', { id: r.id }); } catch (e) { }
       if (closed) return;
       if (x && x.status === 'Approved') { B.approval = { id: r.id, pct: r.pct, gross: t.gross }; m.close(); toast('Approved by ' + x.by + ' ✓'); saveBill(); return; }
-      if (x && x.status === 'Rejected') { $('#ap_st', m).innerHTML = '<div class="warnbox bad">The owner rejected ' + r.pct + '%. Lower the discount and save again.</div>'; return; }
+      if (x && x.status === 'Rejected') { $('#ap_st', m).innerHTML = '<div class="warnbox bad">' + esc(x.by || 'They') + ' rejected ' + r.pct + '%. Lower the discount and save again.</div>'; return; }
       timer = setTimeout(poll, 4000);
     };
     timer = setTimeout(poll, 3000);
