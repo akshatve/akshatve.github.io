@@ -1761,6 +1761,7 @@ function drawBill() {
       '<div class="tiny mute" id="b_spl" style="margin-top:4px"></div>' : '') +
     (B.pay.mode === 'UPI' || B.pay.mode === 'Split' ? '<button class="btn gold block" id="b_qr" style="margin-top:8px"' + (B.lines.length ? '' : ' disabled') + '>Show UPI QR' + (B.pay.mode === 'Split' ? ' for the UPI part' : '') + '</button>' : '') +
     (B.pay.mode === 'Cash' ? '<div class="row" style="margin-top:8px"><div class="grow"><label class="f">Cash received ₹ (optional)</label><input class="i num" id="b_got" inputmode="decimal" value="' + esc(B.pay.got) + '"></div><div class="grow"><label class="f">Give back</label><div class="qty" id="b_chg">–</div></div></div>' : '') +
+    shortBox() +
     '<div class="row" style="margin-top:8px">' + (noDisc() || B.coupon ? '' : '<div class="grow"><label class="f">Bill discount ₹</label><input class="i num" id="b_bd" inputmode="decimal" value="' + (B.billDisc || '') + '"></div>') +
     '<div class="grow"><label class="f">Billed by</label><div class="i" style="background:#f4f2ec">' + esc(S.user ? S.user.name : '') + '</div></div></div>' +
     (B.coupon ? '<div class="tiny" style="margin-top:6px">Coupon ' + esc(B.coupon.code) + ' applied – ' + B.coupon.pct + '% off (no other discount with a coupon).</div>' : noDisc() ? '<div class="tiny mute" style="margin-top:6px">Discounts: only managers can give them.</div>' : '<div class="tiny mute" style="margin-top:6px" id="b_dh"></div>') +
@@ -1819,6 +1820,7 @@ function refreshTotals() {
   if (dh) dh.innerHTML = di.need === 'max' ? '<span class="neg">' + di.pct + '% – the maximum discount is ' + L.max + '%.</span>' : di.need === 'approval' ? '<span class="neg">' + di.pct + '% – above ' + L.self + '% needs the owner\'s approval (asked when you save).</span>'
     : (isOwner() || can('approve') ? 'Discount: no limit for you' + (isOwner() ? '' : ' up to ' + L.max + '%') + '.' : 'Discount: up to ' + L.self + '% yourself, up to ' + L.max + '% with the owner\'s approval.');
   const sv = $('#b_save'); if (sv) { sv.textContent = (di.need === 'approval' && !B.approval ? 'Ask owner · ' : 'Save bill · ') + '₹' + money(c.totals.total); sv.disabled = !B.lines.length; }
+  const shx = $('#b_shx'); if (shx) { const d = shortInfo(c.totals.total); shx.textContent = d > 0 ? 'Short by ₹' + money(d) + ' – the bill stays ₹' + money(c.totals.total) + ', the shortfall is recorded with the reason.' : ''; }
   const chg = $('#b_chg'); if (chg) { const g = num(B.pay.got); chg.textContent = g ? (g - c.totals.total >= 0 ? '₹' + money(g - c.totals.total) : 'short ₹' + money(c.totals.total - g)) : '–'; }
   const sp = $('#b_spl'); if (sp) { const s = num(B.pay.cash) + num(B.pay.upi) + num(B.pay.card); const left = Math.round((c.totals.total - s) * 100) / 100; sp.innerHTML = left ? '<span class="neg">₹' + money(left) + ' still to split</span>' : 'Adds up ✓'; }
   return c;
@@ -1867,6 +1869,10 @@ function bindBill() {
   if ($('#b_qr')) $('#b_qr').onclick = () => showUpi();
   $$('[data-sp]').forEach(i => i.oninput = () => { B.pay[i.dataset.sp] = i.value; refreshTotals(); });
   if ($('#b_got')) $('#b_got').oninput = e => { B.pay.got = e.target.value; refreshTotals(); };
+  if ($('#b_shon')) $('#b_shon').onchange = e => { B.short.on = e.target.checked; if (B.short.on && B.pay.mode === 'Cash' && B.pay.got && !B.short.received) B.short.received = B.pay.got; drawBill(); };
+  if ($('#b_shr')) $('#b_shr').oninput = e => { B.short.received = e.target.value; refreshTotals(); };
+  if ($('#b_shy')) $('#b_shy').onchange = e => { B.short.reason = e.target.value; drawBill(); };
+  if ($('#b_shn')) $('#b_shn').oninput = e => { B.short.note = e.target.value; };
   if ($('#b_bd')) $('#b_bd').oninput = e => { B.billDisc = num(e.target.value); refreshTotals(); };
   $('#b_cam').onclick = scanBill;
   $('#b_scale').onclick = scaleSheet;
@@ -1940,9 +1946,19 @@ function heldBar() {
 }
 function resetBill() {
   B.lines = []; B.cust = { name: '', phone: '', gstin: '', address: '' }; B.noDetails = false; B.biz = false; B.billDisc = 0;
-  B.pay = { mode: 'Cash', cash: '', upi: '', card: '', other: '', got: '' }; B.cid = newCid(); B.search = ''; B.approval = null; B.coupon = null; B.refBy = ''; B.ci = null;
+  B.pay = { mode: 'Cash', cash: '', upi: '', card: '', other: '', got: '' }; B.short = null; B.cid = newCid(); B.search = ''; B.approval = null; B.coupon = null; B.refBy = ''; B.ci = null;
 }
 
+const SHORT_REASONS = ['Customer bargained / paid less', 'Change not available (rounded down)', 'Customer short of money – will pay later', 'Staff mistake', 'Other'];
+function shortBox() {
+  const sh = B.short || (B.short = { on: false, received: '', reason: '', note: '' });
+  if (B.pay.mode === 'Split') return '<div class="tiny mute" style="margin-top:8px">Customer paid less on a split payment? Save the bill, then open it and tap “Record short payment”.</div>';
+  return '<label class="row" style="margin-top:10px"><input type="checkbox" id="b_shon"' + (sh.on ? ' checked' : '') + ' style="width:20px;height:20px"> <span>Customer paid less than the bill</span></label>' +
+    (sh.on ? '<div class="grid2" style="margin-top:6px"><div><label class="f">Amount actually received ₹ (' + esc(B.pay.mode) + ')</label><input class="i num" id="b_shr" inputmode="decimal" value="' + esc(sh.received) + '"></div>' +
+      '<div><label class="f">Reason</label><select class="i" id="b_shy"><option value="">Pick…</option>' + SHORT_REASONS.map(x => '<option' + (x === sh.reason ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select></div>' +
+      '<div style="grid-column:span 2"><label class="f">Note' + (sh.reason === 'Other' ? '' : ' (optional)') + '</label><input class="i" id="b_shn" value="' + esc(sh.note) + '" placeholder="e.g. customer will pay ₹50 tomorrow"></div></div><div class="tiny" id="b_shx" style="margin-top:4px;color:var(--warn)"></div>' : '');
+}
+function shortInfo(total) { const sh = B.short || {}; const r = num(sh.received); return sh.on && sh.received !== '' ? Math.round((total - r) * 100) / 100 : 0; }
 async function saveBill() {
   const c = calcNow();
   const ph = (B.cust.phone || '').replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '');
@@ -1959,7 +1975,15 @@ async function saveBill() {
     const a = B.approval;
     if (!a || (a.id && (di.pct > a.pct + 0.05 || c.totals.gross > a.gross + 1))) return askApproval(c.totals, di.pct);
   }
-  const req = { clientId: B.cid, loc: B.loc, event: B.event, noDetails: B.noDetails, billDisc: B.billDisc,
+  let short = null;
+  if (B.short && B.short.on && B.pay.mode !== 'Split') {
+    const rec = num(B.short.received), tot = c.totals.total;
+    if (B.short.received === '' || !(rec >= 0) || rec >= tot) return toast('Short payment: type the amount actually received (less than ₹' + money(tot) + ')', true);
+    if (!B.short.reason) return toast('Short payment: pick the reason', true);
+    if (B.short.reason === 'Other' && !String(B.short.note || '').trim()) return toast('Short payment: type a note for "Other"', true);
+    short = { received: rec, mode: B.pay.mode, reason: B.short.reason, note: B.short.note || '' };
+  }
+  const req = { clientId: B.cid, loc: B.loc, short: short, event: B.event, noDetails: B.noDetails, billDisc: B.billDisc,
     approvalId: B.approval && B.approval.id || '', approvalCode: B.approval && B.approval.code || '',
     coupon: B.coupon ? B.coupon.code : '', refBy: B.ci && B.ci.isNew && B.refBy ? B.refBy : '',
     customer: { name: B.cust.name, phone: B.noDetails ? '' : ph, gstin: B.biz ? B.cust.gstin : '', address: B.biz ? B.cust.address : '' },
@@ -2095,6 +2119,7 @@ function billDone(b, fresh) {
     (b.customer.refCode ? '<div class="tiny" style="margin-top:4px">Customer\'s referral code: <b>' + esc(b.customer.refCode) + '</b></div>' : '') +
     (b.coupon ? '<div class="tiny">Coupon ' + esc(b.coupon.code) + ' used (' + b.coupon.pct + '%)</div>' : '') +
     (fresh && b.ref && b.ref.referredBy ? '<div class="tiny">Referred by ' + esc(b.ref.referredBy.label) + '</div>' : '') +
+    (b.short ? '<div class="warnbox" style="margin-top:8px;text-align:left">Short payment: received <b>₹' + money(b.short.received) + '</b> (' + esc(b.short.mode) + '), short <b>₹' + money(b.short.short) + '</b><br>Reason: ' + esc(b.short.reason) + (b.short.note ? ' – ' + esc(b.short.note) : '') + '<div class="tiny mute">Recorded by ' + esc(b.short.by) + '</div></div>' : '') +
     luckyBox(b) +
     (fresh && b.ref && b.ref.issued ? '<div class="okbox" style="margin-top:8px">🎁 ' + esc(b.ref.issued.name || 'The referrer') + ' earned coupon <b>' + esc(b.ref.issued.code) + '</b> (' + b.ref.issued.pct + '% off, valid till ' + esc(b.ref.issued.till.split('-').reverse().join('-')) + ')' +
       (waOn() ? '<div id="rf_was"></div>' : '') +
@@ -2104,6 +2129,7 @@ function billDone(b, fresh) {
     (b.customer.phone && live ? '<a class="btn ' + (waOn() ? 'ghost' : 'wa') + ' block" id="bd_wa" target="_blank" rel="noopener" href="' + esc(waLink(b)) + '">' + (waOn() ? 'Send manually (opens WhatsApp)' : 'Send bill on WhatsApp') + '</a>' : '') +
     '<button class="btn block" id="bd_pr">Print bill</button>' +
     '<a class="btn ghost block" target="_blank" rel="noopener" href="' + esc(b.url) + '">Open full bill (PDF)</a>' +
+    (live && can('bill') ? (b.short ? '<div class="row"><button class="btn ghost grow" id="bd_shok">Balance received</button><button class="btn ghost grow" id="bd_shed">Change short</button></div>' : '<button class="btn ghost block" id="bd_sh">Customer paid less – record short payment</button>') : '') +
     (!fresh && can('cancelBill') && live ? '<button class="btn ghost block" id="bd_cx" style="color:var(--bad)">Cancel this bill…</button>' : '') +
     (fresh ? '<button class="btn gold block" id="bd_new">New bill</button>' : '') + '</div></div>');
   if ($('#bd_wa', m)) $('#bd_wa', m).onclick = () => { call('markBillSent', { no: b.no }).then(() => { B.today = null; loadToday(); }).catch(() => { }); };
@@ -2114,6 +2140,39 @@ function billDone(b, fresh) {
   bindLucky(b, m);
   if ($('#bd_new', m)) $('#bd_new', m).onclick = () => { m.close(); $('#bq') && $('#bq').focus(); };
   if ($('#bd_cx', m)) $('#bd_cx', m).onclick = () => { m.close(); cancelSheet(b); };
+  if ($('#bd_sh', m)) $('#bd_sh', m).onclick = () => { m.close(); shortSheet(b); };
+  if ($('#bd_shed', m)) $('#bd_shed', m).onclick = () => { m.close(); shortSheet(b); };
+  if ($('#bd_shok', m)) $('#bd_shok', m).onclick = async e => {
+    if (!confirmTwice(e.target)) return;
+    const r = await run('Saving…', () => call('clearShort', { no: b.no, recovered: true })).catch(() => null);
+    if (!r) return; m.close(); toast('Balance received – bill is fully paid'); B.today = null; loadToday(); billDone(r.bill, false);
+  };
+}
+function shortSheet(b) {
+  const full = b.payFull || b.pay, sh = b.short || {}, split = full.mode === 'Split';
+  const m = modal('Short payment – ' + b.no, '<div class="kv"><div>Bill total</div><div><b>₹' + money(b.totals.total) + '</b></div><div>Paid by</div><div>' + esc(full.mode) + (split ? ' (' + ['cash', 'upi', 'card'].filter(k => full[k]).map(k => k.toUpperCase() + ' ₹' + money(full[k])).join(' + ') + ')' : '') + '</div></div>' +
+    '<div class="grid2" style="margin-top:10px"><div><label class="f">Amount actually received ₹</label><input class="i num" id="sh_r" inputmode="decimal" value="' + esc(sh.received != null ? sh.received : '') + '"></div>' +
+    (split ? '<div><label class="f">Short in</label><select class="i" id="sh_m">' + ['Cash', 'UPI', 'Card'].filter(k => full[k.toLowerCase()]).map(k => '<option' + (k === sh.mode ? ' selected' : '') + '>' + k + '</option>').join('') + '</select></div>' : '<div></div>') +
+    '<div><label class="f">Reason</label><select class="i" id="sh_y"><option value="">Pick…</option>' + SHORT_REASONS.map(x => '<option' + (x === sh.reason ? ' selected' : '') + '>' + esc(x) + '</option>').join('') + '</select></div>' +
+    '<div><label class="f">Note</label><input class="i" id="sh_n" value="' + esc(sh.note || '') + '" placeholder="optional, needed for Other"></div></div>' +
+    '<div class="tiny" id="sh_x" style="margin-top:6px;color:var(--warn)"></div>' +
+    '<div class="tiny mute" style="margin-top:6px">The bill stays ₹' + money(b.totals.total) + ' (GST invoice). The shortfall and reason are recorded, and today\'s ' + (split ? 'Cash / UPI / Card' : esc(full.mode)) + ' total shows what was actually received.</div>' +
+    '<button class="btn gold block" id="sh_go" style="margin-top:12px">Save short payment</button>' + (b.short ? '<button class="btn ghost block" id="sh_rm" style="margin-top:8px">Remove (recorded by mistake)</button>' : ''));
+  const upd = () => { const v = $('#sh_r', m).value, d = Math.round((b.totals.total - num(v)) * 100) / 100; $('#sh_x', m).textContent = v !== '' && d > 0 ? 'Short by ₹' + money(d) : ''; };
+  $('#sh_r', m).oninput = upd; upd();
+  $('#sh_go', m).onclick = async () => {
+    const d = { no: b.no, received: $('#sh_r', m).value === '' ? -1 : num($('#sh_r', m).value), mode: split ? $('#sh_m', m).value : full.mode, reason: $('#sh_y', m).value, note: $('#sh_n', m).value };
+    if (!(d.received >= 0) || d.received >= b.totals.total) return toast('Type the amount actually received (less than ₹' + money(b.totals.total) + ')', true);
+    if (!d.reason) return toast('Pick the reason', true);
+    if (d.reason === 'Other' && !d.note.trim()) return toast('Type a note for "Other"', true);
+    const r = await run('Saving…', () => call('recordShort', d)).catch(() => null);
+    if (!r) return; m.close(); toast('Short payment recorded'); B.today = null; loadToday(); billDone(r.bill, false);
+  };
+  if ($('#sh_rm', m)) $('#sh_rm', m).onclick = async e => {
+    if (!confirmTwice(e.target)) return;
+    const r = await run('Removing…', () => call('clearShort', { no: b.no })).catch(() => null);
+    if (!r) return; m.close(); toast('Short payment removed'); B.today = null; loadToday(); billDone(r.bill, false);
+  };
 }
 function cancelSheet(b) {
   const m = modal('Cancel ' + b.no, '<div class="warnbox">The bill number stays used and the bill is marked CANCELLED. ' + (b.loc !== 'Event' ? 'Stock goes back into ' + esc(b.loc) + '. ' : '') +
@@ -2142,9 +2201,10 @@ function drawToday() {
   box.innerHTML = '<div class="row"><h3 class="grow" style="margin:0">' + (r.q ? 'Search: ' + esc(r.q) : 'Today\'s bills · ' + esc(LOC_SHORT[B.loc] || locLabel(B.loc))) + '</h3>' +
     '<input class="i" id="b_find" style="max-width:220px" placeholder="Find bill no. / mobile" value="' + esc(r.q || '') + '"></div>' +
     (s ? '<div class="bigp"><div><span>' + s.bills + ' bill' + (s.bills === 1 ? '' : 's') + '</span><b>₹' + money(s.total) + '</b></div><div><span>Cash</span><b>₹' + money(s.cash) + '</b></div><div><span>UPI</span><b>₹' + money(s.upi) + '</b></div><div><span>Card</span><b>₹' + money(s.card) + '</b></div></div>' +
+      (s.short ? '<div class="tiny" style="color:var(--bad)">Short payments: ₹' + money(s.short) + ' on ' + s.shortBills + ' bill' + (s.shortBills === 1 ? '' : 's') + ' (Cash / UPI / Card show what was actually received)</div>' : '') +
       (s.cancelled ? '<div class="tiny mute">' + s.cancelled + ' cancelled (not counted)</div>' : '') : '') +
     '<div class="blist">' + (r.list.length ? r.list.map(x => '<div class="li" data-no="' + esc(x.no) + '"><div class="grow"><b class="' + (x.status === 'Cancelled' ? 'cx' : '') + '">' + esc(x.no) + '</b> <span class="tiny mute">' + (r.q ? esc(x.date) + ' ' : '') + esc(x.time) + '</span>' +
-      '<div class="tiny mute">' + (x.name ? esc(x.name) + ' · ' : '') + (x.phone ? esc(x.phone) + ' · ' : '') + x.items + ' item' + (x.items === 1 ? '' : 's') + ' · ' + esc(x.pay) + ' · ' + esc(x.by) + (x.sent ? ' · WhatsApp ✓' : '') + '</div></div>' +
+      '<div class="tiny mute">' + (x.name ? esc(x.name) + ' · ' : '') + (x.phone ? esc(x.phone) + ' · ' : '') + x.items + ' item' + (x.items === 1 ? '' : 's') + ' · ' + esc(x.pay) + ' · ' + esc(x.by) + (x.sent ? ' · WhatsApp ✓' : '') + (x.short ? ' · <span style="color:var(--bad)">short ₹' + money(x.short) + '</span>' : '') + '</div></div>' +
       '<div class="nowrap"><b class="' + (x.status === 'Cancelled' ? 'cx' : '') + '">₹' + money(x.total) + '</b></div></div>').join('') : '<div class="empty small">No bills yet.</div>') + '</div>';
   $$('.li', box).forEach(li => li.onclick = () => openBill(li.dataset.no));
   const f = $('#b_find');
@@ -2419,11 +2479,14 @@ function drawSales() {
     '<div class="bigp"><div><span>Cash</span><b>' + rs(t.cash) + '</b></div><div><span>UPI</span><b>' + rs(t.upi) + '</b></div><div><span>Card</span><b>' + rs(t.card) + '</b></div></div>' +
     '<div class="card" style="padding:10px 12px"><div class="kv"><div>Discount given</div><div>' + rs(t.disc) + '</div><div>Taxable value</div><div>' + rs(t.taxable) + '</div>' +
     '<div>CGST + SGST</div><div>' + rs(t.cgst) + ' + ' + rs(t.sgst) + '</div>' + (t.igst ? '<div>IGST</div><div>' + rs(t.igst) + '</div>' : '') +
-    '<div>Bills sent on WhatsApp</div><div>' + t.sent + ' of ' + t.bills + '</div>' + (t.cancelled ? '<div>Cancelled (not counted)</div><div>' + t.cancelled + ' · ' + rs(t.cancelledValue) + '</div>' : '') + '</div></div>' +
+    '<div>Bills sent on WhatsApp</div><div>' + t.sent + ' of ' + t.bills + '</div>' + (t.cancelled ? '<div>Cancelled (not counted)</div><div>' + t.cancelled + ' · ' + rs(t.cancelledValue) + '</div>' : '') +
+    (t.short ? '<div>Short payments</div><div style="color:var(--bad)">' + rs(t.short) + ' on ' + t.shortBills + ' bill' + (t.shortBills === 1 ? '' : 's') + ' · <a href="#" id="sr_sh">see reasons</a></div><div>Actually received</div><div><b>' + rs(t.total - t.short) + '</b></div>' : '') + '</div></div>' +
     '<div class="seg" id="sr_tabs" style="margin:4px 0 10px">' + tabs.map(x => '<button data-t="' + x[0] + '" class="' + (SR.tab === x[0] ? 'on' : '') + '">' + x[1] + '</button>').join('') + '</div>' +
     '<div class="card" style="padding:6px 10px;overflow-x:auto">' + body + '</div>' +
     '<div class="row"><button class="btn ghost sm" id="sr_cb">Download bills (Excel)</button><button class="btn ghost sm" id="sr_ci">Download item sales (Excel)</button></div>';
   $$('#sr_tabs button').forEach(b => b.onclick = () => { SR.tab = b.dataset.t; drawSales(); });
+  if ($('#sr_sh')) $('#sr_sh').onclick = e => { e.preventDefault(); modal('Short payments', '<div class="tscroll"><table class="t"><tr><th>Bill</th><th class="n">Bill ₹</th><th class="n">Received</th><th class="n">Short</th><th>Reason</th></tr>' +
+    r.shorts.map(x => '<tr><td>' + esc(x.no) + '<div class="tiny mute">' + esc(x.date) + (x.event ? ' · ' + esc(x.event) : '') + ' · ' + esc(x.by) + '</div></td><td class="n">' + rs(x.total) + '</td><td class="n">' + rs(x.received) + ' ' + esc(x.mode) + '</td><td class="n" style="color:var(--bad)">' + rs(x.short) + '</td><td>' + esc(x.reason) + (x.note ? '<div class="tiny mute">' + esc(x.note) + '</div>' : '') + '</td></tr>').join('') + '</table></div>', { wide: true }); };
   const csv = (name, rows) => {
     const txt = '\ufeff' + rows.map(rw => rw.map(v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(',')).join('\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); a.remove();
