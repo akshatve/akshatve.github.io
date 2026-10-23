@@ -1470,8 +1470,86 @@ async function codesSheet() {
 }
 
 /* ───────────── CUSTOMERS & REFERRALS ───────────── */
+const dmy = x => x ? String(x).split('-').reverse().join('-') : '';
+const CUL = { tab: 'list', f: 'all', q: '', loc: '', data: null, n: 150 };
 async function customersScreen() {
-  const m = modal('Customers & referrals', '<div class="row"><input class="i grow" id="cu_q" type="search" placeholder="Search name, mobile or referral code"><button class="btn" id="cu_go">Search</button></div><div id="cu_b" style="margin-top:10px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
+  const m = modal('Customers', '<div class="chips" id="cul_t" style="margin-bottom:10px"><button data-t="list">Customer list</button><button data-t="ref">Referrals &amp; coupons</button></div><div id="cul_b"></div>', { wide: true });
+  const go = t => { CUL.tab = t; $$('#cul_t button', m).forEach(b => b.classList.toggle('on', b.dataset.t === t)); t === 'list' ? custList(m) : referralScreen(m); };
+  $$('#cul_t button', m).forEach(b => b.onclick = () => go(b.dataset.t));
+  go(CUL.tab);
+}
+async function custList(m, reload) {
+  const box = $('#cul_b', m);
+  if (!CUL.data || reload) {
+    box.innerHTML = '<div class="empty"><span class="spin dk"></span></div>';
+    try { CUL.data = await call('customerList'); } catch (e) { box.innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+  }
+  const D = CUL.data, s = D.stats, soon = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  const stores = [...new Set(D.list.flatMap(x => x.stores))].sort();
+  box.innerHTML = '<div class="bigp"><div><span>Customers</span><b>' + s.customers + '</b></div><div><span>Got bill on WhatsApp</span><b>' + s.wa + '</b></div><div><span>With pending coupons</span><b>' + s.withCoupons + '</b><span>' + s.coupons + ' coupon' + (s.coupons === 1 ? '' : 's') + (s.expiring ? ' · ' + s.expiring + ' end within 7 days' : '') + '</span></div></div>' +
+    '<div class="chips" id="cul_f" style="margin:8px 0">' + [['all', 'All'], ['wa', 'Bill sent on WhatsApp'], ['cp', 'Pending coupons'], ['soon', 'Coupon ending in 7 days'], ['nowa', 'Mobile given, no WhatsApp']].map(f => '<button data-f="' + f[0] + '" class="' + (CUL.f === f[0] ? 'on' : '') + '">' + f[1] + '</button>').join('') + '</div>' +
+    '<div class="row" style="flex-wrap:nowrap"><input class="i grow" id="cul_q" type="search" placeholder="Search name, mobile or code" value="' + esc(CUL.q) + '" style="min-width:0">' +
+    '<select class="i" id="cul_l" style="max-width:150px"><option value="">All stores</option>' + stores.map(l => '<option' + (l === CUL.loc ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select></div>' +
+    '<div class="row" style="margin:8px 0;justify-content:space-between"><span class="small mute" id="cul_c"></span><span><button class="btn sm ghost" id="cul_r">Refresh</button> <button class="btn sm" id="cul_x">Download (Excel)</button></span></div>' +
+    (D.full ? '' : '<div class="tiny mute" style="margin-bottom:6px">Mobile numbers are partly hidden for your login. Only the owner (or people with the "all stores" right) see full numbers.</div>') +
+    '<div id="cul_rows"></div>';
+  const pick = () => {
+    const q = CUL.q.toLowerCase().replace(/\s+/g, ''), qd = q.replace(/\D/g, '');
+    return D.list.filter(x => {
+      if (CUL.loc && x.stores.indexOf(CUL.loc) < 0) return false;
+      if (CUL.f === 'wa' && !x.wa) return false;
+      if (CUL.f === 'nowa' && x.wa) return false;
+      if (CUL.f === 'cp' && !x.pending.length) return false;
+      if (CUL.f === 'soon' && !x.pending.some(p => p.till && p.till <= soon)) return false;
+      if (q && !((x.name || '').toLowerCase().replace(/\s+/g, '').includes(q) || (qd.length >= 3 && x.phone.includes(qd)) || (x.code || '').toLowerCase().includes(q) || x.pending.some(p => p.code.toLowerCase().includes(q)))) return false;
+      return true;
+    });
+  };
+  const cpTxt = x => x.pending.length ? x.pending.map(p => '<span class="pill ' + (p.till && p.till <= soon ? 'p-warn' : 'p-ok') + '" style="margin:1px">' + esc(p.code) + ' · ' + p.pct + '%</span>').join(' ') + '<div class="tiny mute">till ' + x.pending.map(p => dmy(p.till)).join(', ') + '</div>' : '<span class="mute">–</span>';
+  const draw = () => {
+    const L = pick(), show = L.slice(0, CUL.n), wide = window.innerWidth >= 760;
+    $('#cul_c', m).textContent = L.length + ' customer' + (L.length === 1 ? '' : 's') + (L.length > show.length ? ' (showing ' + show.length + ')' : '');
+    let h;
+    if (!L.length) h = '<div class="empty small">No customers match.</div>';
+    else if (wide) h = '<div class="card" style="padding:6px"><div class="tscroll"><table class="t"><tr><th>Customer</th><th>Mobile</th><th class="n">Bills</th><th class="n">Spent</th><th>First bill</th><th>Last bill</th><th>WhatsApp bills</th><th>Pending coupons</th><th>Ref code</th></tr>' +
+      show.map((x, i) => '<tr data-cu="' + i + '" style="cursor:pointer"><td><b>' + esc(x.name || '–') + '</b></td><td class="nowrap">' + esc(x.phone) + '</td><td class="n">' + x.bills + '</td><td class="n">' + inr(x.spent, 0) + '</td><td class="nowrap">' + dmy(x.first) + '</td><td class="nowrap">' + dmy(x.last) + '<div class="tiny mute">' + esc(x.lastLoc) + '</div></td><td>' + (x.wa ? '✅ ' + x.wa + '<div class="tiny mute">last ' + dmy(x.waLast) + '</div>' : '<span class="mute">–</span>') + '</td><td>' + cpTxt(x) + '</td><td>' + esc(x.code || '') + '</td></tr>').join('') + '</table></div></div>';
+    else h = '<div class="cnlist">' + show.map((x, i) => '<div class="cnr" data-cu="' + i + '" style="cursor:pointer"><div class="cnr1"><b class="grow">' + esc(x.name || 'No name') + '</b><span class="small nowrap">' + esc(x.phone) + '</span></div>' +
+      '<div class="cnr2"><div class="cnk"><span>Bills</span><b>' + x.bills + '</b></div><div class="cnk"><span>Spent</span><b>' + inr(x.spent, 0) + '</b></div><div class="cnk"><span>Last bill</span><b>' + dmy(x.last) + '</b></div><div class="cnk"><span>WhatsApp</span><b>' + (x.wa ? '✅ ' + x.wa : '–') + '</b></div></div>' +
+      (x.pending.length ? '<div style="margin-top:6px">' + cpTxt(x) + '</div>' : '') + '</div>').join('') + '</div>';
+    if (L.length > show.length) h += '<button class="btn ghost block" id="cul_more" style="margin-top:8px">Show more</button>';
+    $('#cul_rows', m).innerHTML = h;
+    $$('[data-cu]', m).forEach(el => el.onclick = () => custDetail(show[+el.dataset.cu]));
+    if ($('#cul_more', m)) $('#cul_more', m).onclick = () => { CUL.n += 300; draw(); };
+  };
+  $$('#cul_f button', m).forEach(b => b.onclick = () => { CUL.f = b.dataset.f; CUL.n = 150; $$('#cul_f button', m).forEach(x => x.classList.toggle('on', x === b)); draw(); });
+  $('#cul_q', m).oninput = e => { CUL.q = e.target.value; CUL.n = 150; draw(); };
+  $('#cul_l', m).onchange = e => { CUL.loc = e.target.value; CUL.n = 150; draw(); };
+  $('#cul_r', m).onclick = () => custList(m, true);
+  $('#cul_x', m).onclick = () => {
+    const L = pick(), q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const rows = [['Customer name', 'Mobile', 'Bills', 'Total spent (Rs)', 'First bill date', 'Last bill date', 'Last store', 'Stores', 'Bills sent on WhatsApp', 'Last WhatsApp bill', 'Referral code', 'Pending coupons', 'Pending coupon details', 'Coupons used', 'Coupons expired']]
+      .concat(L.map(x => [x.name, x.phone, x.bills, x.spent, dmy(x.first), dmy(x.last), x.lastLoc, x.stores.join(' / '), x.wa, dmy(x.waLast), x.code, x.pending.length,
+        x.pending.map(p => p.code + ' ' + p.pct + '% (' + p.kind + ', bill Rs ' + p.min + '+, till ' + dmy(p.till) + ')').join('; '), x.used, x.expired]));
+    const csv = rows.map(r => r.map(q).join(',')).join('\r\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'Nutvique customers ' + today() + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+  };
+  draw();
+}
+async function custDetail(x) {
+  const m = modal(x.name || 'Customer', '<div class="empty"><span class="spin dk"></span></div>', { wide: true });
+  let d; try { d = await call('customerDetail', { key: x.key }); } catch (e) { $('.sb', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+  const st = { Active: 'p-ok', Used: 'p-mute', Expired: 'p-warn' }, act = d.coupons.filter(c => c.status === 'Active');
+  $('.sb', m).innerHTML = '<div class="kv"><div>Name</div><div><b>' + esc(d.name || '–') + '</b></div><div>Mobile</div><div>' + esc(d.phone) + '</div>' +
+    (d.code ? '<div>Referral code</div><div><b>' + esc(d.code) + '</b></div>' : '') + (d.referredBy ? '<div>Referred by</div><div>' + esc(d.referredBy) + ' · ' + esc(d.referral) + '</div>' : '') +
+    '<div>Bills</div><div>' + d.bills.length + ' · ' + inr(d.bills.reduce((a, b) => a + b.total, 0), 0) + '</div><div>Bills on WhatsApp</div><div>' + d.bills.filter(b => b.sent).length + '</div>' +
+    (d.referred.length ? '<div>Friends referred</div><div>' + d.referred.map(r => esc(r.name || 'Customer') + ' (' + esc(r.status) + ')').join(', ') + '</div>' : '') + '</div>' +
+    '<h3>Pending coupons (' + act.length + ')</h3>' + (act.length ? act.map(c => '<div class="okbox" style="margin-bottom:6px"><b>' + esc(c.code) + '</b> – ' + c.pct + '% off a bill of ₹' + c.min + '+ · valid till <b>' + dmy(c.till) + '</b><div class="tiny">' + esc(c.kind) + (c.from && c.kind !== 'Lucky draw' ? ' – earned from ' + esc(c.from) : '') + (c.fromNext ? ' · usable from tomorrow' : '') + '</div></div>').join('') : '<div class="small mute">No pending coupons.</div>') +
+    '<h3>All coupons</h3>' + (d.coupons.length ? '<div class="tscroll"><table class="t"><tr><th>Coupon</th><th>Type</th><th>Issued</th><th>Valid till</th><th>Status</th></tr>' + d.coupons.map(c => '<tr><td><b>' + esc(c.code) + '</b> ' + c.pct + '%</td><td class="small">' + esc(c.kind) + '</td><td class="nowrap">' + dmy(c.issued) + '</td><td class="nowrap">' + dmy(c.till) + '</td><td><span class="pill ' + (st[c.status] || 'p-mute') + '">' + esc(c.status) + '</span>' + (c.usedOn ? '<div class="tiny mute">' + esc(c.usedOn) + '</div>' : '') + '</td></tr>').join('') + '</table></div>' : '<div class="small mute">None.</div>') +
+    '<h3>Bills</h3><div class="tscroll"><table class="t"><tr><th>Bill</th><th>Date</th><th>Store</th><th class="n">Total</th><th>Payment</th><th>WhatsApp</th></tr>' + d.bills.map(b => '<tr><td class="nowrap">' + esc(b.no) + '</td><td class="nowrap">' + dmy(b.date) + '</td><td class="small">' + esc(b.loc) + '</td><td class="n">' + inr(b.total, 0) + '</td><td class="small">' + esc(b.pay) + '</td><td class="small">' + (b.sent ? '✅ ' + esc(b.sent) : '–') + '</td></tr>').join('') + '</table></div>';
+}
+async function referralScreen(mm) {
+  $('#cul_b', mm).innerHTML = '<div class="row"><input class="i grow" id="cu_q" type="search" placeholder="Search name, mobile or referral code"><button class="btn" id="cu_go">Search</button></div><div id="cu_b" style="margin-top:10px"><div class="empty"><span class="spin dk"></span></div></div>';
+  const m = mm;
   const st = { Active: 'p-ok', Used: 'p-mute', Expired: 'p-warn' };
   const custRow = c => '<tr><td><b>' + esc(c.name || '–') + '</b><div class="tiny mute">' + esc(c.phone) + '</div></td><td>' + esc(c.code) + '</td><td class="n">' + c.bills + '</td><td class="n">' + inr(c.spent, 0) + '</td><td class="n">' + (c.referred || '') + '</td><td class="small">' + esc(c.referredBy ? 'by ' + c.referredBy + ' · ' + c.status : '') + '</td></tr>';
   const head = '<table class="t"><tr><th>Customer</th><th>Code</th><th class="n">Bills</th><th class="n">Spent</th><th class="n">Referred</th><th>Referral</th></tr>';
@@ -1510,7 +1588,7 @@ async function viewMore() {
   if (can('prices')) { const sp = S.storePrices || {}, ls = Object.keys(sp).filter(l => Object.keys(sp[l]).length);
     h += '<div class="card"><h3>Store-only prices</h3><div class="small mute">New prices that apply at one store before the others. Bills at that store use them; other stores keep the normal price.</div>' +
       (ls.length ? ls.map(l => '<div class="row" style="margin-top:10px"><div class="grow"><b>' + esc(l) + '</b> · ' + Object.keys(sp[l]).length + ' items</div><button class="btn sm ghost" data-spv="' + esc(l) + '">View</button><button class="btn sm gold" data-spa="' + esc(l) + '">Apply to all stores</button></div>').join('') : '<div class="small" style="margin-top:8px">None at the moment.</div>') + '</div>'; }
-  if (can('customers')) h += '<div class="card"><h3>Customers &amp; referrals</h3><div class="small mute">Referral codes, who referred whom, coupons issued and used.</div><button class="btn sm" id="cust" style="margin-top:10px">Open</button></div>';
+  if (can('customers')) h += '<div class="card"><h3>Customers</h3><div class="small mute">All customers with mobile and name, bills sent on WhatsApp, pending coupons, referrals. Download to Excel.</div><button class="btn sm" id="cust" style="margin-top:10px">Open</button></div>';
   if (can('approve')) h += '<div class="card"><h3>Discount approvals</h3><div class="small mute">Requests from managers for more than ' + 10 + '% appear on your screen within seconds. One-time codes are a back-up you can read out on the phone (each works once, up to 25%).</div>' +
     '<div class="row" style="margin-top:10px"><button class="btn sm" id="apv">Requests</button><button class="btn sm ghost" id="apc">One-time codes</button></div></div>';
   h += '<div class="card"><h3>Use it like an app</h3><div class="small">' + (IN_APP ? 'You are in the installed Nutvique app. ' : 'For the camera scanner and the Bluetooth scale, install the app: open <b>vermakshat.com/nutvique</b> in Chrome (Android) or Safari (iPhone) → Install / Add to Home Screen. ') +
@@ -2841,7 +2919,7 @@ $('#img').onclick = async () => {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '53a025740e';
+<script>window.NV_BUILD = '7961e512ea';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
