@@ -144,6 +144,7 @@ const ymd = d => { const z = new Date(d.getTime() - d.getTimezoneOffset() * 6000
 const today = () => ymd(new Date());
 const isOwner = () => !!(S.user && S.user.role === 'Owner');
 const can = k => !!(S.user && (S.user.role === 'Owner' || (S.user.rights || []).indexOf(k) >= 0));
+const canApprove = () => !!(S.user && (S.user.role === 'Owner' || S.user.role === 'Manager' || (S.user.rights || []).indexOf('approve') >= 0));
 const IN_APP = !!window.NV_APP;   // true in the installed app (camera + Bluetooth work), false inside Google's page
 
 /* ───────────── server ───────────── */
@@ -317,7 +318,7 @@ async function pingVer() {
     const v = await call('ver');
     if (S.lv != null && v.lv !== S.lv && typeof refreshLists === 'function') refreshLists(true);
     S.lv = v.lv;
-    if (can('approve') && v.av !== S.av) { S.av = v.av; checkApprovals(); }
+    if (canApprove() && v.av !== S.av) { S.av = v.av; checkApprovals(); }
     if (can('stockView') && v.sv !== S.sv) { const first = S.sv == null; S.sv = v.sv; if (!first) { try { const x = await call('stock'); S.stock = x.stock; } catch (e) { } SK.boot = null; if (S.view === 'stock' && !$('.modal')) viewStock(); } trWaitCount(); }
     if (S.pv != null && v.pv !== S.pv) {
       const b = await call('boot'); applyBoot(b); renderNav();
@@ -350,10 +351,10 @@ function shell() {
   if (!S.timers) {
     S.timers = true;
     setInterval(() => { if (S.user && !document.hidden && !$('.modal') && !$('.busy') && S.view !== 'invoices' && S.view !== 'bill' && S.view !== 'sales' && S.view !== 'count') refresh(true).catch(() => { }); }, 120000);
-    setInterval(() => { if (!can('approve') || (S.tick = (S.tick || 0) + 1) % 2 === 0) pingVer(); }, 10000);
+    setInterval(() => { if (!canApprove() || (S.tick = (S.tick || 0) + 1) % 2 === 0) pingVer(); }, 10000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) pingVer(); });
   }
-  if (can('approve')) checkApprovals();
+  if (canApprove()) checkApprovals();
   trWaitCount();
 }
 function renderNav() {
@@ -1440,28 +1441,38 @@ async function peopleScreen() {
 /* ───────────── DISCOUNT APPROVALS (owner / approvers) ───────────── */
 let apOpen = false;
 async function checkApprovals() {
-  if (!can('approve')) return;
+  if (!canApprove()) return;
   let r; try { r = await call('approvalList'); } catch (e) { return; }
   S.apPending = r.pending;
   let bar = $('#apbar');
-  if (!r.pending.length) { if (bar) bar.remove(); return; }
+  const acc = r.access || [], n = r.pending.length + acc.length;
+  if (!n) { if (bar) bar.remove(); return; }
   if (!bar) { bar = document.createElement('div'); bar.id = 'apbar'; document.body.appendChild(bar); bar.onclick = () => approvalsSheet(); }
-  const a = r.pending[0];
-  bar.innerHTML = '<b>Discount approval needed</b> ' + esc(a.by) + ' · ' + a.pct + '% (₹' + money(a.disc) + ' off ₹' + money(a.gross) + ')' + (r.pending.length > 1 ? ' + ' + (r.pending.length - 1) + ' more' : '') + ' <u>Review</u>';
+  const a = r.pending[0], x = acc[0];
+  bar.innerHTML = (a ? '<b>Discount approval needed</b> ' + esc(a.by) + ' · ' + a.pct + '% (₹' + money(a.disc) + ' off ₹' + money(a.gross) + ')' : '<b>Store access today</b> ' + esc(x.by) + ' → ' + esc(LOC_SHORT[x.loc] || x.loc)) + (n > 1 ? ' + ' + (n - 1) + ' more' : '') + ' <u>Review</u>';
   if (navigator.vibrate) try { navigator.vibrate([120, 60, 120]); } catch (e) { }
   if (!apOpen && !$('.modal')) approvalsSheet();
 }
 async function approvalsSheet(showRecent) {
   apOpen = true;
-  const m = modal('Discount approvals', '<div id="ap_b"><div class="empty"><span class="spin dk"></span></div></div>', { onClose: () => { apOpen = false; } });
+  const m = modal('Approval requests', '<div id="ap_b"><div class="empty"><span class="spin dk"></span></div></div>', { onClose: () => { apOpen = false; } });
   const draw = r => {
     const card = a => '<div class="card" style="padding:12px"><div class="row"><b class="grow">' + esc(a.by) + '</b><span class="pill p-warn">' + a.pct + '%</span></div>' +
       '<div class="small" style="margin-top:4px">' + esc((LOC_SHORT[a.loc] || a.loc) + (a.event ? ' · ' + a.event : '')) + ' · ₹' + money(a.disc) + ' off ₹' + money(a.gross) + ' · ' + new Date(a.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + '</div>' +
       (a.items ? '<div class="tiny mute" style="margin-top:4px">' + esc(a.items) + '</div>' : '') +
       (a.status === 'Pending' ? '<div class="row" style="margin-top:10px"><button class="btn ghost" data-no="' + esc(a.id) + '" style="color:var(--bad)">Reject</button><div class="grow"></div><button class="btn gold" data-yes="' + esc(a.id) + '">Approve ' + a.pct + '%</button></div>'
         : '<div class="tiny" style="margin-top:6px">' + esc(a.status + ' by ' + a.decidedBy + (a.bill ? ' · used on ' + a.bill : '')) + '</div>') + '</div>';
-    $('#ap_b', m).innerHTML = (r.pending.length ? r.pending.map(card).join('') : '<div class="empty small">No requests waiting.</div>') +
-      (showRecent && r.recent.length ? '<h3>Earlier (last 36 hours)</h3>' + r.recent.map(card).join('') : '');
+    const acard = a => '<div class="card" style="padding:12px;border-left:4px solid var(--gold)"><div class="row"><b class="grow">' + esc(a.by) + '</b><span class="pill p-warn">store access</span></div>' +
+      '<div class="small" style="margin-top:4px">Wants to bill at <b>' + esc(a.loc) + '</b> today' + (a.home ? ' (home: ' + esc(LOC_SHORT[a.home] || a.home) + ')' : '') + ' · ' + new Date(a.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + '</div>' +
+      (a.reason ? '<div class="tiny mute" style="margin-top:4px">' + esc(a.reason) + '</div>' : '') +
+      (a.status === 'Pending' ? '<div class="row" style="margin-top:10px"><button class="btn ghost" data-sno="' + esc(a.id) + '" style="color:var(--bad)">Reject</button><div class="grow"></div><button class="btn gold" data-syes="' + esc(a.id) + '">Give access today</button></div>'
+        : '<div class="tiny" style="margin-top:6px">' + esc(a.status + ' by ' + a.decidedBy + ' · ' + a.date.split('-').reverse().join('-')) + '</div>') + '</div>';
+    const acc = r.access || [], accR = r.accessRecent || [];
+    $('#ap_b', m).innerHTML = (r.pending.length || acc.length ? acc.map(acard).join('') + r.pending.map(card).join('') : '<div class="empty small">No requests waiting.</div>') +
+      (showRecent && (r.recent.length || accR.length) ? '<h3>Earlier (last 36 hours)</h3>' + accR.map(acard).join('') + r.recent.map(card).join('') : '');
+    const sact = async (id, yes) => { const x = await run(yes ? 'Giving access…' : 'Rejecting…', () => call('decideStoreAccess', { id: id, approve: yes })).catch(() => null); if (x) { draw(x); toast(yes ? 'Access given for today' : 'Rejected'); checkApprovals(); } };
+    $$('[data-syes]', m).forEach(b => b.onclick = () => sact(b.dataset.syes, true));
+    $$('[data-sno]', m).forEach(b => b.onclick = () => sact(b.dataset.sno, false));
     const act = async (id, yes) => { const x = await run(yes ? 'Approving…' : 'Rejecting…', () => call('decideApproval', { id: id, approve: yes })).catch(() => null); if (x) { draw(x); toast(yes ? 'Approved – the manager can save the bill now' : 'Rejected'); checkApprovals(); } };
     $$('[data-yes]', m).forEach(b => b.onclick = () => act(b.dataset.yes, true));
     $$('[data-no]', m).forEach(b => b.onclick = () => act(b.dataset.no, false));
@@ -1631,6 +1642,7 @@ async function viewMore() {
       (ls.length ? ls.map(l => '<div class="row" style="margin-top:10px"><div class="grow"><b>' + esc(l) + '</b> · ' + Object.keys(sp[l]).length + ' items</div><button class="btn sm ghost" data-spv="' + esc(l) + '">View</button><button class="btn sm gold" data-spa="' + esc(l) + '">Apply to all stores</button></div>').join('') : '<div class="small" style="margin-top:8px">None at the moment.</div>') + '</div>'; }
   if (can('customers')) h += '<div class="card"><h3>Customers</h3><div class="small mute">All customers with mobile and name, bills sent on WhatsApp, pending coupons, referrals. Download to Excel.</div><button class="btn sm" id="cust" style="margin-top:10px">Open</button></div>';
   if (can('sales')) h += '<div class="card"><h3>UPI payments (bank emails)</h3><div class="small mute">Every payment ICICI emails about, and the bill it belongs to. Payments not linked to a bill are flagged.</div><button class="btn sm" id="upil" style="margin-top:10px">Open</button></div>';
+  if (canApprove() && !can('approve')) h += '<div class="card"><h3>Store access requests</h3><div class="small mute">Staff covering a shift at another store ask here for one day.</div><button class="btn sm" id="apv" style="margin-top:10px">Requests</button></div>';
   if (can('approve')) h += '<div class="card"><h3>Discount approvals</h3><div class="small mute">Discount requests from staff and managers appear on your screen within seconds while the app is open. One-time codes are a back-up you can read out on the phone (each works once, up to 25%).</div>' +
     '<div class="row" style="margin-top:10px"><button class="btn sm" id="apv">Requests</button><button class="btn sm ghost" id="apc">One-time codes</button></div></div>';
   h += '<div class="card"><h3>Use it like an app</h3><div class="small">' + (IN_APP ? 'You are in the installed Nutvique app. ' : 'For the camera scanner and the Bluetooth scale, install the app: open <b>vermakshat.com/nutvique</b> in Chrome (Android) or Safari (iPhone) → Install / Add to Home Screen. ') +
@@ -1847,9 +1859,37 @@ async function viewBill() {
   if (!B.today || B.todayDate !== today()) loadToday();
 }
 function pickBillLoc() {
+  const cov = B.boot.covering || [];
   $('#view').innerHTML = '<h2>Where are you billing?</h2>' + B.boot.locs.map(l => '<button class="btn ghost block" style="margin-bottom:8px;text-align:left" data-l="' + esc(l.name) + '"><b>' +
-    esc(l.name === 'Event' ? 'Event stall' : l.name) + '</b><div class="tiny mute">Bills ' + esc(l.series) + '/' + esc(B.boot.fy) + '/… · FSSAI ' + esc(l.fssai) + '</div></button>').join('');
+    esc(l.name === 'Event' ? 'Event stall' : l.name) + '</b>' + (cov.indexOf(l.name) >= 0 ? ' <span class="pill p-ok">today only</span>' : '') + '<div class="tiny mute">Bills ' + esc(l.series) + '/' + esc(B.boot.fy) + '/… · FSSAI ' + esc(l.fssai) + '</div></button>').join('') +
+    ((B.boot.otherLocs || []).length ? '<h3 style="margin-top:16px">Covering a shift at another store?</h3><div class="small mute" style="margin-bottom:8px">Pick the store – the owner or a manager gets a request at once. Once approved you can bill there until midnight today.</div>' +
+      B.boot.otherLocs.map(l => '<button class="btn ghost block" style="margin-bottom:8px;text-align:left" data-ask="' + esc(l) + '">🔒 <b>' + esc(l) + '</b><div class="tiny mute">Ask for access for today</div></button>').join('') : '');
   $$('#view [data-l]').forEach(b => b.onclick = () => { B.loc = b.dataset.l; store.set('bloc', B.loc); B.today = null; listsOk(); viewBill(); });
+  $$('#view [data-ask]').forEach(b => b.onclick = () => askStoreAccess(b.dataset.ask));
+}
+/** Covering another store today: ask the owner / a manager; the screen unlocks by itself when approved (v18.17). */
+function askStoreAccess(loc) {
+  let timer = null, closed = false;
+  const m = modal('Bill at ' + (LOC_SHORT[loc] || loc) + ' today', '<div class="small">You are set up for <b>' + esc((S.user && S.user.home) || 'no store') + '</b>. To bill at <b>' + esc(loc) + '</b> today, the owner or a manager has to approve.</div>' +
+    '<label class="f" style="margin-top:10px">Why? (e.g. covering for Sunny – weekly off)</label><input class="i" id="sa_r" placeholder="optional">' +
+    '<div id="sa_st" style="margin-top:12px"><button class="btn gold block" id="sa_go">Send request</button></div>', { onClose: () => { closed = true; clearTimeout(timer); } });
+  $('#sa_go', m).onclick = async () => {
+    let err = ''; const r = await run('Sending…', () => call('requestStoreAccess', { loc: loc, reason: $('#sa_r', m).value })).catch(e => { err = e.message; return null; });
+    if (!r) { $('#sa_st', m).insertAdjacentHTML('beforeend', '<div class="warnbox bad" style="margin-top:8px">' + esc(err) + '</div>'); return; }
+    $('#sa_st', m).innerHTML = '<div class="empty small"><span class="spin dk"></span><div>Waiting for approval… (request ' + esc(r.id) + ')</div><div class="tiny mute">Sent to the owner and managers' + (/^OK: [1-9]/.test(r.emailed || '') ? ' (app + email)' : ' (in their app)') + '. Keep this screen open – it unlocks by itself. You can also call them.</div></div>';
+    const poll = async () => {
+      if (closed) return;
+      let x = null; try { x = await call('storeAccessStatus', { id: r.id }); } catch (e) { }
+      if (closed) return;
+      if (x && x.status === 'Approved') {
+        try { B.boot = await call('billBoot', { loc: loc }); } catch (e) { }
+        m.close(); B.loc = loc; store.set('bloc', loc); B.today = null; toast('Access given by ' + x.by + ' – you can bill at ' + (LOC_SHORT[loc] || loc) + ' today ✓'); listsOk(); viewBill(); return;
+      }
+      if (x && x.status === 'Rejected') { $('#sa_st', m).innerHTML = '<div class="warnbox bad">' + esc(x.by || 'They') + ' said no. Bill at your own store, or call them.</div>'; return; }
+      timer = setTimeout(poll, 5000);
+    };
+    timer = setTimeout(poll, 4000);
+  };
 }
 function locLabel(l) { return l === 'Event' ? 'Event stall' + (B.event ? ' – ' + B.event : '') : l; }
 
@@ -3128,7 +3168,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '338f5fdb34';
+<script>window.NV_BUILD = '17791f2800';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
