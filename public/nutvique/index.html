@@ -1636,6 +1636,7 @@ async function viewMore() {
     fld('Cost includes GST', '<select class="i" data-s="Cost includes GST"><option' + (s['Cost includes GST'] !== 'Yes' ? ' selected' : '') + '>No</option><option' + (s['Cost includes GST'] === 'Yes' ? ' selected' : '') + '>Yes</option></select>') +
     fld('Spread charges by', '<select class="i" data-s="Spread charges by"><option' + (s['Spread charges by'] !== 'Quantity' ? ' selected' : '') + '>Value</option><option' + (s['Spread charges by'] === 'Quantity' ? ' selected' : '') + '>Quantity</option></select>') +
     f('Gemini model') + f('Last GTIN used on DataKart') + '</div>' +
+    '<h3 style="margin-top:18px">Discounts</h3><div class="grid2">' + f('Discount: round off without approval up to ₹', 'inputmode="decimal" placeholder="20"') + '</div><div class="tiny mute">Anyone who bills can take this much off a bill (e.g. ₹1,312.50 → ₹1,300) without asking. Above it, staff need approval; managers can give up to 10% alone. 0 = always ask.</div>' +
     '<h3 style="margin-top:18px">🍀 Lucky draw (store bills)</h3><div class="grid2">' + f('Lucky draw: bill of at least ₹', 'inputmode="decimal" placeholder="1000"') + f('Lucky draw: chance of 10% coupon (out of 100)', 'inputmode="decimal" placeholder="25 – the rest get 5%"') +
     f('Lucky draw: coupon valid (days)', 'inputmode="numeric" placeholder="30"') + f('Lucky draw: coupon needs bill of ₹', 'inputmode="decimal" placeholder="1000"') + '</div>' +
     '<h3 style="margin-top:18px">Referral coupons</h3><div class="grid2">' + f("Referral: friend's bill at least ₹", 'inputmode="decimal" placeholder="1000"') + f('Referral: coupon %', 'inputmode="decimal" placeholder="10"') +
@@ -1863,7 +1864,7 @@ function drawBill() {
     shortBox() +
     '<div class="row" style="margin-top:8px">' + (noDisc() || B.coupon ? '' : '<div class="grow"><label class="f">Bill discount ₹</label><input class="i num" id="b_bd" inputmode="decimal" value="' + (B.billDisc || '') + '"></div>') +
     '<div class="grow"><label class="f">Billed by</label><div class="i" style="background:#f4f2ec">' + esc(S.user ? S.user.name : '') + '</div></div></div>' +
-    (B.coupon ? '<div class="tiny" style="margin-top:6px">Coupon ' + esc(B.coupon.code) + ' applied – ' + B.coupon.pct + '% off (no other discount with a coupon).</div>' : discNeedsOk() ? '<div class="tiny mute" style="margin-top:6px">Discount: type it here – when you save, it is sent to the owner / managers for approval (in their app and by email).</div>' : '<div class="tiny mute" style="margin-top:6px" id="b_dh"></div>') +
+    (B.coupon ? '<div class="tiny" style="margin-top:6px">Coupon ' + esc(B.coupon.code) + ' applied – ' + B.coupon.pct + '% off (no other discount with a coupon).</div>' : discNeedsOk() ? '<div class="tiny mute" style="margin-top:6px">Discount: up to ₹' + (discLimits().round || 0) + ' (round-off) needs no approval. More than that goes to the owner / managers for approval when you save.</div>' : '<div class="tiny mute" style="margin-top:6px" id="b_dh"></div>') +
     '</div>' +
     '<div class="card btot" id="b_tot">' + totHtml(t) + '</div>' +
     '<button class="btn gold block" id="b_save" style="min-height:52px;font-size:17px"' + (B.lines.length ? '' : ' disabled') + '>Save bill · ₹' + money(t.total) + '</button>' +
@@ -1879,6 +1880,7 @@ function discInfo(t) {
   const pct = t.gross ? Math.round(t.disc / t.gross * 10000) / 100 : 0, L = discLimits();
   if (!(t.disc > 0) || B.coupon) return { pct: 0, need: '' };
   if (isOwner()) return { pct: pct, need: '' };
+  if (t.disc <= (L.round || 0) + 0.004 && pct <= L.max + 0.01) return { pct: pct, need: '' };   // small round-off: no approval
   if (pct > L.max + 0.01) return { pct: pct, need: 'max' };
   if (discNeedsOk()) return { pct: pct, need: 'approval' };
   if (pct > L.self + 0.01 && !can('approve')) return { pct: pct, need: 'approval' };
@@ -2944,7 +2946,7 @@ $('#img').onclick = async () => {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '71884038c0';
+<script>window.NV_BUILD = 'c7aebb1ca2';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
