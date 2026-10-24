@@ -1466,14 +1466,26 @@ async function approvalsSheet(showRecent) {
   try { draw(await call('approvalList')); } catch (e) { $('#ap_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; }
 }
 async function codesSheet() {
-  const m = modal('One-time approval codes', '<div id="cd_b"><div class="empty"><span class="spin dk"></span></div></div>');
+  let tm = null, fresh = '';
+  const m = modal('One-time approval codes', '<div id="cd_b"><div class="empty"><span class="spin dk"></span></div></div>', { onClose: () => clearTimeout(tm) });
+  const hm = x => new Date(x).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  const sp = c => esc(c.slice(0, 3) + ' ' + c.slice(3));
   const draw = r => {
-    $('#cd_b', m).innerHTML = '<div class="small">When you are not in the app, read one of these to the manager on the phone. Each code works <b>once</b>, for up to ' + r.max + '% on one bill, and is then crossed off. Keep this list private.</div>' +
-      (r.codes.length ? '<div class="codes">' + r.codes.map(c => '<b>' + esc(c.slice(0, 3) + ' ' + c.slice(3)) + '</b>').join('') + '</div>' : '<div class="empty small">No unused codes.</div>') +
-      '<button class="btn" id="cd_mk" style="margin-top:12px">Make 10 new codes</button>';
+    if (fresh && r.codes.indexOf(fresh) < 0) fresh = '';
+    const rest = r.codes.filter(c => c !== fresh);
+    $('#cd_b', m).innerHTML = '<div class="small">Read a code to the person on the phone. Each code works <b>once</b>, for up to ' + r.max + '% on one bill. Their phone checks it at once and tells them if it is wrong or used.</div>' +
+      '<button class="btn gold block" id="cd_one" style="margin-top:12px">Give a new code</button>' +
+      (fresh ? '<div class="okbox" style="margin-top:10px;text-align:center"><div class="tiny">New code – read this one</div><div style="font-size:34px;font-weight:800;letter-spacing:3px">' + sp(fresh) + '</div></div>' : '') +
+      '<h3>Unused codes (' + rest.length + ')</h3>' + (rest.length ? '<div class="codes">' + rest.map(c => '<b>' + sp(c) + '</b>').join('') + '</div>' : '<div class="small mute">None.</div>') +
+      '<h3>Used – do not give these again</h3>' + ((r.used || []).length ? '<div class="small">' + r.used.map(u => '<div style="padding:3px 0;border-bottom:1px solid var(--line)"><s>' + sp(u.code) + '</s> · ' + esc(u.by) + ' · ' + hm(u.at) + (u.bill ? ' · ' + esc(u.bill) : '') + '</div>').join('') + '</div>' : '<div class="small mute">None in the last 2 days.</div>') +
+      '<button class="btn sm ghost" id="cd_mk" style="margin-top:12px">Make 10 codes (to keep on paper)</button>' +
+      '<div class="tiny mute" style="margin-top:6px">This list refreshes by itself while open.</div>';
+    $('#cd_one', m).onclick = async () => { const x = await run('Making a code…', () => call('makeCodes', { n: 1 })).catch(() => null); if (x) { const old = r.codes; fresh = x.codes.find(c => old.indexOf(c) < 0) || ''; draw(x); } };
     $('#cd_mk', m).onclick = async () => { const x = await run('Making codes…', () => call('makeCodes', { n: 10 })).catch(() => null); if (x) draw(x); };
   };
-  try { draw(await call('listCodes')); } catch (e) { $('#cd_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; }
+  const load = async () => { try { draw(await call('listCodes')); } catch (e) { $('#cd_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
+  const tick = async () => { if (!document.body.contains(m)) return; if (!$('.busy')) await load(); tm = setTimeout(tick, 10000); };
+  await load(); tm = setTimeout(tick, 10000);
 }
 
 /* ───────────── CUSTOMERS & REFERRALS ───────────── */
@@ -1596,7 +1608,7 @@ async function viewMore() {
     h += '<div class="card"><h3>Store-only prices</h3><div class="small mute">New prices that apply at one store before the others. Bills at that store use them; other stores keep the normal price.</div>' +
       (ls.length ? ls.map(l => '<div class="row" style="margin-top:10px"><div class="grow"><b>' + esc(l) + '</b> · ' + Object.keys(sp[l]).length + ' items</div><button class="btn sm ghost" data-spv="' + esc(l) + '">View</button><button class="btn sm gold" data-spa="' + esc(l) + '">Apply to all stores</button></div>').join('') : '<div class="small" style="margin-top:8px">None at the moment.</div>') + '</div>'; }
   if (can('customers')) h += '<div class="card"><h3>Customers</h3><div class="small mute">All customers with mobile and name, bills sent on WhatsApp, pending coupons, referrals. Download to Excel.</div><button class="btn sm" id="cust" style="margin-top:10px">Open</button></div>';
-  if (can('approve')) h += '<div class="card"><h3>Discount approvals</h3><div class="small mute">Requests from managers for more than ' + 10 + '% appear on your screen within seconds. One-time codes are a back-up you can read out on the phone (each works once, up to 25%).</div>' +
+  if (can('approve')) h += '<div class="card"><h3>Discount approvals</h3><div class="small mute">Discount requests from staff and managers appear on your screen within seconds while the app is open. One-time codes are a back-up you can read out on the phone (each works once, up to 25%).</div>' +
     '<div class="row" style="margin-top:10px"><button class="btn sm" id="apv">Requests</button><button class="btn sm ghost" id="apc">One-time codes</button></div></div>';
   h += '<div class="card"><h3>Use it like an app</h3><div class="small">' + (IN_APP ? 'You are in the installed Nutvique app. ' : 'For the camera scanner and the Bluetooth scale, install the app: open <b>vermakshat.com/nutvique</b> in Chrome (Android) or Safari (iPhone) → Install / Add to Home Screen. ') +
     'A barcode scanner gun also works in the Search box.</div></div>';
@@ -2338,16 +2350,22 @@ function askApproval(t, pct) {
   const items = B.lines.map(l => (l.name || 'Item') + ' ' + (l.unit === 'kg' ? (l.inUnit === 'g' ? l.inQty + ' g' : l.inQty + ' kg') : l.inQty + ' pcs')).join(', ').slice(0, 380);
   const m = modal('Discount approval needed', '<div class="bigp"><div><span>Discount</span><b>' + pct + '%</b><span>₹' + money(t.disc) + ' off ₹' + money(t.gross) + '</span></div></div>' +
     '<div id="ap_st"><button class="btn gold block" id="ap_ask">Ask for approval now</button><div class="tiny mute" style="margin-top:6px">Goes at once to the owner and every manager who can approve – a red banner in their app and an email with an Approve button. This screen unlocks by itself when one of them approves.</div></div>' +
-    '<h3 style="margin-top:16px">Or: one-time code (ask on the phone)</h3><div class="row"><input class="i grow" id="ap_code" inputmode="numeric" maxlength="7" placeholder="6-digit code"><button class="btn" id="ap_use">Use code</button></div>' +
+    '<h3 style="margin-top:16px">Or: one-time code (ask on the phone)</h3><div class="row"><input class="i grow" id="ap_code" inputmode="numeric" maxlength="7" placeholder="6-digit code"><button class="btn" id="ap_use">Use code</button></div><div id="ap_cer"></div>' +
     '<div class="tiny mute" style="margin-top:6px">Each code works once, for up to ' + discLimits().max + '% on this bill.</div>', { onClose: () => { closed = true; clearTimeout(timer); } });
-  $('#ap_use', m).onclick = () => {
-    const c = $('#ap_code', m).value.replace(/\D/g, '');
-    if (c.length !== 6) return toast('The code has 6 digits', true);
+  $('#ap_use', m).onclick = async () => {
+    const c = $('#ap_code', m).value.replace(/\D/g, ''), er = $('#ap_cer', m);
+    er.innerHTML = '';
+    if (c.length !== 6) { er.innerHTML = '<div class="warnbox bad" style="margin-top:8px">The code has 6 digits.</div>'; return; }
+    let ok = null, msg = '';
+    try { ok = await run('Checking the code…', () => call('checkApprovalCode', { code: c, pct: pct })); } catch (e) { msg = e.message; }
+    if (!ok) { er.innerHTML = '<div class="warnbox bad" style="margin-top:8px">' + esc(msg || 'Could not check the code') + '</div>'; $('#ap_code', m).select(); return; }
     B.approval = { code: c, pct: discLimits().max, gross: Infinity }; m.close(); saveBill();
   };
+  $('#ap_code', m).onkeydown = e => { if (e.key === 'Enter') $('#ap_use', m).onclick(); };
   $('#ap_ask', m).onclick = async () => {
-    const r = await run('Sending the request…', () => call('requestApproval', { loc: B.loc, event: B.event, gross: t.gross, disc: t.disc, items: items })).catch(() => null);
-    if (!r) return;
+    let rerr = '';
+    const r = await run('Sending the request…', () => call('requestApproval', { loc: B.loc, event: B.event, gross: t.gross, disc: t.disc, items: items })).catch(e => { rerr = e.message; return null; });
+    if (!r) { $('#ap_st', m).insertAdjacentHTML('beforeend', '<div class="warnbox bad" style="margin-top:8px">The request was not sent: ' + esc(rerr) + ' – call the owner for a one-time code.</div>'); return; }
     $('#ap_st', m).innerHTML = '<div class="empty small"><span class="spin dk"></span><div>Waiting for approval… (request ' + esc(r.id) + ')</div><div class="tiny mute">Sent in the app' + (/^OK: [1-9]/.test(r.emailed || '') ? ' and by email' : '') + '. Keep this screen open – the bill saves by itself once approved. You can also call them for a one-time code.</div></div>';
     const poll = async () => {
       if (closed) return;
@@ -2926,7 +2944,7 @@ $('#img').onclick = async () => {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '3a9807ed9a';
+<script>window.NV_BUILD = '71884038c0';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
