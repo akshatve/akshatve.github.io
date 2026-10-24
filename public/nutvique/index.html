@@ -31,6 +31,7 @@ table.cnt td{vertical-align:middle}table.cnt td.n{white-space:nowrap}table.cnt t
 .cnr2{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:6px;margin-top:6px}.cnr3{display:flex;align-items:center;gap:10px;margin-top:6px}.cnr3 label{font-size:12px;color:var(--mute);white-space:nowrap}.cnr3 .cn_in{width:110px;min-height:36px;padding:4px 8px;text-align:right}.cnr3 .cn_d{font-size:14px;margin-left:auto}
 .cnk{display:flex;flex-direction:column;min-width:0}.cnk span{font-size:10.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cnk b{font-size:13px;font-weight:600;white-space:nowrap}
 .dcden{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:6px 0 8px}.dcden label{display:flex;align-items:center;gap:4px;font-size:12px}.dcden label span{white-space:nowrap;min-width:46px}.dcden .i{min-height:34px;padding:4px 6px}.dcres{display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:6px;font-size:15px}.dcok{color:var(--ok,#1b7a43);font-weight:700}.dcbad{color:var(--bad);font-weight:700}.span2{grid-column:1/-1}
+.agr{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:nowrap}.agr label{font-size:12px;color:var(--mute);white-space:nowrap}.agr .i{width:120px;min-height:34px;padding:4px 8px;text-align:right}.agr .agp{font-size:12px;font-weight:600;color:var(--navy)}
 .upist{margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--cream);font-size:13px;line-height:1.35;text-align:left}.upist.ok{background:#e3f4ea;color:#155c35;border:1px solid #9fd3b3}
 .cnr .cn_rm{margin-top:6px;min-height:34px;padding:4px 8px;width:100%}
 @media(max-width:380px){.cnhead{grid-template-columns:1fr 130px auto}}
@@ -1873,6 +1874,7 @@ function drawBill() {
     '<div class="card"><h3>Customer</h3>' +
     '<div class="grid2"><div><label class="f">Mobile (for WhatsApp bill)</label><input class="i" id="b_ph" type="tel" inputmode="numeric" maxlength="14" value="' + esc(B.cust.phone) + '" placeholder="10-digit mobile"' + (B.noDetails ? ' disabled' : '') + '></div>' +
     '<div><label class="f">Name (optional)</label><input class="i" id="b_nm" value="' + esc(B.cust.name) + '" placeholder="Customer name"></div></div>' +
+    (isOwner() ? '<button class="btn sm ghost" id="b_vc" style="margin-top:6px;display:none">📇 Save to my contacts</button>' : '') +
     '<div id="b_ci"></div>' +
     '<label class="chk"><input type="checkbox" id="b_nd"' + (B.noDetails ? ' checked' : '') + '>Customer does not want to share – print the bill only</label>' +
     '<label class="chk"><input type="checkbox" id="b_biz"' + (B.biz ? ' checked' : '') + '>Business customer – GST bill with their GSTIN</label>' +
@@ -1921,6 +1923,7 @@ function totHtml(t) {
     '<div class="g"><span>To pay</span><span>₹' + money(t.total) + '</span></div>' +
     (luckyOn() && t.total >= luckyR().min ? '<div class="tiny" style="margin-top:6px">🍀 ' + (B.cust.phone && !B.noDetails ? 'Lucky draw after saving – the customer picks a card.' : '<span class="neg">Add the customer\'s mobile so they can play the lucky draw.</span>') + '</div>' : '');
 }
+function r2c(x) { return String(Math.round(x * 100) / 100); }
 function canSaveNew() { return isOwner() || ((S.user || {}).role === 'Manager' && can('otherItem')); }
 function mrpX() { return Number((S.settings || {}).mrpX) || 1.25; }
 function lineCard(l, i, c) {
@@ -1938,8 +1941,9 @@ function lineCard(l, i, c) {
     (l.unit === 'kg' ? '<select class="i" data-f="inUnit"><option value="g"' + (l.inUnit === 'g' ? ' selected' : '') + '>g</option><option value="kg"' + (l.inUnit === 'kg' ? ' selected' : '') + '>kg</option></select>' :
       (l.sku ? '<span class="mute">pcs</span>' : '<select class="i" data-f="unit"><option value="pcs">pcs</option><option value="kg"' + (l.unit === 'kg' ? ' selected' : '') + '>kg</option></select>')) +
     '<span class="mute small">× ₹' + money(l.rate) + (l.unit === 'kg' ? '/kg' : '') + '</span>' +
-    (noDisc() || B.coupon ? '' : '<input class="i dsc" data-f="discPct" inputmode="decimal" placeholder="Disc %" value="' + (l.discPct || '') + '">') +
+    (noDisc() || B.coupon ? '' : '<input class="i dsc" data-f="discPct" inputmode="decimal" placeholder="Disc %" value="' + (l.discPct ? r2c(num(l.discPct)) : '') + '">') +
     '<span class="amt">₹' + money(c ? c.amount : 0) + '</span></div>';
+  if (!noDisc() && !B.coupon && num(l.rate) > 0) h += '<div class="agr"><label>Customer pays ₹</label><input class="i" data-f="agreed" inputmode="decimal" placeholder="agreed price" value="' + esc(l.agreed || '') + '"><span class="agp">' + (num(l.discPct) ? r2c(num(l.discPct)) + '% off' : '') + '</span></div>';
   if (l.unit === 'kg') h += '<div class="qk">' + (IN_APP ? '<button data-w="' + i + '" class="sw">⚖ Scale</button>' : '') + [100, 200, 250, 500, 1000].map(g => '<button data-g="' + g + '">' + (g >= 1000 ? g / 1000 + ' kg' : g + ' g') + '</button>').join('') + '</div>';
   h += '<div class="tiny mute" style="margin-top:4px">' + (l.sku ? esc(l.sku) + ' · ' : '') + 'HSN ' + esc(l.hsn || '–') + ' · GST ' + (l.gst || dfltGst()) + '%' +
     (have != null ? ' · <span class="' + (have - lineQty(l) < 0 ? 'neg' : '') + '">stock here ' + qfmt(have) + ' ' + esc(l.unit) + '</span>' : '') + (p && p.mrp ? ' · MRP ₹' + money(p.mrp) : '') + '</div></div>';
@@ -1983,6 +1987,16 @@ function bindBill() {
         if (f === 'unit') { l.unit = inp.value; l.inUnit = inp.value === 'kg' ? 'kg' : 'pcs'; return drawBill(); }
         if (f === 'inQty' && l.unit !== 'kg' && /[.,]/.test(inp.value)) { inp.value = inp.value.replace(/[.,].*$/, ''); toast('Pieces are whole numbers – sold by the piece, not by weight', true); }
         if (f === 'saveNew') { l.saveNew = inp.checked; return drawBill(); }
+        if (f === 'agreed') {                                   // negotiated price → discount % worked out here
+          l.agreed = inp.value; const g = Math.round(lineQty(l) * num(l.rate) * 100) / 100, a = num(inp.value), ag = $('.agp', el), dp = $('[data-f=discPct]', el);
+          if (!inp.value.trim() || !(a > 0)) { l.discPct = ''; if (dp) dp.value = ''; if (ag) ag.textContent = ''; return refreshTotals(); }
+          if (a > g + 0.001) { if (ag) ag.innerHTML = '<span class="neg">more than the price ₹' + money(g) + '</span>'; l.discPct = ''; if (dp) dp.value = ''; return refreshTotals(); }
+          const pct = Math.round((g - a) / g * 1e6) / 1e4; l.discPct = pct ? String(pct) : '';
+          if (dp) dp.value = pct ? r2c(pct) : ''; if (ag) ag.textContent = pct ? r2c(pct) + '% off (₹' + money(g - a) + ')' : 'no discount';
+          return refreshTotals();
+        }
+        if (f === 'discPct') { l.agreed = ''; const ai = $('[data-f=agreed]', el); if (ai) ai.value = ''; const ag = $('.agp', el); if (ag) ag.textContent = num(inp.value) ? r2c(num(inp.value)) + '% off' : ''; }
+        if ((f === 'inQty' || f === 'inUnit') && l.agreed) { l.agreed = ''; const ai = $('[data-f=agreed]', el); if (ai) ai.value = ''; }
         l[f] = (f === 'rate' || f === 'gst') ? num(inp.value) : inp.value;
         if (f === 'inUnit') { const q0 = num(l.inQty); if (q0) l.inQty = String(inp.value === 'g' ? r3(q0 * 1000) : r3(q0 / 1000)); return drawBill(); }
         refreshTotals();
@@ -1994,7 +2008,9 @@ function bindBill() {
   $$('[data-del]').forEach(b => b.onclick = () => { B.lines.splice(+b.dataset.del, 1); drawBill(); });
   $('#b_ph').oninput = e => { B.cust.phone = e.target.value.replace(/[^\d+ ]/g, ''); custLookup(); };
   drawCust(); custLookup();
+  const vcShow = () => { const b = $('#b_vc'); if (b) b.style.display = /^[6-9]\d{9}$/.test((B.cust.phone || '').replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '')) ? '' : 'none'; };
   $('#b_nm').oninput = e => { B.cust.name = e.target.value; };
+  if ($('#b_vc')) { vcShow(); $('#b_ph').addEventListener('input', vcShow); $('#b_vc').onclick = () => saveContact(B.cust.name, B.cust.phone, (LOC_SHORT[B.loc] || B.loc || '')); }
   $('#b_nd').onchange = e => { B.noDetails = e.target.checked; if (B.noDetails) { B.cust.phone = ''; B.ci = null; B.coupon = null; B.refBy = ''; } drawBill(); };
   $('#b_biz').onchange = e => { B.biz = e.target.checked; drawBill(); };
   if ($('#b_gst')) $('#b_gst').oninput = e => { const was = interState(); B.cust.gstin = e.target.value.toUpperCase(); if (was !== interState()) drawBill(); else refreshTotals(); };
@@ -2290,6 +2306,7 @@ function billDone(b, fresh) {
       '<a class="btn ' + (waOn() ? 'ghost' : 'wa') + ' block" style="margin-top:8px" target="_blank" rel="noopener" href="' + esc(couponWa(b.ref.issued, b.seller.brand)) + '">' + (waOn() ? 'Send manually to ' : 'Send the coupon to ') + esc(b.ref.issued.name || 'them') + ' on WhatsApp</a></div>' : '') +
     '<div class="bact">' +
     (b.customer.phone && live && waOn() ? (fresh ? '<div id="bd_was"></div>' : '<button class="btn wa block" id="bd_auto">Send bill on WhatsApp (company number)</button>') : '') +
+    (b.customer.phone && isOwner() ? '<button class="btn ghost block" id="bd_vc">📇 Save ' + esc(b.customer.name || 'customer') + ' to my contacts</button>' : '') +
     (b.customer.phone && live ? '<a class="btn ' + (waOn() ? 'ghost' : 'wa') + ' block" id="bd_wa" target="_blank" rel="noopener" href="' + esc(waLink(b)) + '">' + (waOn() ? 'Send manually (opens WhatsApp)' : 'Send bill on WhatsApp') + '</a>' : '') +
     '<button class="btn block" id="bd_pr">Print bill</button>' +
     '<a class="btn ghost block" target="_blank" rel="noopener" href="' + esc(b.url) + '">Open full bill (PDF)</a>' +
@@ -2300,6 +2317,7 @@ function billDone(b, fresh) {
     (fresh ? '<button class="btn gold block" id="bd_new">New bill</button>' : '') + '</div></div>');
   if ($('#bd_wa', m)) $('#bd_wa', m).onclick = () => { call('markBillSent', { no: b.no }).then(() => { B.today = null; loadToday(); }).catch(() => { }); };
   $('#bd_pr', m).onclick = () => printBill(b);
+  if ($('#bd_vc', m)) $('#bd_vc', m).onclick = () => saveContact(b.customer.name, b.customer.phone, (b.loc === 'Event' ? (b.event || 'Event') : (LOC_SHORT[b.loc] || b.loc)) + ' · bill ' + b.no);
   if ($('#bd_was', m)) waAuto($('#bd_was', m), 'waSendBill', { no: b.no }, 'Bill PDF sent to the customer on WhatsApp');
   if ($('#bd_auto', m)) $('#bd_auto', m).onclick = e => { const d = document.createElement('div'); e.target.replaceWith(d); waAuto(d, 'waSendBill', { no: b.no, again: true }, 'Bill PDF sent to the customer on WhatsApp'); };
   if ($('#rf_was', m)) waAuto($('#rf_was', m), 'waSendCoupon', { kind: 'ref', code: b.ref.issued.code }, 'Coupon sent to ' + (b.ref.issued.name || 'the referrer') + ' on WhatsApp');
@@ -3084,8 +3102,26 @@ async function dayCloseList(date) {
 }
 </script>
 
+<script>
+/* ───── save a customer to this phone's contacts (owner) – opens the phone's "add contact" screen, already filled in ───── */
+async function saveContact(name, phone, where) {
+  const ph = String(phone || '').replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '');
+  if (!/^[6-9]\d{9}$/.test(ph)) return toast('Type the 10-digit mobile first', true);
+  const nm = String(name || '').trim() || 'Nutvique customer ' + ph.slice(-4);
+  const esc2 = v => String(v).replace(/[\;,]/g, m => '\\' + m).replace(/\n/g, ' ');
+  const d = new Date(), dd = String(d.getDate()).padStart(2, '0') + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getFullYear();
+  const vcf = ['BEGIN:VCARD', 'VERSION:3.0', 'FN:' + esc2(nm), 'N:;' + esc2(nm) + ';;;', 'TEL;TYPE=CELL:+91' + ph, 'ORG:Nutvique customer', 'NOTE:' + esc2('Nutvique customer since ' + dd + (where ? ' (' + where + ')' : '')), 'END:VCARD'].join('\r\n');
+  const fname = nm.replace(/[^\w ]+/g, '').trim().replace(/ +/g, '_') || 'contact';
+  const file = new File([vcf], fname + '.vcf', { type: 'text/vcard' });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: nm }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  const url = URL.createObjectURL(file), a = document.createElement('a'); a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  toast('Contact card ready – open it and tap Save / Add to contacts');
+}
+</script>
+
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '2b91b02219';
+<script>window.NV_BUILD = '28dfb84dd2';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
