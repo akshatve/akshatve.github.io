@@ -471,6 +471,7 @@ async function productSheet(sku) {
 }
 function chg(o, n) { if (o === '' && n === '') return '–'; if (String(o) === String(n) || o === '') return inr(n, 0); return '<span class="mute" style="text-decoration:line-through">' + inr(o, 0) + '</span> ' + inr(n, 0); }
 
+const spOf = p => Object.keys(S.storePrices || {}).filter(l => S.storePrices[l][p.sku]).map(l => ({ loc: l, sell: S.storePrices[l][p.sku].sell, mrp: S.storePrices[l][p.sku].mrp }));
 function editProductSheet(p) {
   const m = modal('Edit · ' + p.name, '<div class="grid2">' +
     fld('Nutvique name (as on our pack / GS1)', '<input class="i" id="e_name" value="' + esc(p.name) + '">', 2) +
@@ -484,13 +485,19 @@ function editProductSheet(p) {
     fld('HSN', '<input class="i" id="e_hsn" value="' + esc(p.hsn) + '">') + fld('GST %', '<input class="i num" id="e_gst" value="' + esc(p.gst) + '">') +
     fld('Status', '<select class="i" id="e_st"><option' + (p.status !== 'Discontinued' ? ' selected' : '') + '>Active</option><option' + (p.status === 'Discontinued' ? ' selected' : '') + '>Discontinued</option></select>') +
     fld('Notes', '<input class="i" id="e_notes" value="' + esc(p.notes || '') + '">') + '</div>' +
+    (spOf(p).length ? '<div class="warnbox" style="margin-top:12px;text-align:left"><b>This item has a separate store price</b>, which is used on bills there instead of the price above:<div style="margin:4px 0">' + spOf(p).map(x => esc(LOC_SHORT[x.loc] || x.loc) + ' ' + inr(x.sell, 0) + (x.mrp ? ' (MRP ' + inr(x.mrp, 0) + ')' : '')).join(' · ') + '</div>' +
+      '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:6px"><input type="radio" name="e_sp" value="all" checked style="margin-top:3px"> Use the new price at every store and event (removes the separate store price)</label>' +
+      '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:4px"><input type="radio" name="e_sp" value="keep" style="margin-top:3px"> Keep the separate store price – change only the other stores</label></div>' : '') +
     '<div class="row" style="margin-top:12px"><button class="btn gold" id="e_mrpx">MRP = selling × ' + S.settings.mrpX + '</button><div class="grow"></div><button class="btn" id="e_save">Save</button></div>' +
     '<div class="tiny mute" style="margin-top:8px">Saving updates every phone within seconds and the Night Closing app. The change is listed in the GS1 &amp; QueueBuster tab, where you download the QueueBuster update file (a changed MRP / name of a registered product is also flagged there for DataKart).</div>');
   $('#e_mrpx', m).onclick = () => { $('#e_mrp', m).value = Math.round(num($('#e_sell', m).value) * S.settings.mrpX); };
   $('#e_save', m).onclick = async () => {
     const d = { sku: p.sku, name: $('#e_name', m).value, seller: $('#e_seller', m).value, short: $('#e_short', m).value, cat: $('#e_cat', m).value, sell: $('#e_sell', m).value,
       mrp: $('#e_mrp', m).value, cost: $('#e_cost', m).value, reorder: $('#e_re', m).value, hsn: $('#e_hsn', m).value, gst: $('#e_gst', m).value, status: $('#e_st', m).value, notes: $('#e_notes', m).value };
-    await run('Saving…', () => call('updateProduct', d)); m.close(); await refresh(true); toast('Saved'); productSheet(p.sku);
+    const spr = $('input[name=e_sp]:checked', m); if (spr && spr.value === 'all') d.dropStorePrices = true;
+    const drop = d.dropStorePrices ? spOf(p) : [];
+    await run('Saving…', async () => { await call('updateProduct', d); for (const x of drop) await call('clearStorePrices', { location: x.loc, sku: p.sku }); });
+    m.close(); await refresh(true); toast(drop.length ? 'Saved – new price now used at every store and event' : 'Saved'); productSheet(p.sku);
   };
 }
 function fld(label, input, span) { return '<div' + (span ? ' style="grid-column:span ' + span + '"' : '') + '><label class="f">' + label + '</label>' + input + '</div>'; }
@@ -2919,7 +2926,7 @@ $('#img').onclick = async () => {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '7961e512ea';
+<script>window.NV_BUILD = '3a9807ed9a';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
