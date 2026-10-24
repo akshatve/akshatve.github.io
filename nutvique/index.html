@@ -1660,6 +1660,7 @@ async function viewMore() {
     fld('Cost includes GST', '<select class="i" data-s="Cost includes GST"><option' + (s['Cost includes GST'] !== 'Yes' ? ' selected' : '') + '>No</option><option' + (s['Cost includes GST'] === 'Yes' ? ' selected' : '') + '>Yes</option></select>') +
     fld('Spread charges by', '<select class="i" data-s="Spread charges by"><option' + (s['Spread charges by'] !== 'Quantity' ? ' selected' : '') + '>Value</option><option' + (s['Spread charges by'] === 'Quantity' ? ' selected' : '') + '>Quantity</option></select>') +
     f('Gemini model') + f('Last GTIN used on DataKart') + '</div>' +
+    '<h3 style="margin-top:18px">Customers → Google Contacts</h3><div class="grid2">' + fld('Google Contacts: save customers', '<select class="i" data-s="Google Contacts: save customers">' + ["Owner's bills only", 'All bills', 'Off'].map(o => '<option' + ((s['Google Contacts: save customers'] || "Owner's bills only") === o ? ' selected' : '') + '>' + o + '</option>').join('') + '</select>') + '</div><div class="tiny mute">New customers are saved to the Google Contacts of nutzyfoods@gmail.com (label “Nutvique customers”). They show on any phone where that account syncs contacts.</div>' +
     '<h3 style="margin-top:18px">UPI payment check (ICICI emails)</h3><div class="grid2">' + fld('UPI email check', '<select class="i" data-s="UPI email check"><option' + (s['UPI email check'] !== 'On' ? ' selected' : '') + '>Off</option><option' + (s['UPI email check'] === 'On' ? ' selected' : '') + '>On</option></select>') + f('UPI email search', 'placeholder="from:(icici.bank.in) newer_than:2d"') + '</div><div class="tiny mute">On = the UPI QR screen waits for ICICI\'s credit email and shows “✓ received”. Switch on only after ICICI sends an email for every incoming payment to nutzyfoods@gmail.com.</div>' +
     '<h3 style="margin-top:18px">Discounts</h3><div class="grid2">' + f('Discount: round off without approval up to ₹', 'inputmode="decimal" placeholder="20"') + '</div><div class="tiny mute">Anyone who bills can take this much off a bill (e.g. ₹1,312.50 → ₹1,300) without asking. Above it, staff need approval; managers can give up to 10% alone. 0 = always ask.</div>' +
     '<h3 style="margin-top:18px">🍀 Lucky draw (store bills)</h3><div class="grid2">' + f('Lucky draw: bill of at least ₹', 'inputmode="decimal" placeholder="1000"') + f('Lucky draw: chance of 10% coupon (out of 100)', 'inputmode="decimal" placeholder="25 – the rest get 5%"') +
@@ -2142,7 +2143,7 @@ async function saveBill() {
     pay: { mode: B.pay.mode, cash: num(B.pay.cash), upi: num(B.pay.upi), card: num(B.pay.card), other: 0 } };
   let r;
   try { r = await run('Saving bill…', () => call('createBill', req)); } catch (e) { if (/Open in the Bill Events/.test(e.message)) refreshLists(true); if (/approv|code/i.test(e.message)) B.approval = null; refreshTotals(); return; }
-  const bill = r.bill;
+  const bill = r.bill; if (r.contact) bill._contact = r.contact;
   if (r.newProducts && r.newProducts.length) { setTimeout(() => toast('Saved as product: ' + r.newProducts.map(x => x.name + (x.existing ? ' (already existed)' : '')).join(', ')), 1500); refresh(true).catch(() => { }); }
   if (Math.abs(bill.totals.total - c.totals.total) > 0.01) toast('Note: saved total ₹' + money(bill.totals.total) + ' (prices were updated)');
   resetBill(); drawBill();
@@ -2317,6 +2318,7 @@ function billDone(b, fresh) {
     (fresh ? '<button class="btn gold block" id="bd_new">New bill</button>' : '') + '</div></div>');
   if ($('#bd_wa', m)) $('#bd_wa', m).onclick = () => { call('markBillSent', { no: b.no }).then(() => { B.today = null; loadToday(); }).catch(() => { }); };
   $('#bd_pr', m).onclick = () => printBill(b);
+  if ($('#bd_vc', m) && /^OK: (saved|name added|already saved)/.test(b._contact || '')) { $('#bd_vc', m).outerHTML = '<div class="tiny" style="text-align:center;margin:4px 0">📇 ' + esc(b.customer.name || 'Customer') + ' ' + (/already/.test(b._contact) ? 'is already in' : 'saved to') + ' your contacts</div>'; }
   if ($('#bd_vc', m)) $('#bd_vc', m).onclick = () => saveContact(b.customer.name, b.customer.phone, (b.loc === 'Event' ? (b.event || 'Event') : (LOC_SHORT[b.loc] || b.loc)) + ' · bill ' + b.no);
   if ($('#bd_was', m)) waAuto($('#bd_was', m), 'waSendBill', { no: b.no }, 'Bill PDF sent to the customer on WhatsApp');
   if ($('#bd_auto', m)) $('#bd_auto', m).onclick = e => { const d = document.createElement('div'); e.target.replaceWith(d); waAuto(d, 'waSendBill', { no: b.no, again: true }, 'Bill PDF sent to the customer on WhatsApp'); };
@@ -3107,6 +3109,11 @@ async function dayCloseList(date) {
 async function saveContact(name, phone, where) {
   const ph = String(phone || '').replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '');
   if (!/^[6-9]\d{9}$/.test(ph)) return toast('Type the 10-digit mobile first', true);
+  if (B.boot && B.boot.gcOn && !saveContact.vcf) {
+    try { const r = await run('Saving to contacts…', () => call('saveContact', { name: name, phone: ph, where: where }));
+      toast(r.result === 'saved' ? 'Saved to contacts ✓ (nutzyfoods Google account)' : r.result === 'name added' ? 'Name added to the saved contact ✓' : 'Already in your contacts ✓'); return; }
+    catch (e) { toast('Google Contacts not ready – opening the phone\'s contact screen instead', true); }
+  }
   const nm = String(name || '').trim() || 'Nutvique customer ' + ph.slice(-4);
   const esc2 = v => String(v).replace(/[\;,]/g, m => '\\' + m).replace(/\n/g, ' ');
   const d = new Date(), dd = String(d.getDate()).padStart(2, '0') + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + d.getFullYear();
@@ -3121,7 +3128,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '28dfb84dd2';
+<script>window.NV_BUILD = '338f5fdb34';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
