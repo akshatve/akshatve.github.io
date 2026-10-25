@@ -1539,16 +1539,18 @@ async function custList(m, reload) {
   const D = CUL.data, s = D.stats, soon = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
   const stores = [...new Set(D.list.flatMap(x => x.stores))].sort();
   box.innerHTML = '<div class="bigp"><div><span>Customers</span><b>' + s.customers + '</b></div><div><span>Got bill on WhatsApp</span><b>' + s.wa + '</b></div><div><span>With pending coupons</span><b>' + s.withCoupons + '</b><span>' + s.coupons + ' coupon' + (s.coupons === 1 ? '' : 's') + (s.expiring ? ' · ' + s.expiring + ' end within 7 days' : '') + '</span></div></div>' +
-    '<div class="chips" id="cul_f" style="margin:8px 0">' + [['all', 'All'], ['wa', 'Bill sent on WhatsApp'], ['cp', 'Pending coupons'], ['soon', 'Coupon ending in 7 days'], ['nowa', 'Mobile given, no WhatsApp']].map(f => '<button data-f="' + f[0] + '" class="' + (CUL.f === f[0] ? 'on' : '') + '">' + f[1] + '</button>').join('') + '</div>' +
+    '<div class="chips" id="cul_f" style="margin:8px 0">' + [['all', 'All'], ['loyal', 'Loyal (3+ bills)'], ['wa', 'Bill sent on WhatsApp'], ['cp', 'Pending coupons'], ['soon', 'Coupon ending in 7 days'], ['nowa', 'Mobile given, no WhatsApp']].map(f => '<button data-f="' + f[0] + '" class="' + (CUL.f === f[0] ? 'on' : '') + '">' + f[1] + '</button>').join('') + '</div>' +
     '<div class="row" style="flex-wrap:nowrap"><input class="i grow" id="cul_q" type="search" placeholder="Search name, mobile or code" value="' + esc(CUL.q) + '" style="min-width:0">' +
     '<select class="i" id="cul_l" style="max-width:150px"><option value="">All stores</option>' + stores.map(l => '<option' + (l === CUL.loc ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select></div>' +
     '<div class="row" style="margin:8px 0;justify-content:space-between"><span class="small mute" id="cul_c"></span><span><button class="btn sm ghost" id="cul_r">Refresh</button> <button class="btn sm" id="cul_x">Download (Excel)</button></span></div>' +
+    (isOwnerUi() ? '<button class="btn gold block" id="cul_gc" style="margin-bottom:8px">🎁 Give a coupon to the customers shown</button>' : '') +
     (D.full ? '' : '<div class="tiny mute" style="margin-bottom:6px">Mobile numbers are partly hidden for your login. Only the owner (or people with the "all stores" right) see full numbers.</div>') +
     '<div id="cul_rows"></div>';
   const pick = () => {
     const q = CUL.q.toLowerCase().replace(/\s+/g, ''), qd = q.replace(/\D/g, '');
     return D.list.filter(x => {
       if (CUL.loc && x.stores.indexOf(CUL.loc) < 0) return false;
+      if (CUL.f === 'loyal' && x.bills < 3) return false;
       if (CUL.f === 'wa' && !x.wa) return false;
       if (CUL.f === 'nowa' && x.wa) return false;
       if (CUL.f === 'cp' && !x.pending.length) return false;
@@ -1577,6 +1579,7 @@ async function custList(m, reload) {
   $('#cul_q', m).oninput = e => { CUL.q = e.target.value; CUL.n = 150; draw(); };
   $('#cul_l', m).onchange = e => { CUL.loc = e.target.value; CUL.n = 150; draw(); };
   $('#cul_r', m).onclick = () => custList(m, true);
+  if ($('#cul_gc', m)) $('#cul_gc', m).onclick = () => { const L = pick(); if (!L.length) return toast('No customers in this list', true); couponForm(L, () => custList(m, true)); };
   $('#cul_x', m).onclick = () => {
     const L = pick(), q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
     const rows = [['Customer name', 'Mobile', 'Bills', 'Total spent (Rs)', 'First bill date', 'Last bill date', 'Last store', 'Stores', 'Bills sent on WhatsApp', 'Last WhatsApp bill', 'Referral code', 'Pending coupons', 'Pending coupon details', 'Coupons used', 'Coupons expired']]
@@ -1587,17 +1590,44 @@ async function custList(m, reload) {
   };
   draw();
 }
+const isOwnerUi = () => !!(S.user && S.user.role === 'Owner');
+/** Owner: loyalty coupon for one or many customers – % / minimum bill / validity decided here (v18.20). */
+function couponForm(list, done) {
+  const one = list.length === 1;
+  const m = modal('🎁 Loyalty coupon', '<div class="small">' + (one ? 'For <b>' + esc(list[0].name || 'customer') + '</b> · ' + esc(list[0].phone) : 'For <b>' + list.length + ' customers</b> (the list you filtered) – each gets their own code.') + '</div>' +
+    '<div class="grid3" style="margin-top:10px"><div><label class="f">Coupon %</label><input class="i num" id="gc_p" inputmode="decimal" placeholder="e.g. 10"></div>' +
+    '<div><label class="f">Min bill ₹</label><input class="i num" id="gc_m" inputmode="decimal" placeholder="0 = any"></div>' +
+    '<div><label class="f">Valid days</label><input class="i num" id="gc_d" inputmode="numeric" value="30"></div></div>' +
+    '<label class="f" style="margin-top:8px">Note (optional, e.g. Diwali thank-you)</label><input class="i" id="gc_n" maxlength="80">' +
+    '<div class="tiny mute" style="margin-top:6px">Works at any store and event on the customer\'s mobile number, one per bill, not with other discounts. Up to 50%.</div>' +
+    '<button class="btn gold block" id="gc_go" style="margin-top:12px">Create ' + (one ? 'coupon' : list.length + ' coupons') + '</button><div id="gc_out"></div>');
+  $('#gc_go', m).onclick = async e => {
+    const pct = num($('#gc_p', m).value);
+    if (!(pct >= 1 && pct <= 50)) return toast('Type the coupon % (1 to 50)', true);
+    if (!one && !confirmTwice(e.target)) return;
+    const r = await run('Creating coupons…', () => call('giveCoupons', { keys: list.map(x => x.key), pct: pct, min: num($('#gc_m', m).value), days: num($('#gc_d', m).value) || 30, note: $('#gc_n', m).value })).catch(() => null);
+    if (!r) return;
+    const brand = ((typeof B !== 'undefined' && B.boot && B.boot.setup) || {})['Brand name'] || 'Nutvique';
+    const msg = c => 'Hi' + (c.name ? ' ' + c.name : '') + '! Thank you for being a loyal ' + brand + ' customer. Here is your *' + c.pct + '% coupon: ' + c.code + '*' + ($('#gc_n', m).value ? ' (' + $('#gc_n', m).value + ')' : '') + '.\n\nUse it ' + (c.min ? 'on a purchase of ₹' + c.min + ' or more ' : '') + 'at any ' + brand + ' store, valid till ' + c.till.split('-').reverse().join('-') + '. Just tell us your mobile number at billing.';
+    $('#gc_go', m).remove();
+    $('#gc_out', m).innerHTML = '<div class="okbox" style="margin-top:10px">✓ ' + r.given.length + ' coupon' + (r.given.length === 1 ? '' : 's') + ' created – ' + pct + '% off, valid till ' + (r.given[0] ? r.given[0].till.split('-').reverse().join('-') : '') + '.</div>' +
+      '<div class="small" style="margin:8px 0">Send each one on WhatsApp (opens WhatsApp Business with the message ready):</div>' +
+      r.given.map(c => '<div class="row" style="flex-wrap:nowrap;padding:6px 0;border-bottom:1px solid var(--line)"><div class="grow small"><b>' + esc(c.code) + '</b> · ' + esc(c.name || 'Customer') + ' · ' + esc(c.phone.slice(0, 2) + '••••' + c.phone.slice(-4)) + '</div><a class="btn sm wa" target="_blank" rel="noopener" href="' + esc(waUrl(c.phone, msg(c))) + '">WhatsApp</a></div>').join('');
+    if (done) done();
+  };
+}
 async function custDetail(x) {
   const m = modal(x.name || 'Customer', '<div class="empty"><span class="spin dk"></span></div>', { wide: true });
   let d; try { d = await call('customerDetail', { key: x.key }); } catch (e) { $('.sb', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
   const st = { Active: 'p-ok', Used: 'p-mute', Expired: 'p-warn' }, act = d.coupons.filter(c => c.status === 'Active');
-  $('.sb', m).innerHTML = '<div class="kv"><div>Name</div><div><b>' + esc(d.name || '–') + '</b></div><div>Mobile</div><div>' + esc(d.phone) + '</div>' +
+  $('.sb', m).innerHTML = (isOwnerUi() ? '<button class="btn gold block" id="cd_gc" style="margin-bottom:10px">🎁 Give a loyalty coupon</button>' : '') + '<div class="kv"><div>Name</div><div><b>' + esc(d.name || '–') + '</b></div><div>Mobile</div><div>' + esc(d.phone) + '</div>' +
     (d.code ? '<div>Referral code</div><div><b>' + esc(d.code) + '</b></div>' : '') + (d.referredBy ? '<div>Referred by</div><div>' + esc(d.referredBy) + ' · ' + esc(d.referral) + '</div>' : '') +
     '<div>Bills</div><div>' + d.bills.length + ' · ' + inr(d.bills.reduce((a, b) => a + b.total, 0), 0) + '</div><div>Bills on WhatsApp</div><div>' + d.bills.filter(b => b.sent).length + '</div>' +
     (d.referred.length ? '<div>Friends referred</div><div>' + d.referred.map(r => esc(r.name || 'Customer') + ' (' + esc(r.status) + ')').join(', ') + '</div>' : '') + '</div>' +
     '<h3>Pending coupons (' + act.length + ')</h3>' + (act.length ? act.map(c => '<div class="okbox" style="margin-bottom:6px"><b>' + esc(c.code) + '</b> – ' + c.pct + '% off a bill of ₹' + c.min + '+ · valid till <b>' + dmy(c.till) + '</b><div class="tiny">' + esc(c.kind) + (c.from && c.kind !== 'Lucky draw' ? ' – earned from ' + esc(c.from) : '') + (c.fromNext ? ' · usable from tomorrow' : '') + '</div></div>').join('') : '<div class="small mute">No pending coupons.</div>') +
     '<h3>All coupons</h3>' + (d.coupons.length ? '<div class="tscroll"><table class="t"><tr><th>Coupon</th><th>Type</th><th>Issued</th><th>Valid till</th><th>Status</th></tr>' + d.coupons.map(c => '<tr><td><b>' + esc(c.code) + '</b> ' + c.pct + '%</td><td class="small">' + esc(c.kind) + '</td><td class="nowrap">' + dmy(c.issued) + '</td><td class="nowrap">' + dmy(c.till) + '</td><td><span class="pill ' + (st[c.status] || 'p-mute') + '">' + esc(c.status) + '</span>' + (c.usedOn ? '<div class="tiny mute">' + esc(c.usedOn) + '</div>' : '') + '</td></tr>').join('') + '</table></div>' : '<div class="small mute">None.</div>') +
     '<h3>Bills</h3><div class="tscroll"><table class="t"><tr><th>Bill</th><th>Date</th><th>Store</th><th class="n">Total</th><th>Payment</th><th>WhatsApp</th></tr>' + d.bills.map(b => '<tr><td class="nowrap">' + esc(b.no) + '</td><td class="nowrap">' + dmy(b.date) + '</td><td class="small">' + esc(b.loc) + '</td><td class="n">' + inr(b.total, 0) + '</td><td class="small">' + esc(b.pay) + '</td><td class="small">' + (b.sent ? '✅ ' + esc(b.sent) : '–') + '</td></tr>').join('') + '</table></div>';
+  if ($('#cd_gc', m)) $('#cd_gc', m).onclick = () => couponForm([{ key: x.key, name: d.name, phone: d.phone }], () => { CUL.data = null; });
 }
 async function referralScreen(mm) {
   $('#cul_b', mm).innerHTML = '<div class="row"><input class="i grow" id="cu_q" type="search" placeholder="Search name, mobile or referral code"><button class="btn" id="cu_go">Search</button></div><div id="cu_b" style="margin-top:10px"><div class="empty"><span class="spin dk"></span></div></div>';
@@ -3194,7 +3224,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '86271677e5';
+<script>window.NV_BUILD = '1048215634';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
