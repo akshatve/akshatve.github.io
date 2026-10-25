@@ -1800,7 +1800,10 @@ async function refreshLists(force) {
 function dfltGst() { return Number(B.boot && B.boot.setup['Default GST %']) || 5; }
 function lineQty(l) { return l.unit === 'kg' ? (l.inUnit === 'g' ? num(l.inQty) / 1000 : num(l.inQty)) : num(l.inQty); }
 function interState() { const g = (B.cust.gstin || '').trim().toUpperCase(); return B.biz && g.length >= 2 && g.slice(0, 2) !== ((B.boot && B.boot.setup['State code']) || '09'); }
+/** Items total after item discounts – the base for a whole-bill discount. */
+function billBase() { return Math.round(B.lines.reduce((a, l) => { const g = Math.round(lineQty(l) * num(l.rate) * 100) / 100; return a + g - Math.round(g * Math.min(Math.max(num(l.discPct), 0), 100)) / 100; }, 0) * 100) / 100; }
 function calcNow() {
+  if (B.billPct && !B.coupon) B.billDisc = Math.round(billBase() * num(B.billPct)) / 100;
   const ls = B.lines.map(l => ({ qty: lineQty(l), rate: l.rate, discPct: B.coupon ? 0 : l.discPct, gst: l.gst }));
   if (B.coupon) { const g = billCalc(ls, 0, interState()).totals.gross; return billCalc(ls, g >= B.coupon.min ? Math.round(g * B.coupon.pct) / 100 : 0, interState()); }
   return billCalc(ls, B.billDisc, interState());
@@ -1838,7 +1841,7 @@ function drawCust() {
   $$('[data-cp]', box).forEach(b => b.onclick = () => {
     const cp = c.coupons.find(x => x.code === b.dataset.cp);
     if (B.coupon && B.coupon.code === cp.code) B.coupon = null;
-    else { B.coupon = cp; B.billDisc = 0; B.lines.forEach(l => l.discPct = ''); }
+    else { B.coupon = cp; B.billDisc = 0; B.billPct = ''; B.lines.forEach(l => l.discPct = ''); }
     drawBill();
   });
 }
@@ -1929,10 +1932,14 @@ function drawBill() {
     (B.pay.mode === 'UPI' || B.pay.mode === 'Split' ? '<button class="btn gold block" id="b_qr" style="margin-top:8px"' + (B.lines.length ? '' : ' disabled') + '>Show UPI QR' + (B.pay.mode === 'Split' ? ' for the UPI part' : '') + '</button>' : '') +
     (B.pay.mode === 'Cash' ? '<div class="row" style="margin-top:8px"><div class="grow"><label class="f">Cash received ₹ (optional)</label><input class="i num" id="b_got" inputmode="decimal" value="' + esc(B.pay.got) + '"></div><div class="grow"><label class="f">Give back</label><div class="qty" id="b_chg">–</div></div></div>' : '') +
     shortBox() +
-    '<div class="row" style="margin-top:8px">' + (noDisc() || B.coupon ? '' : '<div class="grow"><label class="f">Bill discount ₹</label><input class="i num" id="b_bd" inputmode="decimal" value="' + (B.billDisc || '') + '"></div>') +
+    '<div class="row" style="margin-top:8px">' +
     '<div class="grow"><label class="f">Billed by</label><div class="i" style="background:#f4f2ec">' + esc(S.user ? S.user.name : '') + '</div></div></div>' +
     (B.coupon ? '<div class="tiny" style="margin-top:6px">Coupon ' + esc(B.coupon.code) + ' applied – ' + B.coupon.pct + '% off (no other discount with a coupon).</div>' : discNeedsOk() ? '<div class="tiny mute" style="margin-top:6px">Discount: up to ₹' + (discLimits().round || 0) + ' (round-off) needs no approval. More than that goes to the owner / managers for approval when you save.</div>' : '<div class="tiny mute" style="margin-top:6px" id="b_dh"></div>') +
     '</div>' +
+    (B.lines.length && !noDisc() && !B.coupon ? '<div class="card bdisc"><div class="small"><b>Discount on the whole bill</b> <span class="tiny mute">– fill any one</span></div><div class="grid3" style="margin-top:6px">' +
+      '<div><label class="f">%</label><input class="i num" id="b_bdp" inputmode="decimal" placeholder="e.g. 10" value="' + esc(B.billPct || (B.billDisc && billBase() ? r2c(B.billDisc / billBase() * 100) : '')) + '"></div>' +
+      '<div><label class="f">₹ off</label><input class="i num" id="b_bd" inputmode="decimal" value="' + (B.billDisc || '') + '"></div>' +
+      '<div><label class="f">Final total ₹</label><input class="i num" id="b_bdf" inputmode="decimal" placeholder="agreed total" value="' + (B.billDisc ? Math.round(billBase() - B.billDisc) : '') + '"></div></div></div>' : '') +
     '<div class="card btot" id="b_tot">' + totHtml(t) + '</div>' +
     '<button class="btn gold block" id="b_save" style="min-height:52px;font-size:17px"' + (B.lines.length ? '' : ' disabled') + '>Save bill · ₹' + money(t.total) + '</button>' +
     (B.lines.length ? '<div class="row" style="margin-top:8px;flex-wrap:nowrap"><button class="btn ghost grow" id="b_hold">⏸ Hold bill</button><button class="btn ghost grow" id="b_clr">Clear</button></div>' : '') +
@@ -1997,9 +2004,9 @@ function refreshTotals() {
   $$('#blines .bl').forEach(el => { const i = +el.dataset.i, a = $('.amt', el); if (a && c.lines[i]) a.textContent = '₹' + money(c.lines[i].amount); });
   $('#b_tot').innerHTML = totHtml(c.totals);
   const di = discInfo(c.totals), L = discLimits(), dh = $('#b_dh');
-  if (dh) dh.innerHTML = di.need === 'max' ? '<span class="neg">' + di.pct + '% – the maximum discount is ' + L.max + '%.</span>' : di.need === 'approval' ? '<span class="neg">' + di.pct + '% – above ' + L.self + '% needs the owner\'s approval (asked when you save).</span>'
+  if (dh) dh.innerHTML = di.need === 'max' ? '<span class="neg">' + di.pct + '% – the maximum discount is ' + L.max + '%.</span>' : di.need === 'approval' ? '<span class="neg">' + di.pct + '% – above ' + L.self + '% needs approval from the owner or a manager (asked when you save).</span>'
     : (isOwner() || can('approve') ? 'Discount: no limit for you' + (isOwner() ? '' : ' up to ' + L.max + '%') + '.' : 'Discount: up to ' + L.self + '% yourself, up to ' + L.max + '% with the owner\'s approval.');
-  const sv = $('#b_save'); if (sv) { sv.textContent = (di.need === 'approval' && !B.approval ? 'Ask owner · ' : 'Save bill · ') + '₹' + money(c.totals.total); sv.disabled = !B.lines.length; }
+  const sv = $('#b_save'); if (sv) { sv.textContent = (di.need === 'approval' && !B.approval ? 'Ask for approval · ' : 'Save bill · ') + '₹' + money(c.totals.total); sv.disabled = !B.lines.length; }
   const shx = $('#b_shx'); if (shx) { const d = shortInfo(c.totals.total); shx.textContent = d > 0 ? 'Short by ₹' + money(d) + ' – the bill stays ₹' + money(c.totals.total) + ', the shortfall is recorded with the reason.' : ''; }
   const chg = $('#b_chg'); if (chg) { const g = num(B.pay.got); chg.textContent = g ? (g - c.totals.total >= 0 ? '₹' + money(g - c.totals.total) : 'short ₹' + money(c.totals.total - g)) : '–'; }
   const sp = $('#b_spl'); if (sp) { const s = num(B.pay.cash) + num(B.pay.upi) + num(B.pay.card); const left = Math.round((c.totals.total - s) * 100) / 100; sp.innerHTML = left ? '<span class="neg">₹' + money(left) + ' still to split</span>' : 'Adds up ✓'; }
@@ -2076,7 +2083,14 @@ function bindBill() {
   if ($('#b_shr')) $('#b_shr').oninput = e => { B.short.received = e.target.value; refreshTotals(); };
   if ($('#b_shy')) $('#b_shy').onchange = e => { B.short.reason = e.target.value; drawBill(); };
   if ($('#b_shn')) $('#b_shn').oninput = e => { B.short.note = e.target.value; };
-  if ($('#b_bd')) $('#b_bd').oninput = e => { B.billDisc = num(e.target.value); refreshTotals(); };
+  const bdSync = (except) => {                                   // keep %, ₹ off and final total in step
+    const base = billBase(), set = (id, v) => { const x = $('#' + id); if (x && id !== except) x.value = v; };
+    set('b_bdp', B.billDisc && base ? r2c(B.billPct ? num(B.billPct) : B.billDisc / base * 100) : '');
+    set('b_bd', B.billDisc ? r2c(B.billDisc) : ''); set('b_bdf', B.billDisc ? r2c(Math.round((base - B.billDisc) * 100) / 100) : '');
+  };
+  if ($('#b_bdp')) $('#b_bdp').oninput = e => { const v = num(e.target.value); B.billPct = v > 0 ? String(Math.min(v, 100)) : ''; B.billDisc = v > 0 ? Math.round(billBase() * Math.min(v, 100)) / 100 : 0; bdSync('b_bdp'); refreshTotals(); };
+  if ($('#b_bd')) $('#b_bd').oninput = e => { B.billPct = ''; B.billDisc = Math.min(num(e.target.value), billBase()); bdSync('b_bd'); refreshTotals(); };
+  if ($('#b_bdf')) $('#b_bdf').oninput = e => { B.billPct = ''; const f = num(e.target.value), base = billBase(); B.billDisc = e.target.value.trim() && f > 0 && f < base ? Math.round((base - f) * 100) / 100 : 0; bdSync('b_bdf'); refreshTotals(); };
   $('#b_cam').onclick = scanBill;
   $('#b_scale').onclick = scaleSheet;
   $$('[data-w]').forEach(b => b.onclick = () => useScale(+b.dataset.w));
@@ -2149,7 +2163,7 @@ function heldBar() {
 }
 function resetBill() {
   B.lines = []; B.cust = { name: '', phone: '', gstin: '', address: '' }; B.noDetails = false; B.biz = false; B.billDisc = 0;
-  B.pay = { mode: 'Cash', cash: '', upi: '', card: '', other: '', got: '' }; B.short = null; B.upiMsg = ''; B.cid = newCid(); B.search = ''; B.approval = null; B.coupon = null; B.refBy = ''; B.ci = null;
+  B.pay = { mode: 'Cash', cash: '', upi: '', card: '', other: '', got: '' }; B.short = null; B.upiMsg = ''; B.billPct = ''; B.cid = newCid(); B.search = ''; B.approval = null; B.coupon = null; B.refBy = ''; B.ci = null;
 }
 
 const SHORT_REASONS = ['Customer bargained / paid less', 'Change not available (rounded down)', 'Customer short of money – will pay later', 'Staff mistake', 'Other'];
@@ -3180,7 +3194,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '480dcc4b7b';
+<script>window.NV_BUILD = '86271677e5';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
