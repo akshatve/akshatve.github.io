@@ -1964,6 +1964,7 @@ function totHtml(t) {
     '<div class="g"><span>To pay</span><span>₹' + money(t.total) + '</span></div>' +
     (luckyOn() && t.total >= luckyR().min ? '<div class="tiny" style="margin-top:6px">🍀 ' + (B.cust.phone && !B.noDetails ? 'Lucky draw after saving – the customer picks a card.' : '<span class="neg">Add the customer\'s mobile so they can play the lucky draw.</span>') + '</div>' : '');
 }
+function worthTxt(l) { const g = Math.round(lineQty(l) * 1000), amt = Math.round(lineQty(l) * num(l.rate) * 100) / 100; return '→ weigh <b>' + (g >= 1000 ? (g / 1000).toFixed(3).replace(/\.?0+$/, '') + ' kg' : g + ' g') + '</b> (₹' + money(amt) + ')'; }
 function r2c(x) { return String(Math.round(x * 100) / 100); }
 function canSaveNew() { return isOwner() || ((S.user || {}).role === 'Manager' && can('otherItem')); }
 function mrpX() { return Number((S.settings || {}).mrpX) || 1.25; }
@@ -1984,7 +1985,8 @@ function lineCard(l, i, c) {
     '<span class="mute small">× ₹' + money(l.rate) + (l.unit === 'kg' ? '/kg' : '') + '</span>' +
     (noDisc() || B.coupon ? '' : '<input class="i dsc" data-f="discPct" inputmode="decimal" placeholder="Disc %" value="' + (l.discPct ? r2c(num(l.discPct)) : '') + '">') +
     '<span class="amt">₹' + money(c ? c.amount : 0) + '</span></div>';
-  if (!noDisc() && !B.coupon && num(l.rate) > 0) h += '<div class="agr"><label>Customer pays ₹</label><input class="i" data-f="agreed" inputmode="decimal" placeholder="agreed price" value="' + esc(l.agreed || '') + '"><span class="agp">' + (num(l.discPct) ? r2c(num(l.discPct)) + '% off' : '') + '</span></div>';
+  if (l.unit === 'kg' && num(l.rate) > 0) h += '<div class="agr"><label>Weigh for ₹</label><input class="i" data-f="worth" inputmode="decimal" placeholder="e.g. 500" value="' + esc(l.worth || '') + '"><span class="wth">' + (num(l.worth) > 0 ? worthTxt(l) : 'worth – weight fills in') + '</span></div>';
+  if (!noDisc() && !B.coupon && num(l.rate) > 0) h += '<div class="agr"><label>Agreed price ₹</label><input class="i" data-f="agreed" inputmode="decimal" placeholder="agreed price" value="' + esc(l.agreed || '') + '"><span class="agp">' + (num(l.discPct) ? r2c(num(l.discPct)) + '% off' : '') + '</span></div>';
   if (l.unit === 'kg') h += '<div class="qk">' + (IN_APP ? '<button data-w="' + i + '" class="sw">⚖ Scale</button>' : '') + [100, 200, 250, 500, 1000].map(g => '<button data-g="' + g + '">' + (g >= 1000 ? g / 1000 + ' kg' : g + ' g') + '</button>').join('') + '</div>';
   h += '<div class="tiny mute" style="margin-top:4px">' + (l.sku ? esc(l.sku) + ' · ' : '') + 'HSN ' + esc(l.hsn || '–') + ' · GST ' + (l.gst || dfltGst()) + '%' +
     (have != null ? ' · <span class="' + (have - lineQty(l) < 0 ? 'neg' : '') + '">stock here ' + qfmt(have) + ' ' + esc(l.unit) + '</span>' : '') + (p && p.mrp ? ' · MRP ₹' + money(p.mrp) : '') + '</div></div>';
@@ -2028,6 +2030,16 @@ function bindBill() {
         if (f === 'unit') { l.unit = inp.value; l.inUnit = inp.value === 'kg' ? 'kg' : 'pcs'; return drawBill(); }
         if (f === 'inQty' && l.unit !== 'kg' && /[.,]/.test(inp.value)) { inp.value = inp.value.replace(/[.,].*$/, ''); toast('Pieces are whole numbers – sold by the piece, not by weight', true); }
         if (f === 'saveNew') { l.saveNew = inp.checked; return drawBill(); }
+        if (f === 'worth') {                                    // "₹500 of Mamra" → weight to put on the scale
+          l.worth = inp.value; const w = num(inp.value), wt = $('.wth', el);
+          if (!(w > 0) || !(num(l.rate) > 0)) { if (wt) wt.textContent = 'worth – weight fills in'; return; }
+          const g = Math.max(1, Math.round(w / num(l.rate) * 1000));
+          l.inUnit = 'g'; l.inQty = String(g); if (l.agreed) { l.agreed = ''; l.discPct = ''; const ai = $('[data-f=agreed]', el); if (ai) ai.value = ''; const dp = $('[data-f=discPct]', el); if (dp) dp.value = ''; }
+          const qi = $('[data-f=inQty]', el), us = $('[data-f=inUnit]', el); if (qi) qi.value = l.inQty; if (us) us.value = 'g';
+          if (wt) wt.innerHTML = worthTxt(l);
+          return refreshTotals();
+        }
+        if ((f === 'inQty' || f === 'inUnit') && l.worth) { l.worth = ''; const wi = $('[data-f=worth]', el); if (wi) wi.value = ''; const wt = $('.wth', el); if (wt) wt.textContent = 'worth – weight fills in'; }
         if (f === 'agreed') {                                   // negotiated price → discount % worked out here
           l.agreed = inp.value; const g = Math.round(lineQty(l) * num(l.rate) * 100) / 100, a = num(inp.value), ag = $('.agp', el), dp = $('[data-f=discPct]', el);
           if (!inp.value.trim() || !(a > 0)) { l.discPct = ''; if (dp) dp.value = ''; if (ag) ag.textContent = ''; return refreshTotals(); }
@@ -2044,7 +2056,7 @@ function bindBill() {
       };
       inp.oninput = upd; if (inp.tagName === 'SELECT' || inp.type === 'checkbox') inp.onchange = upd;
     });
-    $$('[data-g]', el).forEach(b => b.onclick = () => { l.inUnit = 'g'; l.inQty = b.dataset.g; if (+b.dataset.g >= 1000) { l.inUnit = 'kg'; l.inQty = String(+b.dataset.g / 1000); } drawBill(); });
+    $$('[data-g]', el).forEach(b => b.onclick = () => { l.worth = ''; l.inUnit = 'g'; l.inQty = b.dataset.g; if (+b.dataset.g >= 1000) { l.inUnit = 'kg'; l.inQty = String(+b.dataset.g / 1000); } drawBill(); });
   });
   $$('[data-del]').forEach(b => b.onclick = () => { B.lines.splice(+b.dataset.del, 1); drawBill(); });
   $('#b_ph').oninput = e => { B.cust.phone = e.target.value.replace(/[^\d+ ]/g, ''); custLookup(); };
@@ -2671,7 +2683,7 @@ function useScale(i) {
   const l = B.lines[i]; if (!l) return;
   if (SC.state !== 'on') return scaleSheet();
   const kg = scaleKg(); if (!kg) return toast('Put the goods on the scale and wait until the weight is steady', true);
-  if (kg >= 1) { l.inUnit = 'kg'; l.inQty = String(Math.round(kg * 1000) / 1000); } else { l.inUnit = 'g'; l.inQty = String(Math.round(kg * 1000)); }
+  l.worth = ''; if (kg >= 1) { l.inUnit = 'kg'; l.inQty = String(Math.round(kg * 1000) / 1000); } else { l.inUnit = 'g'; l.inQty = String(Math.round(kg * 1000)); }
   drawBill(); toast(fmtKg(kg) + ' from the scale');
 }
 /* Reconnect the scale used last time when the app opens (Chrome remembers the permission). */
@@ -3168,7 +3180,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '17791f2800';
+<script>window.NV_BUILD = '480dcc4b7b';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
