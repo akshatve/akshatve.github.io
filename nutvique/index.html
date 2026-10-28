@@ -1703,7 +1703,7 @@ async function viewMore() {
     fld('Spread charges by', '<select class="i" data-s="Spread charges by"><option' + (s['Spread charges by'] !== 'Quantity' ? ' selected' : '') + '>Value</option><option' + (s['Spread charges by'] === 'Quantity' ? ' selected' : '') + '>Quantity</option></select>') +
     f('Gemini model') + f('Last GTIN used on DataKart') + '</div>' +
     '<h3 style="margin-top:18px">Customers → Google Contacts</h3><div class="grid2">' + fld('Google Contacts: save customers', '<select class="i" data-s="Google Contacts: save customers">' + ["Owner's bills only", 'All bills', 'Off'].map(o => '<option' + ((s['Google Contacts: save customers'] || "Owner's bills only") === o ? ' selected' : '') + '>' + o + '</option>').join('') + '</select>') + '</div><div class="tiny mute">New customers are saved to the Google Contacts of nutzyfoods@gmail.com (label “Nutvique customers”). They show on any phone where that account syncs contacts.</div>' +
-    '<h3 style="margin-top:18px">UPI payment check (ICICI emails)</h3><div class="grid2">' + fld('UPI email check', '<select class="i" data-s="UPI email check"><option' + (s['UPI email check'] !== 'On' ? ' selected' : '') + '>Off</option><option' + (s['UPI email check'] === 'On' ? ' selected' : '') + '>On</option></select>') + f('UPI email search', 'placeholder="from:(icici.bank.in) newer_than:2d"') + '</div><div class="tiny mute">On = the UPI QR screen waits for ICICI\'s credit email and shows “✓ received”. Switch on only after ICICI sends an email for every incoming payment to nutzyfoods@gmail.com.</div>' +
+    '<h3 style="margin-top:18px">UPI payment check (ICICI SMS / email)</h3><div class="grid2">' + fld('UPI email check', '<select class="i" data-s="UPI email check"><option' + (s['UPI email check'] !== 'On' ? ' selected' : '') + '>Off</option><option' + (s['UPI email check'] === 'On' ? ' selected' : '') + '>On</option></select>') + f('UPI email search', 'placeholder="from:(icici.bank.in) newer_than:2d"') + '</div><div class="tiny mute">On = the UPI QR screen waits for ICICI\'s credit SMS (forwarded by the owner\'s iPhone) and shows “✓ received”. Email search “off” = SMS only.</div>' +
     '<h3 style="margin-top:18px">Discounts</h3><div class="grid2">' + f('Discount: round off without approval up to ₹', 'inputmode="decimal" placeholder="20"') + '</div><div class="tiny mute">Anyone who bills can take this much off a bill (e.g. ₹1,312.50 → ₹1,300) without asking. Above it, staff need approval; managers can give up to 10% alone. 0 = always ask.</div>' +
     '<h3 style="margin-top:18px">🍀 Lucky draw (store bills)</h3><div class="grid2">' + f('Lucky draw: bill of at least ₹', 'inputmode="decimal" placeholder="1000"') + f('Lucky draw: chance of 10% coupon (out of 100)', 'inputmode="decimal" placeholder="25 – the rest get 5%"') +
     f('Lucky draw: coupon valid (days)', 'inputmode="numeric" placeholder="30"') + f('Lucky draw: coupon needs bill of ₹', 'inputmode="decimal" placeholder="1000"') + '</div>' +
@@ -2325,7 +2325,7 @@ async function showUpi() {
     '<div class="upiamt">₹' + money(amt) + '</div><div id="upi_qr" class="upibox"><div class="empty"><span class="spin dk"></span></div></div>' +
     '<div class="small">Scan with any UPI app – GPay, PhonePe, Paytm, BHIM or a bank app. The amount is filled in.</div>' +
     '<div class="tiny mute" style="margin-top:4px">' + esc(st['UPI ID'] || '') + '</div></div>' +
-    (B.boot && B.boot.upiCheck ? '<div id="upi_st" class="upist"><span class="spin dk"></span> Waiting for the bank\'s payment email for <b>₹' + money(amt) + '</b>… usually within a minute of the customer paying.</div>'
+    (B.boot && B.boot.upiCheck ? '<div id="upi_st" class="upist"><span class="spin dk"></span> Waiting for the bank\'s confirmation for <b>₹' + money(amt) + '</b>… usually a few seconds after the customer pays.</div>'
       : '<div id="upi_st" class="warnbox" style="margin-top:12px">Save the bill only after the customer shows the <b>payment successful</b> screen (or your bank SMS / soundbox confirms it).</div>') +
     (B.pay.mode === 'UPI' ? '<button class="btn gold block" id="upi_ok" style="margin-top:12px">Payment received – save bill</button>' : '<button class="btn block" id="upi_ok" style="margin-top:12px">UPI part received – back to the bill</button>') +
     '<button class="btn ghost block" id="upi_x" style="margin-top:8px">Customer will pay another way</button>');
@@ -3224,7 +3224,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '1048215634';
+<script>window.NV_BUILD = 'a42c0df70c';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
