@@ -2418,6 +2418,8 @@ function billDone(b, fresh) {
     '<a class="btn ghost block" target="_blank" rel="noopener" href="' + esc(b.url) + '">Open full bill (PDF)</a>' +
     (b.payChanges && b.payChanges.length ? '<div class="tiny mute" style="margin-top:6px">Payment changed: ' + esc(b.payChanges[b.payChanges.length - 1].from) + ' → ' + esc(b.payChanges[b.payChanges.length - 1].to) + ' by ' + esc(b.payChanges[b.payChanges.length - 1].by) + ' (' + esc(b.payChanges[b.payChanges.length - 1].reason) + ')</div>' : '') +
     (live && can('payEdit') && !fresh ? '<button class="btn ghost block" id="bd_pay">Change payment method</button>' : '') +
+    (live && !fresh && b.loc !== 'Event' && S.user && (S.user.role === 'Owner' || S.user.role === 'Manager') ? '<button class="btn ghost block" id="bd_mv">Billed at the wrong store? Move it</button>' : '') +
+    (b.moves && b.moves.length ? '<div class="tiny mute" style="margin-top:6px">Moved from ' + esc(LOC_SHORT[b.moves[b.moves.length - 1].from] || b.moves[b.moves.length - 1].from) + ' by ' + esc(b.moves[b.moves.length - 1].by) + ' – ' + esc(b.moves[b.moves.length - 1].reason) + '</div>' : '') +
     (live && can('bill') ? (b.short ? '<div class="row"><button class="btn ghost grow" id="bd_shok">Balance received</button><button class="btn ghost grow" id="bd_shed">Change short</button></div>' : '<button class="btn ghost block" id="bd_sh">Customer paid less – record short payment</button>') : '') +
     (!fresh && can('cancelBill') && live ? '<button class="btn ghost block" id="bd_cx" style="color:var(--bad)">Cancel this bill…</button>' : '') +
     (fresh ? '<button class="btn gold block" id="bd_new">New bill</button>' : '') + '</div></div>');
@@ -2433,11 +2435,26 @@ function billDone(b, fresh) {
   if ($('#bd_cx', m)) $('#bd_cx', m).onclick = () => { m.close(); cancelSheet(b); };
   if ($('#bd_sh', m)) $('#bd_sh', m).onclick = () => { m.close(); shortSheet(b); };
   if ($('#bd_pay', m)) $('#bd_pay', m).onclick = () => { m.close(); paySheet(b); };
+  if ($('#bd_mv', m)) $('#bd_mv', m).onclick = () => { m.close(); moveSheet(b); };
   if ($('#bd_shed', m)) $('#bd_shed', m).onclick = () => { m.close(); shortSheet(b); };
   if ($('#bd_shok', m)) $('#bd_shok', m).onclick = async e => {
     if (!confirmTwice(e.target)) return;
     const r = await run('Saving…', () => call('clearShort', { no: b.no, recovered: true })).catch(() => null);
     if (!r) return; m.close(); toast('Balance received – bill is fully paid'); B.today = null; loadToday(); billDone(r.bill, false);
+  };
+}
+function moveSheet(b) {
+  const stores = ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120'].filter(l => l !== b.loc);
+  const m = modal('Move ' + b.no + ' to another store', '<div class="small">Now at <b>' + esc(b.loc) + '</b> · ₹' + money(b.totals.total) + '. The bill number stays the same; the sale, its payment and the stock move to the store you pick.</div>' +
+    '<label class="f" style="margin-top:10px">The sale was really made at</label><div id="mv_s">' + stores.map(l => '<button class="btn ghost block" data-to="' + esc(l) + '" style="margin-bottom:6px">' + esc(l) + '</button>').join('') + '</div>' +
+    fld('Reason', '<input class="i" id="mv_r" placeholder="e.g. I was at City Galleria, billed at Gulshan by mistake">') +
+    '<button class="btn gold block" id="mv_go" style="margin-top:12px" disabled>Move the bill</button>');
+  let to = '';
+  $$('[data-to]', m).forEach(x => x.onclick = () => { to = x.dataset.to; $$('[data-to]', m).forEach(y => y.classList.toggle('gold', y === x)); $('#mv_go', m).disabled = false; $('#mv_go', m).textContent = 'Move to ' + (LOC_SHORT[to] || to); });
+  $('#mv_go', m).onclick = async () => {
+    const reason = $('#mv_r', m).value.trim(); if (!reason) return toast('Type the reason', true);
+    const r = await run('Moving…', () => call('moveBill', { no: b.no, to: to, reason: reason })).catch(() => null);
+    if (!r) return; m.close(); toast('Bill moved to ' + (LOC_SHORT[to] || to)); if (r.warn) setTimeout(() => toast(r.warn, true), 1800); B.today = null; loadToday(); billDone(r.bill, false);
   };
 }
 function paySheet(b) {
@@ -3325,7 +3342,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '8aa2b23ed6';
+<script>window.NV_BUILD = 'e9c4900b03';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
