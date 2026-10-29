@@ -540,9 +540,9 @@ async function viewInvoices() {
     '<div class="row" style="margin:-6px 0 16px"><button class="btn ghost sm" id="noinv">Stock came in without an invoice</button></div>' +
     '<div id="ilist"><div class="empty"><span class="spin dk"></span></div></div>';
   bindPuTabs();
-  $('#noinv').onclick = () => { S.inv = { supplier: '', gstin: '', invoiceNo: '', invoiceDate: today(), taxable: 0, gst: 0, charges: [], roundOff: 0, total: 0, receivedAt: 'Central Warehouse', lines: [], notes: '', awaiting: true }; S.invWarn = []; addLine(); drawReview(); };
+  $('#noinv').onclick = () => { S.inv = { supplier: '', gstin: '', invoiceNo: '', invoiceDate: today(), taxable: 0, gst: 0, charges: [], roundOff: 0, total: 0, receivedAt: 'City Galleria – Gaur City-2', lines: [], notes: '', awaiting: true }; S.invWarn = []; addLine(); drawReview(); };
   $('#file').onchange = e => { const f = e.target.files[0]; if (f) uploadInvoice(f); };
-  $('#manual').onclick = () => { S.inv = { supplier: '', gstin: '', invoiceNo: '', invoiceDate: today(), taxable: 0, gst: 0, charges: [], roundOff: 0, total: 0, receivedAt: 'Central Warehouse', lines: [], notes: '' }; S.invWarn = []; addLine(); drawReview(); };
+  $('#manual').onclick = () => { S.inv = { supplier: '', gstin: '', invoiceNo: '', invoiceDate: today(), taxable: 0, gst: 0, charges: [], roundOff: 0, total: 0, receivedAt: 'City Galleria – Gaur City-2', lines: [], notes: '' }; S.invWarn = []; addLine(); drawReview(); };
   try {
     const list = await call('listInvoices');
     const dr = list.filter(x => x.status === 'Draft'), po = list.filter(x => x.status === 'Posted'), aw = list.filter(x => x.status === 'Awaiting invoice');
@@ -627,12 +627,12 @@ function drawReview() {
     fld('Invoice no.', '<input class="i" data-h="invoiceNo" value="' + esc(d.invoiceNo) + '">') + fld('Invoice date', '<input class="i" type="date" data-h="invoiceDate" value="' + esc(d.invoiceDate) + '">') +
     fld('Taxable value ₹', '<input class="i num" data-h="taxable" inputmode="decimal" value="' + esc(d.taxable) + '">') + fld('GST ₹ (IGST / CGST+SGST)', '<input class="i num" data-h="gst" inputmode="decimal" value="' + esc(d.gst) + '">') +
     fld('Round off ₹', '<input class="i num" data-h="roundOff" inputmode="decimal" value="' + esc(d.roundOff) + '">') + fld('Invoice total ₹', '<input class="i num" data-h="total" inputmode="decimal" value="' + esc(d.total) + '">') +
-    fld('Stock goes into', '<select class="i" data-h="receivedAt">' + S.locations.map(l => '<option' + (l === (d.receivedAt || 'Central Warehouse') ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>') + '</div>' +
+    fld('Stock goes into', '<select class="i" data-h="receivedAt">' + S.locations.map(l => '<option' + (l === (d.receivedAt || 'City Galleria – Gaur City-2') ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>') + '</div>' +
     '<div style="margin-top:10px"><label class="f">Other charges on the bill (packing, freight…) – shared into the cost of the items</label>' +
     (d.charges || []).map((c, i) => '<div class="row" style="margin-bottom:6px"><input class="i grow" data-c="' + i + '" data-k="label" value="' + esc(c.label) + '"><input class="i num" style="width:120px" data-c="' + i + '" data-k="amount" inputmode="decimal" value="' + esc(c.amount) + '"><button class="btn sm ghost" data-delc="' + i + '">×</button></div>').join('') +
     '<button class="btn sm ghost" id="addc">+ Add charge</button></div>' +
     '<label class="row" style="margin-top:12px"><input type="checkbox" id="awt"' + (d.awaiting ? ' checked' : '') + ' style="width:20px;height:20px"> <span><b>Supplier invoice not received yet</b> <span class="small mute">– stock is booked now with the rates you expect; enter the real invoice later (Invoices → open it → Invoice received)</span></span></label>' +
-    (d.revise ? '<div class="warnbox" style="margin-top:10px">Editing a posted invoice. ' + (d.stockAdded ? 'Only the change in quantity is added to / taken out of stock at ' + esc(d.receivedAt || 'Central Warehouse') + '.' : 'Stock is not touched (this invoice was posted without adding stock).') + ' Cost prices are recalculated.</div>' : '') + '</div>';
+    (d.revise ? '<div class="warnbox" style="margin-top:10px">Editing a posted invoice. ' + (d.stockAdded ? 'Only the change in quantity is added to / taken out of stock at ' + esc(d.receivedAt || 'City Galleria – Gaur City-2') + '.' : 'Stock is not touched (this invoice was posted without adding stock).') + ' Cost prices are recalculated.</div>' : '') + '</div>';
   h += w.length ? w.map(x => '<div class="warnbox' + (/DUPLICATE/.test(x) ? ' bad' : '') + '">⚠ ' + esc(x) + '</div>').join('') : (d.lines.length ? '<div class="okbox">✓ Every line adds up and the invoice total reconciles (' + inr(d.total) + ').</div>' : '');
   h += d.lines.map((l, i) => lineHtml(l, i, lc[i])).join('');
   h += '<button class="btn ghost sm" id="addl">+ Add a line</button>';
@@ -802,7 +802,7 @@ function confirmPost() {
   let changes = 0; d.lines.forEach(l => (l.alloc || []).forEach(a => { const p = S.bySku[a.sku]; if (p && (num(a.sell) !== num(p.sell) || num(a.mrp) !== num(p.mrp))) changes++; }));
   const nc = (S.invWarn || []).some(x => /NIGHT CLOSING/.test(x));
   const m = modal('Post invoice ' + (d.invoiceNo || ''), '<div class="kv"><div>Supplier</div><div><b>' + esc(d.supplier) + '</b></div><div>Lines</div><div>' + st.lines + '</div><div>Quantity</div><div>' + qfmt(st.qty) + '</div><div>Stock value (landed)</div><div>' + inr(st.value) + '</div>' +
-    '<div>Goes into</div><div>' + esc(d.receivedAt || 'Central Warehouse') + '</div><div>New products</div><div>' + (news.length ? news.map(l => esc(l.create.name) + ' <span class="tiny mute">' + esc(l.create.gtin || '') + '</span>').join('<br>') : 'none') + '</div>' +
+    '<div>Goes into</div><div>' + esc(d.receivedAt || 'City Galleria – Gaur City-2') + '</div><div>New products</div><div>' + (news.length ? news.map(l => esc(l.create.name) + ' <span class="tiny mute">' + esc(l.create.gtin || '') + '</span>').join('<br>') : 'none') + '</div>' +
     '<div>Price changes</div><div>' + changes + '</div></div>' +
     '<label class="row" style="margin:14px 0"><input type="checkbox" id="addst"' + (nc ? '' : ' checked') + ' style="width:20px;height:20px"> <span>Add the stock' + (nc ? ' <span class="neg small">(already received in the Night Closing app – leave unticked)</span>' : '') + '</span></label>' +
     '<div class="small mute">Costs, prices and seller names are updated. New products get their GTINs now (they are never reused). The stock and prices also go to the Night Closing app.</div>' +
@@ -1124,10 +1124,10 @@ function lineEditor(box, lines, opt) {
 }
 function stockIn() {
   const B0 = SK.boot, lines = [];
-  $('#sk_b').innerHTML = '<div class="card"><h3>Stock in – goods received</h3><div class="small mute">Always booked into <b>Central Warehouse</b>. If it was delivered at a store, a transfer to that store is created for the store to check.</div>' +
+  $('#sk_b').innerHTML = '<div class="card"><h3>Stock in – goods received</h3><div class="small mute">Booked into <b>City Galleria</b> – every delivery comes in there. If it was delivered at another store, a transfer City Galleria → that store is created for the store to check.</div>' +
     '<div class="grid2" style="margin-top:10px">' + fld('Date', '<input class="i" type="date" id="gi_d" value="' + today() + '" max="' + today() + '">') + fld('Supplier', '<input class="i" id="gi_s" placeholder="e.g. Nutcraft Wholesale">') +
     fld('Invoice / challan no.', '<input class="i" id="gi_i">') + fld('Delivered at', '<select class="i" id="gi_at">' + B0.toLocs.map(l => '<option>' + esc(l) + '</option>').join('') + '</select>') + '</div>' +
-    '<label class="chk" id="gi_tw" style="display:none"><input type="checkbox" id="gi_t" checked> Also create the transfer Central Warehouse → that store (the store checks what arrived)</label>' +
+    '<label class="chk" id="gi_tw" style="display:none"><input type="checkbox" id="gi_t" checked> Also create the transfer City Galleria → that store (the store checks what arrived)</label>' +
     '<h3 style="margin-top:12px">Products</h3><div id="gi_l"></div>' + fld('Remarks', '<input class="i" id="gi_r" placeholder="optional">') +
     '<button class="btn gold block" id="gi_go" style="margin-top:12px">Save stock in</button><div class="tiny mute" style="margin-top:6px">Tip: supplier invoices with prices are better posted in Invoices – costs and margins update too.</div></div>';
   const ed = lineEditor($('#gi_l'), lines, { cost: can('costs') });
@@ -2516,7 +2516,7 @@ function corpForm(d, locs, done) {
   const m = modal('Corporate order – check and save', (d.readError ? '<div class="warnbox" style="margin-bottom:8px">' + esc(d.readError) + '</div>' : d.read ? '<div class="okbox" style="margin-bottom:8px">Read from the PDF – check every line before saving.</div>' : '') +
     '<div class="grid2"><div><label class="f">Tally invoice no.</label><input class="i" id="cf_inv" value="' + esc(d.inv || '') + '"></div><div><label class="f">Invoice date</label><input class="i" type="date" id="cf_dt" max="' + today() + '" value="' + esc(d.date || '') + '"></div>' +
     '<div class="span2"><label class="f">Customer (company)</label><input class="i" id="cf_cu" value="' + esc(d.customer || '') + '"></div><div><label class="f">Customer GSTIN</label><input class="i" id="cf_gs" value="' + esc(d.gstin || '') + '"></div>' +
-    '<div><label class="f">Goods taken from</label><select class="i" id="cf_fr">' + (locs || []).map(l => '<option' + (l === 'Central Warehouse' ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select></div>' +
+    '<div><label class="f">Goods taken from</label><select class="i" id="cf_fr">' + (locs || []).map(l => '<option' + (l === 'City Galleria – Gaur City-2' ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select></div>' +
     '<div><label class="f">Payment</label><select class="i" id="cf_ps"><option>Unpaid</option><option>Part paid</option><option>Paid</option></select></div><div><label class="f">Received ₹</label><input class="i num" id="cf_rc" inputmode="decimal" placeholder="0"></div></div>' +
     '<h3>Items</h3><div class="tiny mute" style="margin-bottom:6px">Amount = value before GST, as on the Tally invoice. Hampers: tap “contents” to change what was filled in them.</div><div id="cf_l"></div><button class="btn ghost sm" id="cf_add">+ Add item</button>' +
     '<div class="grid2" style="margin-top:10px"><div><label class="f">Invoice total ₹ (incl. GST)</label><input class="i num" id="cf_tt" inputmode="decimal" value="' + esc(d.total || '') + '"></div><div id="cf_sum" class="small" style="align-self:end"></div></div>' +
@@ -3448,7 +3448,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '1d2f754f6b';
+<script>window.NV_BUILD = 'f91b4dc8e5';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
