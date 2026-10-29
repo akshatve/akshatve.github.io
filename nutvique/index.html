@@ -1445,13 +1445,17 @@ async function checkApprovals() {
   let r; try { r = await call('approvalList'); } catch (e) { return; }
   S.apPending = r.pending;
   let bar = $('#apbar');
-  const acc = r.access || [], n = r.pending.length + acc.length;
+  const acc = r.access || [], cash = r.cash || [], n = r.pending.length + acc.length + cash.length;
   if (!n) { if (bar) bar.remove(); return; }
-  if (!bar) { bar = document.createElement('div'); bar.id = 'apbar'; document.body.appendChild(bar); bar.onclick = () => approvalsSheet(); }
-  const a = r.pending[0], x = acc[0];
-  bar.innerHTML = (a ? '<b>Discount approval needed</b> ' + esc(a.by) + ' · ' + a.pct + '% (₹' + money(a.disc) + ' off ₹' + money(a.gross) + ')' : '<b>Store access today</b> ' + esc(x.by) + ' → ' + esc(LOC_SHORT[x.loc] || x.loc)) + (n > 1 ? ' + ' + (n - 1) + ' more' : '') + ' <u>Review</u>';
-  if (navigator.vibrate) try { navigator.vibrate([120, 60, 120]); } catch (e) { }
-  if (!apOpen && !$('.modal')) approvalsSheet();
+  if (!bar) { bar = document.createElement('div'); bar.id = 'apbar'; document.body.appendChild(bar); }
+  const a = r.pending[0], x = acc[0], c = cash[0];
+  bar.onclick = () => (!a && !x && c) ? cashPickupsSheet('waiting') : approvalsSheet();
+  bar.innerHTML = (a ? '<b>Discount approval needed</b> ' + esc(a.by) + ' · ' + a.pct + '% (₹' + money(a.disc) + ' off ₹' + money(a.gross) + ')' : x ? '<b>Store access today</b> ' + esc(x.by) + ' → ' + esc(LOC_SHORT[x.loc] || x.loc)
+    : '<b>💰 Confirm cash</b> ₹' + money(c.amount).replace(/\.00$/, '') + ' taken by ' + esc(c.by) + ' · ' + esc(LOC_SHORT[c.loc] || c.loc)) + (n > 1 ? ' + ' + (n - 1) + ' more' : '') + ' <u>Review</u>';
+  const fresh = r.pending.length + acc.length > 0, newCash = cash.some(k => !(S.kpSeen || {})[k.id]);
+  S.kpSeen = S.kpSeen || {}; cash.forEach(k => S.kpSeen[k.id] = 1);
+  if ((fresh || newCash) && navigator.vibrate) try { navigator.vibrate([120, 60, 120]); } catch (e) { }
+  if (!apOpen && !$('.modal')) { if (fresh) approvalsSheet(); else if (newCash) cashPickupsSheet('waiting'); }
 }
 async function approvalsSheet(showRecent) {
   apOpen = true;
@@ -1671,6 +1675,7 @@ async function viewMore() {
     h += '<div class="card"><h3>Store-only prices</h3><div class="small mute">New prices that apply at one store before the others. Bills at that store use them; other stores keep the normal price.</div>' +
       (ls.length ? ls.map(l => '<div class="row" style="margin-top:10px"><div class="grow"><b>' + esc(l) + '</b> · ' + Object.keys(sp[l]).length + ' items</div><button class="btn sm ghost" data-spv="' + esc(l) + '">View</button><button class="btn sm gold" data-spa="' + esc(l) + '">Apply to all stores</button></div>').join('') : '<div class="small" style="margin-top:8px">None at the moment.</div>') + '</div>'; }
   if (can('customers')) h += '<div class="card"><h3>Customers</h3><div class="small mute">All customers with mobile and name, bills sent on WhatsApp, pending coupons, referrals. Download to Excel.</div><button class="btn sm" id="cust" style="margin-top:10px">Open</button></div>';
+  if (can('sales') || isOwnerUi()) h += '<div class="card"><h3>💰 Cash pickups</h3><div class="small mute">Every time cash is taken from a store drawer – who took it, how much, and whether the owner has confirmed receiving it.</div><button class="btn sm" id="kpl" style="margin-top:10px">Open</button></div>';
   if (can('sales')) h += '<div class="card"><h3>UPI payments (bank emails)</h3><div class="small mute">Every payment ICICI emails about, and the bill it belongs to. Payments not linked to a bill are flagged.</div><button class="btn sm" id="upil" style="margin-top:10px">Open</button></div>';
   if (canApprove() && !can('approve')) h += '<div class="card"><h3>Store access requests</h3><div class="small mute">Staff covering a shift at another store ask here for one day.</div><button class="btn sm" id="apv" style="margin-top:10px">Requests</button></div>';
   if (can('approve')) h += '<div class="card"><h3>Discount approvals</h3><div class="small mute">Discount requests from staff and managers appear on your screen within seconds while the app is open. One-time codes are a back-up you can read out on the phone (each works once, up to 25%).</div>' +
@@ -1691,6 +1696,7 @@ async function viewMore() {
   });
   if ($('#apv')) $('#apv').onclick = () => approvalsSheet(true);
   if ($('#upil')) $('#upil').onclick = () => upiSheet();
+  if ($('#kpl')) $('#kpl').onclick = () => cashPickupsSheet(isOwnerUi() ? 'waiting' : 'all');
   if ($('#apc')) $('#apc').onclick = codesSheet;
   if (!can('settings')) return;
   $('#sy').onclick = async () => { const r = await run('Syncing…', () => call('syncNc')); toast('Night Closing: ' + r.products); };
@@ -3152,7 +3158,11 @@ async function dayCloseSheet(loc, date) {
       '<h3>3 · Cash</h3><div class="grid2"><div><label class="f">Opening cash (float)</label>' + inp('dc_op', val('Opening cash ₹', R.opening)) + (R.opening != null && !R.saved ? '<div class="tiny mute">left in the drawer on ' + esc(R.openingFrom.split('-').reverse().join('-')) + '</div>' : '') + '</div>' +
       '<div><label class="f">Cash paid out today</label>' + inp('dc_po', val('Cash paid out ₹', '')) + '</div>' +
       '<div class="span2"><input class="i" id="dc_pn" placeholder="Paid out for… (e.g. porter, tea, cleaning)" value="' + esc(val('Paid out note', '')) + '"></div>' +
-      '<div><label class="f">Cash handed over / deposited</label>' + inp('dc_dp', val('Cash deposited ₹', '')) + '</div><div></div></div>' +
+      '<div><label class="f">Cash handed over / deposited</label>' + inp('dc_dp', val('Cash deposited ₹', R.pickedSep || '')) + '</div>' +
+      '<div><label class="f">Taken by</label><select class="i" id="dc_cb"><option value="">– who took it? –</option>' + (R.people || []).map(p => '<option' + (p === dcTaker(R) ? ' selected' : '') + '>' + esc(p) + '</option>').join('') + '</select></div></div>' +
+      ((R.pickups || []).length ? '<div class="tiny" style="margin-top:6px">' + R.pickups.map(p => '💰 ' + rs(p.amount) + ' taken by <b>' + esc(p.by) + '</b> (' + esc(p.from === 'Day close' ? 'day close' : 'recorded ' + new Date(p.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })) + ') – <span class="' + (p.status === 'Confirmed' ? 'dcok' : 'dcbad') + '">' + esc(p.status === 'Confirmed' ? 'confirmed by owner ✓' : p.status) + '</span>').join('<br>') + '</div>' : '') +
+      '<button class="btn ghost sm" id="dc_pk" style="margin-top:6px">💰 Someone is taking cash now – record it</button>' +
+      (R.pickedSep ? '<div class="tiny mute">Pickups recorded today (₹' + money(R.pickedSep).replace(/\.00$/, '') + ') are part of “handed over”.</div>' : '') + '<div></div>' +
       '<div class="small" style="margin-top:8px"><b>Count the cash in the drawer now</b> (after handing over): notes and coins, or type the total.</div>' +
       '<div class="dcden">' + DEN.map(n => '<label><span>₹' + n + ' ×</span><input class="i num" inputmode="numeric" data-den="' + n + '" value="' + esc(den[n] || '') + '" placeholder="0"></label>').join('') + '</div>' +
       '<div class="grid2"><div><label class="f">Cash in drawer (total)</label>' + inp('dc_ct', val('Cash counted ₹', '')) + '</div><div id="dc_ce" class="dcres"></div></div>' +
@@ -3178,13 +3188,67 @@ async function dayCloseSheet(loc, date) {
       const dn = {}; $$('[data-den]', m).forEach(i => { if (num(i.value)) dn[i.dataset.den] = num(i.value); });
       const v = id => $('#' + id, m).value.trim();
       const r = await run('Saving the day close…', () => call('dayCloseSave', { date: R.date, loc: R.loc, opening: v('dc_op'), qbCash: v('dc_qc'), qbUpi: v('dc_qu'), qbCard: v('dc_qk'),
-        paidOut: v('dc_po'), paidNote: v('dc_pn'), deposited: v('dc_dp'), counted: v('dc_ct'), denoms: Object.keys(dn).length ? JSON.stringify(dn) : '', cardSettle: v('dc_cs'), upiReceived: v('dc_ur'), notes: v('dc_no') })).catch(() => null);
+        paidOut: v('dc_po'), paidNote: v('dc_pn'), deposited: v('dc_dp'), collectedBy: v('dc_cb'), counted: v('dc_ct'), denoms: Object.keys(dn).length ? JSON.stringify(dn) : '', cardSettle: v('dc_cs'), upiReceived: v('dc_ur'), notes: v('dc_no') })).catch(() => null);
       if (r) { draw(r); toast((r.saved && r.saved.Status === 'Tallied' ? 'Day closed – everything tallies ✓' : 'Day closed – difference recorded') + (/^sent to (\d+)/.test(r.mailed || '') ? ' · emailed ' + RegExp.$1 : '')); }
     };
+    $('#dc_pk', m).onclick = () => cashPickupForm(R.loc, R.date, R.people, () => load());
     if ($('#dc_ck', m)) $('#dc_ck', m).onclick = async () => { const x = await run('Saving…', () => call('dayCloseCheck', { date: R.date, loc: R.loc, reopen: sv.Status === 'Checked' })).catch(() => null); if (x) load(); };
   };
   const load = async () => { $('#dc_b', m).innerHTML = '<div class="empty"><span class="spin dk"></span></div>'; try { draw(await call('dayCloseGet', { date: $('#dc_d', m).value, loc: $('#dc_l', m).value })); } catch (e) { $('#dc_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
   $('#dc_l', m).onchange = load; $('#dc_d', m).onchange = load; load();
+}
+function dcTaker(R) { const p = (R.pickups || []).find(x => x.from === 'Day close'); return p ? p.by : ''; }
+/* ───── cash pickups: anyone taking cash from a drawer is recorded; the owner confirms (v18.23) ───── */
+function cashPickupForm(loc, date, people, done) {
+  const m = modal('💰 Cash taken from the drawer', '<div class="small" style="margin-bottom:8px"><b>' + esc(LOC_SHORT[loc] || loc) + '</b> · ' + esc((date || today()).split('-').reverse().join('-')) + '</div>' +
+    '<div class="grid2"><div><label class="f">Amount taken ₹</label><input class="i num" id="kp_a" inputmode="decimal" placeholder="0"></div>' +
+    '<div><label class="f">Taken by</label><select class="i" id="kp_b"><option value="">– who? –</option>' + (people || []).map(p => '<option>' + esc(p) + '</option>').join('') + '</select></div></div>' +
+    '<label class="f">Note (optional)</label><input class="i" id="kp_n" placeholder="e.g. for bank deposit, for porter payments">' +
+    '<div class="tiny mute" style="margin-top:6px">The owner gets an email and must confirm he received it. It counts in tonight’s day close as “handed over”.</div>' +
+    '<button class="btn gold block" id="kp_s" style="margin-top:12px">Save pickup</button>');
+  $('#kp_s', m).onclick = async () => {
+    const r = await run('Saving…', () => call('cashPickupAdd', { loc: loc, date: date || today(), amount: $('#kp_a', m).value.trim(), collectedBy: $('#kp_b', m).value, note: $('#kp_n', m).value.trim() })).catch(() => null);
+    if (r) { m.close ? m.close() : (m.remove && m.remove()); toast(r.pickup.status === 'Confirmed' ? 'Pickup saved ✓' : 'Pickup saved – owner informed by email'); if (done) done(r); }
+  };
+}
+async function cashPickupsSheet(startStatus) {
+  const m = modal('💰 Cash pickups', '<div class="row" style="gap:6px;flex-wrap:wrap"><select class="i" id="kp_st" style="max-width:190px"><option value="waiting">Waiting for owner</option><option value="all">All (dates)</option><option value="problem">Not received</option></select>' +
+    '<input class="i" type="date" id="kp_f" style="max-width:150px"><input class="i" type="date" id="kp_t" max="' + today() + '" style="max-width:150px"><select class="i" id="kp_l" style="max-width:170px"><option value="">All stores</option>' +
+    ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120', 'Event'].map(l => '<option value="' + esc(l) + '">' + esc(l === 'Event' ? 'Event stalls' : (LOC_SHORT[l] || l)) + '</option>').join('') + '</select></div>' +
+    '<div id="kp_x" style="margin-top:10px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true, onClose: () => { if (typeof checkApprovals === 'function') checkApprovals(); } });
+  const rs = x => '₹' + money(x || 0).replace(/\.00$/, '');
+  $('#kp_st', m).value = startStatus || 'waiting';
+  const d30 = new Date(Date.now() - 30 * 864e5); $('#kp_f', m).value = d30.toISOString().slice(0, 10); $('#kp_t', m).value = today();
+  const q = () => ({ status: $('#kp_st', m).value, from: $('#kp_f', m).value, to: $('#kp_t', m).value, loc: $('#kp_l', m).value });
+  const draw = r => {
+    const t = r.totals, st = $('#kp_st', m).value;
+    $('#kp_x', m).innerHTML = '<div class="bigp"><div><span>Waiting for you</span><b style="color:' + (t.waitingCount ? 'var(--bad)' : 'inherit') + '">' + rs(t.waitingAll) + '</b></div>' + (st === 'all' ? '<div><span>Confirmed</span><b>' + rs(t.confirmed) + '</b></div><div><span>Not received</span><b>' + rs(t.notReceived) + '</b></div>' : '') + '</div>' +
+      (st === 'all' && r.byPerson.length ? '<div class="tiny mute" style="margin:6px 0">By person: ' + r.byPerson.map(p => esc(p.by) + ' ' + rs(p.amount)).join(' · ') + '</div>' : '') +
+      (r.list.length ? r.list.map(p => '<div class="card" style="padding:12px;border-left:4px solid ' + (p.status === 'Confirmed' ? 'var(--ok)' : p.status === 'Not received' ? 'var(--bad)' : 'var(--gold)') + '">' +
+        '<div class="row"><b class="grow" style="font-size:18px">' + rs(p.amount) + '</b><span class="pill ' + (p.status === 'Confirmed' ? 'p-ok' : 'p-warn') + '">' + esc(p.status) + '</span></div>' +
+        '<div class="small" style="margin-top:4px">' + esc(p.loc === 'Event' ? 'Event stall' : (LOC_SHORT[p.loc] || p.loc)) + ' · ' + esc(p.date.split('-').reverse().join('-')) + ' · taken by <b>' + esc(p.by) + '</b></div>' +
+        '<div class="tiny mute">entered by ' + esc(p.enteredBy) + ' · ' + new Date(p.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' · ' + esc(p.from) + (p.note ? ' · ' + esc(p.note) : '') + '</div>' +
+        (p.status !== 'Waiting for owner' ? '<div class="tiny" style="margin-top:4px">' + esc(p.status + ' by ' + p.confirmedBy) + (p.confirmedAt ? ' · ' + new Date(p.confirmedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '') + (p.ownerNote ? ' · ' + esc(p.ownerNote) : '') + '</div>' : '') +
+        (r.canConfirm ? (p.status === 'Waiting for owner' ? '<div class="row" style="margin-top:10px"><button class="btn ghost" data-kno="' + esc(p.id) + '" style="color:var(--bad)">Not received</button><div class="grow"></div><button class="btn gold" data-kyes="' + esc(p.id) + '">Confirm received ' + rs(p.amount) + '</button></div>'
+          : '<button class="btn ghost sm" data-kre="' + esc(p.id) + '" style="margin-top:6px">Undo</button>') : '') + '</div>').join('')
+        : '<div class="empty small">' + (st === 'waiting' ? 'Nothing waiting – every pickup is confirmed ✓' : 'No pickups.') + '</div>') +
+      '<div class="row" style="margin-top:10px"><button class="btn ghost sm" id="kp_new">+ Record cash taken</button></div>';
+    const act = async (id, ok, reopen) => {
+      let note = '';
+      if (!ok && !reopen) { note = prompt('What is wrong? (e.g. received only ₹5,000 / not received)') || ''; if (!note.trim()) return; }
+      const x = await run('Saving…', () => call('cashPickupDecide', { id: id, ok: ok, note: note, reopen: reopen, list: q() })).catch(() => null);
+      if (x) { draw(x); toast(reopen ? 'Back to waiting' : ok ? 'Confirmed ✓' : 'Marked not received'); }
+    };
+    $$('[data-kyes]', m).forEach(b => b.onclick = () => act(b.dataset.kyes, true));
+    $$('[data-kno]', m).forEach(b => b.onclick = () => act(b.dataset.kno, false));
+    $$('[data-kre]', m).forEach(b => b.onclick = () => act(b.dataset.kre, false, true));
+    $('#kp_new', m).onclick = () => {
+      const lm = modal('Which store?', ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120', 'Event'].map(l => '<button class="btn ghost block" data-kl="' + esc(l) + '" style="margin-bottom:6px">' + esc(l === 'Event' ? 'Event stalls' : l) + '</button>').join(''));
+      $$('[data-kl]', lm).forEach(b => b.onclick = () => { lm.close ? lm.close() : lm.remove(); cashPickupForm(b.dataset.kl, today(), r.people, () => load()); });
+    };
+  };
+  const load = async () => { try { draw(await call('cashPickupList', q())); } catch (e) { $('#kp_x', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
+  ['kp_st', 'kp_f', 'kp_t', 'kp_l'].forEach(id => $('#' + id, m).onchange = load); load();
 }
 /** Owner / sales: every store's day close for one date. */
 async function dayCloseList(date) {
@@ -3225,7 +3289,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = 'de6c2ac564';
+<script>window.NV_BUILD = '0b1571c6f5';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
