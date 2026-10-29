@@ -526,13 +526,15 @@ function pickProduct(opts) {
 /* ───────────── INVOICES ───────────── */
 const PU = { tab: 'inv', boot: null, q: '' };
 function puTabs() {
-  return '<div class="chips" id="pu_t" style="margin-bottom:10px">' + [['inv', 'Invoices'], ['dc', 'Porter / packing charges'], ['cost', 'Cost prices']].map(t => '<button data-t="' + t[0] + '" class="' + (PU.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div>';
+  return '<div class="chips" id="pu_t" style="margin-bottom:10px">' + [['inv', 'Invoices'], ['pay', 'Payments'], ['sup', 'Suppliers'], ['dc', 'Porter / packing charges'], ['cost', 'Cost prices']].map(t => '<button data-t="' + t[0] + '" class="' + (PU.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div>';
 }
 function bindPuTabs() { $$('#pu_t button').forEach(b => b.onclick = () => { PU.tab = b.dataset.t; viewInvoices(); }); }
 async function viewInvoices() {
   if (S.inv) return drawReview();
   if (PU.tab === 'dc') return viewCharges();
   if (PU.tab === 'cost') return viewCosts();
+  if (PU.tab === 'pay') return viewPayables();
+  if (PU.tab === 'sup') return viewSuppliers();
   $('#view').innerHTML = puTabs() + '<h2>Supplier invoices</h2>' +
     '<label class="upl" for="file"><b>⬆ Upload invoice</b><span class="mute small">PDF, or a photo taken on your phone. The system reads it, matches each item to the Nutvique product and shows cost, selling price and MRP.</span></label>' +
     '<input type="file" id="file" accept="application/pdf,image/*" class="hide">' +
@@ -836,6 +838,178 @@ function confirmRevise() {
       (r.moved.length ? '<h3>Stock moved</h3><table class="t">' + r.moved.map(x => '<tr><td>' + esc(x.name) + '<div class="tiny mute">' + esc(x.loc) + '</div></td><td class="n ' + (x.qty < 0 ? 'neg' : '') + '">' + (x.qty > 0 ? '+' : '') + qfmt(x.qty) + '</td></tr>').join('') + '</table>' : '<div class="small mute" style="margin-top:8px">No stock change.</div>'));
     go('invoices');
   };
+}
+
+/* ───────────── SUPPLIER PAYMENTS & SUPPLIERS (v18.28) ───────────── */
+const PY = { data: null, f: 'due', sup: '', q: '', sdata: null, sq: '' };
+const PY_PILL = { Paid: 'p-ok', 'Part paid': 'p-new', Outstanding: 'p-warn', Overdue: 'p-bad' };
+const pdmy = s => s ? s.slice(8, 10) + '-' + s.slice(5, 7) + '-' + s.slice(2, 4) : '–';
+function pyTiles(list) {
+  const t = new Date(), in7 = ymd(new Date(t.getTime() + 7 * 864e5)), mo = today().slice(0, 7);
+  const open = list.filter(i => i.status !== 'Paid');
+  const sum = a => a.reduce((x, i) => x + i.balance, 0);
+  const paidMonth = list.reduce((x, i) => x + i.payments.filter(p => p.date.slice(0, 7) === mo).reduce((y, p) => y + p.amount, 0), 0) + (PY.data.loose || []).filter(p => p.date.slice(0, 7) === mo).reduce((y, p) => y + p.amount, 0);
+  const tile = (lbl, v, sub, col) => '<div class="card" style="margin:0;padding:10px 12px"><div class="tiny mute">' + lbl + '</div><div style="font-size:20px;font-weight:700;' + (col ? 'color:' + col : '') + '">' + inr(v, 0) + '</div><div class="tiny mute">' + sub + '</div></div>';
+  return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">' +
+    tile('Outstanding (to pay)', sum(open), open.length + ' invoice' + (open.length === 1 ? '' : 's')) +
+    tile('Overdue', sum(open.filter(i => i.status === 'Overdue')), open.filter(i => i.status === 'Overdue').length + ' past due date', 'var(--bad)') +
+    tile('Due in next 7 days', sum(open.filter(i => i.status !== 'Overdue' && i.due && i.due <= in7)), 'by ' + pdmy(in7)) +
+    tile('No due date yet', sum(open.filter(i => !i.due)), 'set credit days or due date') +
+    tile('Paid this month', paidMonth, 'advances + final payments', 'var(--ok)') + '</div>';
+}
+async function viewPayables(force) {
+  $('#view').innerHTML = puTabs() + '<h2>Supplier payments</h2><div class="small mute" style="margin:-4px 0 10px">Every posted invoice with its delivery date, due date, advance and final payment. Tap an invoice to record a payment, change its dates or attach the invoice file.</div><div id="py_b"><div class="empty"><span class="spin dk"></span></div></div>';
+  bindPuTabs();
+  try { if (!PY.data || force !== false) PY.data = await call('payables'); } catch (e) { $('#py_b').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+  if (PU.tab !== 'pay' || S.view !== 'invoices') return;
+  drawPayables();
+}
+function drawPayables() {
+  const D = PY.data, q = PY.q.trim().toUpperCase();
+  const list = D.invoices.filter(i => (!PY.sup || i.key === PY.sup) && (!q || (i.supplier + ' ' + i.no).toUpperCase().indexOf(q) >= 0) &&
+    (PY.f === 'all' || (PY.f === 'due' ? i.status !== 'Paid' : PY.f === 'over' ? i.status === 'Overdue' : PY.f === 'paid' ? i.status === 'Paid' : PY.f === 'nodue' ? (!i.due && i.status !== 'Paid') : true)));
+  const wide = window.innerWidth > 760;
+  const tot = list.reduce((a, i) => { a.t += i.total; a.a += i.advance; a.f += i.final; a.b += i.balance; return a; }, { t: 0, a: 0, f: 0, b: 0 });
+  $('#py_b').innerHTML = pyTiles(D.invoices.filter(i => !PY.sup || i.key === PY.sup)) +
+    '<div class="row" style="margin-bottom:8px;flex-wrap:wrap"><select class="i" id="py_s" style="max-width:280px"><option value="">All suppliers</option>' + D.suppliers.map(s => '<option value="' + esc(s.key) + '"' + (PY.sup === s.key ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select>' +
+    '<input class="i grow" id="py_q" type="search" placeholder="Supplier or invoice no…" value="' + esc(PY.q) + '"></div>' +
+    '<div class="chips" id="py_f" style="margin-bottom:8px">' + [['due', 'To pay'], ['over', 'Overdue'], ['nodue', 'No due date'], ['paid', 'Paid'], ['all', 'All']].map(c => '<button data-f="' + c[0] + '" class="' + (PY.f === c[0] ? 'on' : '') + '">' + c[1] + '</button>').join('') + '</div>' +
+    '<div class="row" style="margin-bottom:10px"><button class="btn gold sm" id="py_new">+ Record a payment</button><button class="btn ghost sm" id="py_csv">Download</button></div>' +
+    (list.length ? (wide ? '<div class="card" style="padding:6px"><div class="tscroll"><table class="t"><tr><th>Supplier / invoice</th><th>Delivered</th><th>Due</th><th class="n">Invoice ₹</th><th class="n">Advance</th><th class="n">Final / part</th><th class="n">Balance</th><th>Status</th></tr>' +
+      list.map(i => '<tr data-id="' + esc(i.id) + '" style="cursor:pointer"><td><b>' + esc(i.supplier) + '</b><div class="tiny mute">' + esc(i.no) + ' · inv ' + pdmy(i.date) + (i.inv !== 'Posted' ? ' · invoice to come' : '') + (i.file ? ' · 📎' : '') + '</div></td><td>' + pdmy(i.delivery) + '</td><td>' + (i.due ? pdmy(i.due) + (i.daysLate ? '<div class="tiny" style="color:var(--bad)">' + i.daysLate + ' days late</div>' : '') : '<span class="mute">–</span>') + '</td>' +
+        '<td class="n">' + inr(i.total, 0) + '</td><td class="n">' + (i.advance ? inr(i.advance, 0) + '<div class="tiny mute">' + pdmy(i.advDate) + '</div>' : '–') + '</td><td class="n">' + (i.final ? inr(i.final, 0) + '<div class="tiny mute">' + pdmy(i.finDate) + '</div>' : '–') + '</td>' +
+        '<td class="n"><b>' + inr(i.balance, 0) + '</b></td><td><span class="pill ' + PY_PILL[i.status] + '">' + i.status + '</span></td></tr>').join('') +
+      '<tr><td colspan="3"><b>Total (' + list.length + ')</b></td><td class="n"><b>' + inr(tot.t, 0) + '</b></td><td class="n">' + inr(tot.a, 0) + '</td><td class="n">' + inr(tot.f, 0) + '</td><td class="n"><b>' + inr(tot.b, 0) + '</b></td><td></td></tr></table></div></div>'
+      : '<div class="card" style="padding:4px 10px">' + list.map(i => '<div class="li" data-id="' + esc(i.id) + '"><div class="grow"><b>' + esc(i.supplier) + '</b> <span class="tiny mute">' + esc(i.no) + (i.file ? ' 📎' : '') + '</span><div class="tiny mute">Delivered ' + pdmy(i.delivery) + ' · Due ' + (i.due ? pdmy(i.due) : '–') + ' · Invoice ' + inr(i.total, 0) + '</div><div class="tiny mute">Advance ' + (i.advance ? inr(i.advance, 0) + ' (' + pdmy(i.advDate) + ')' : '–') + ' · Final ' + (i.final ? inr(i.final, 0) + ' (' + pdmy(i.finDate) + ')' : '–') + '</div></div><div class="right"><b>' + inr(i.balance, 0) + '</b><div><span class="pill ' + PY_PILL[i.status] + '">' + i.status + '</span></div></div></div>').join('') + '<div class="tiny" style="padding:8px 0"><b>Balance of ' + list.length + ': ' + inr(tot.b, 0) + '</b></div></div>')
+      : '<div class="empty">Nothing here.</div>') +
+    ((D.loose || []).length ? '<div class="card"><h3>Advances not linked to an invoice yet</h3>' + D.loose.map(p => '<div class="li"><div class="grow"><b>' + esc(p.supplier) + '</b><div class="tiny mute">' + pdmy(p.date) + ' · ' + esc(p.mode) + (p.ref ? ' · ' + esc(p.ref) : '') + (p.note ? ' · ' + esc(p.note) : '') + '</div></div><div class="right"><b>' + inr(p.amount, 0) + '</b><div><button class="btn sm ghost" data-rmp="' + esc(p.id) + '">Remove</button></div></div></div>').join('') + '<div class="tiny mute">When the invoice is posted, remove the advance here and record it again on the invoice.</div></div>' : '');
+  $('#py_s').onchange = e => { PY.sup = e.target.value; drawPayables(); };
+  $('#py_q').oninput = e => { PY.q = e.target.value; const p = e.target.selectionStart; drawPayables(); const n = $('#py_q'); n.focus(); n.setSelectionRange(p, p); };
+  $$('#py_f button').forEach(b => b.onclick = () => { PY.f = b.dataset.f; drawPayables(); });
+  $$('#py_b [data-id]').forEach(el => el.onclick = () => supPaySheet(el.dataset.id));
+  $$('#py_b [data-rmp]').forEach(el => el.onclick = async () => { if (!confirmTwice(el)) return; PY.data = await run('Removing…', () => call('removePayment', { id: el.dataset.rmp })); drawPayables(); });
+  $('#py_new').onclick = () => newPaymentSheet();
+  $('#py_csv').onclick = () => payCsv(list);
+}
+function payCsv(list) {
+  const head = ['Supplier', 'GSTIN', 'Invoice no.', 'Invoice date', 'Delivery date', 'Due date', 'Invoice total', 'Advance paid', 'Advance date', 'Final / part paid', 'Final payment date', 'Total paid', 'Balance', 'Status', 'Invoice file'];
+  const rows = [head].concat(list.map(i => [i.supplier, i.gstin, i.no, i.date, i.delivery, i.due, i.total, i.advance, i.advDate, i.final, i.finDate, i.paid, i.balance, i.status, i.file]));
+  csvDownload(rows, 'Nutvique_supplier_payments_' + today() + '.csv');
+}
+function csvDownload(rows, name) {
+  const csv = rows.map(x => x.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
+function payForm(i, pre) {
+  const D = PY.data;
+  return '<div class="grid3">' +
+    fld('Payment', '<select class="i" id="pf_type">' + D.types.map(t => '<option' + (t === (pre.type || (i && i.paid === 0 ? 'Final payment' : 'Final payment')) ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>') +
+    fld('Date paid', '<input class="i" type="date" id="pf_date" max="' + today() + '" value="' + today() + '">') +
+    fld('Amount ₹', '<input class="i num" id="pf_amt" inputmode="decimal" value="' + (i && i.balance > 0 ? r2(i.balance) : '') + '">') +
+    fld('Paid by', '<select class="i" id="pf_mode">' + D.modes.map(t => '<option>' + t + '</option>').join('') + '</select>') +
+    fld('UTR / cheque no.', '<input class="i" id="pf_ref" placeholder="optional">') +
+    fld('Note', '<input class="i" id="pf_note" placeholder="optional">') + '</div>';
+}
+function readPayForm(m) { return { type: $('#pf_type', m).value, date: $('#pf_date', m).value, amount: num($('#pf_amt', m).value), mode: $('#pf_mode', m).value, ref: $('#pf_ref', m).value, note: $('#pf_note', m).value }; }
+function supPaySheet(id) {
+  const i = PY.data.invoices.find(x => x.id === id); if (!i) return;
+  const m = modal(i.supplier + ' · ' + i.no,
+    '<div class="kv"><div>Invoice date</div><div>' + pdmy(i.date) + (i.inv !== 'Posted' ? ' <span class="pill p-new">invoice to come</span>' : '') + '</div><div>Received at</div><div>' + esc(i.at) + '</div><div>Invoice total</div><div><b>' + inr(i.total) + '</b></div>' +
+    '<div>Advance paid</div><div>' + inr(i.advance) + (i.advDate ? ' · ' + pdmy(i.advDate) : '') + '</div><div>Final / part paid</div><div>' + inr(i.final) + (i.finDate ? ' · ' + pdmy(i.finDate) : '') + '</div>' +
+    '<div>Balance</div><div><b>' + inr(i.balance) + '</b> <span class="pill ' + PY_PILL[i.status] + '">' + i.status + '</span></div>' +
+    '<div>Invoice file</div><div>' + (i.file ? '<a href="' + esc(i.file) + '" target="_blank">Open invoice</a> · ' : '') + '<label class="btn sm ghost" style="display:inline-block;cursor:pointer">' + (i.file ? 'Replace' : '⬆ Attach invoice') + '<input type="file" id="pf_file" accept="application/pdf,image/*" class="hide"></label></div></div>' +
+    '<div class="card" style="margin-top:12px"><h3>Dates</h3><div class="grid3">' +
+    fld('Goods delivered on', '<input class="i" type="date" id="pt_del" value="' + esc(i.delivery) + '">') +
+    fld('Payment due on', '<input class="i" type="date" id="pt_due" value="' + esc(i.due) + '">') +
+    fld('Note', '<input class="i" id="pt_note" value="' + esc(i.termNote) + '" placeholder="e.g. 15 days credit">') + '</div>' +
+    '<div class="tiny mute" style="margin:6px 0">' + (i.credit != null ? 'This supplier gives ' + i.credit + ' days credit, so the due date is the delivery date + ' + i.credit + ' days unless you change it here.' : 'Tip: set the supplier’s credit days under Suppliers and due dates fill in by themselves.') + '</div>' +
+    '<button class="btn ghost sm" id="pt_save">Save dates</button></div>' +
+    '<div class="card"><h3>Payments</h3>' + (i.payments.length ? i.payments.map(p => '<div class="li"><div class="grow"><b>' + esc(p.type) + '</b> · ' + pdmy(p.date) + '<div class="tiny mute">' + esc(p.mode) + (p.ref ? ' · ' + esc(p.ref) : '') + (p.note ? ' · ' + esc(p.note) : '') + ' · by ' + esc(p.by) + '</div></div><div class="right"><b>' + inr(p.amount) + '</b><div><button class="btn sm ghost" data-rmp="' + esc(p.id) + '">Remove</button></div></div></div>').join('') : '<div class="mute small">No payment recorded yet.</div>') + '</div>' +
+    (i.balance > 0.5 ? '<div class="card"><h3>Record a payment</h3>' + payForm(i, {}) + '<button class="btn gold block" id="pf_go" style="margin-top:12px">Save payment</button></div>' : ''), { wide: true });
+  const back = () => { m.close(); drawPayables(); };
+  $('#pt_save', m).onclick = async () => {
+    PY.data = await run('Saving dates…', () => call('savePayTerms', { id: id, delivery: $('#pt_del', m).value, due: ($('#pt_due', m).value !== i.due || i.dueSet) ? $('#pt_due', m).value : '', note: $('#pt_note', m).value }));
+    toast('Dates saved'); back(); supPaySheet(id);
+  };
+  $('#pf_file', m).onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const b = await fileToBase64(f).catch(er => { toast(er.message, true); return null; }); if (!b) return;
+    const r = await run('Uploading the invoice…', () => call('attachInvoiceFile', { id: id, fileName: f.name, mime: b.mime, base64: b.base64 }));
+    i.file = r.url; toast('Invoice attached'); back(); supPaySheet(id);
+  };
+  if ($('#pf_go', m)) $('#pf_go', m).onclick = async () => {
+    const d = readPayForm(m); d.invoiceId = id;
+    if (!(d.amount > 0)) return toast('Enter the amount paid.', true);
+    PY.data = await run('Saving payment…', () => call('recordPayment', d));
+    toast(d.type + ' of ' + inr(d.amount, 0) + ' saved'); back(); supPaySheet(id);
+  };
+  $$('[data-rmp]', m).forEach(el => el.onclick = async () => { if (!confirmTwice(el)) return; PY.data = await run('Removing…', () => call('removePayment', { id: el.dataset.rmp })); back(); supPaySheet(id); });
+}
+function newPaymentSheet() {
+  const D = PY.data;
+  const m = modal('Record a payment to a supplier', '<div class="grid2">' + fld('Supplier', '<select class="i" id="np_s"><option value="">Pick…</option>' + D.suppliers.map(s => '<option value="' + esc(s.key) + '"' + (PY.sup === s.key ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select>') +
+    fld('Invoice', '<select class="i" id="np_i"></select>') + '</div><div id="np_info" class="tiny mute" style="margin:6px 0 10px"></div><div id="np_f"></div><button class="btn gold block" id="np_go" style="margin-top:12px">Save payment</button>');
+  const fill = () => {
+    const k = $('#np_s', m).value, inv = D.invoices.filter(i => i.key === k && i.status !== 'Paid');
+    $('#np_i', m).innerHTML = (k ? inv.map(i => '<option value="' + esc(i.id) + '">' + esc(i.no + ' · ' + pdmy(i.date) + ' · balance ' + inr(i.balance, 0)) + '</option>').join('') + '<option value="">Advance – invoice not entered yet</option>' : '<option value="">Pick the supplier first</option>');
+    info();
+  };
+  const info = () => {
+    const i = D.invoices.find(x => x.id === $('#np_i', m).value);
+    $('#np_info', m).innerHTML = i ? 'Invoice ' + inr(i.total, 0) + ' · paid ' + inr(i.paid, 0) + ' · <b>balance ' + inr(i.balance, 0) + '</b>' + (i.due ? ' · due ' + pdmy(i.due) : '') : ($('#np_s', m).value ? 'Saved as an advance to this supplier. Link it to the invoice once it is posted.' : '');
+    $('#np_f', m).innerHTML = payForm(i, { type: i ? 'Final payment' : 'Advance' });
+    if (!i) $('#pf_type', m).value = 'Advance';
+  };
+  $('#np_s', m).onchange = fill; $('#np_i', m).onchange = info; fill();
+  $('#np_go', m).onclick = async () => {
+    const k = $('#np_s', m).value; if (!k) return toast('Pick the supplier.', true);
+    const d = readPayForm(m); d.invoiceId = $('#np_i', m).value; d.key = k; d.supplier = (D.suppliers.find(s => s.key === k) || {}).name;
+    if (!(d.amount > 0)) return toast('Enter the amount paid.', true);
+    PY.data = await run('Saving payment…', () => call('recordPayment', d));
+    m.close(); toast('Payment of ' + inr(d.amount, 0) + ' saved'); drawPayables();
+  };
+}
+/* suppliers + goods bought from each */
+async function viewSuppliers() {
+  $('#view').innerHTML = puTabs() + '<h2>Suppliers</h2><div class="small mute" style="margin:-4px 0 10px">Every supplier on a posted invoice, the goods bought from them, and what is still owed. Tap a supplier for details and credit days.</div><div id="su_b"><div class="empty"><span class="spin dk"></span></div></div>';
+  bindPuTabs();
+  try { PY.sdata = await call('suppliers'); } catch (e) { $('#su_b').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+  if (PU.tab !== 'sup' || S.view !== 'invoices') return;
+  drawSuppliers();
+}
+function drawSuppliers() {
+  const q = PY.sq.trim().toUpperCase();
+  const list = PY.sdata.suppliers.filter(s => !q || (s.name + ' ' + s.gstin + ' ' + s.goods.map(g => g.name + ' ' + g.seller).join(' ')).toUpperCase().indexOf(q) >= 0);
+  $('#su_b').innerHTML = '<div class="row" style="margin-bottom:8px"><input class="i grow" id="su_q" type="search" placeholder="Supplier, GSTIN or product…" value="' + esc(PY.sq) + '"><button class="btn ghost sm" id="su_csv">Download list</button></div>' +
+    (list.length ? '<div class="card" style="padding:4px 10px">' + list.map(s => '<div class="li" data-k="' + esc(s.key) + '"><div class="grow"><b>' + esc(s.name) + '</b>' + (s.gstin ? ' <span class="tiny mute">' + esc(s.gstin) + '</span>' : '') +
+      '<div class="tiny mute">' + s.invoices.length + ' invoice' + (s.invoices.length === 1 ? '' : 's') + ' · last ' + pdmy(s.last) + ' · ' + s.goods.length + ' product' + (s.goods.length === 1 ? '' : 's') + (s.credit != null ? ' · ' + s.credit + ' days credit' : '') + '</div>' +
+      '<div class="tiny" style="margin-top:2px;white-space:normal">' + esc(s.goods.slice(0, 6).map(g => g.name).join(' · ')) + (s.goods.length > 6 ? ' …' : '') + '</div></div>' +
+      '<div class="right"><div class="tiny mute">Bought</div><b>' + inr(s.bought, 0) + '</b>' + (s.balance > 1 ? '<div class="tiny" style="color:' + (s.overdue > 1 ? 'var(--bad)' : 'var(--warn)') + '">Owe ' + inr(s.balance, 0) + '</div>' : '<div class="tiny" style="color:var(--ok)">Paid up</div>') + '</div></div>').join('') + '</div>' : '<div class="empty">No supplier found.</div>');
+  $('#su_q').oninput = e => { PY.sq = e.target.value; const p = e.target.selectionStart; drawSuppliers(); const n = $('#su_q'); n.focus(); n.setSelectionRange(p, p); };
+  $$('#su_b [data-k]').forEach(el => el.onclick = () => supplierSheet(el.dataset.k));
+  $('#su_csv').onclick = () => {
+    const rows = [['Supplier', 'GSTIN', 'Credit days', 'Contact', 'Phone', 'Product (Nutvique)', 'SKU', 'Name on supplier invoice', 'Total qty bought', 'Unit', 'Amount ₹ (excl. GST)', 'Invoices', 'Last bought', 'Last invoice', 'Last rate ₹', 'Last landed cost ₹']];
+    PY.sdata.suppliers.forEach(s => s.goods.forEach(g => rows.push([s.name, s.gstin, s.credit == null ? '' : s.credit, s.contact || '', s.phone || '', g.name, g.sku, g.seller, g.qty, g.unit, g.amount, g.n, g.last, g.lastNo || '', g.rate, g.cost])));
+    csvDownload(rows, 'Nutvique_suppliers_and_goods_' + today() + '.csv');
+  };
+}
+function supplierSheet(key) {
+  const s = PY.sdata.suppliers.find(x => x.key === key); if (!s) return;
+  const showCost = can('costs');
+  const m = modal(s.name, '<div class="grid3">' + fld('Name', '<input class="i" id="su_n" value="' + esc(s.name) + '">') + fld('GSTIN', '<input class="i" id="su_g" value="' + esc(s.gstin) + '">') +
+    fld('Credit days', '<input class="i num" id="su_c" inputmode="numeric" placeholder="e.g. 15" value="' + (s.credit == null ? '' : s.credit) + '">') +
+    fld('Contact person', '<input class="i" id="su_p" value="' + esc(s.contact || '') + '">') + fld('Phone', '<input class="i" id="su_ph" inputmode="tel" value="' + esc(s.phone || '') + '">') +
+    fld('Bank / UPI details', '<input class="i" id="su_bk" value="' + esc(s.bank || '') + '">') + fld('Notes', '<input class="i" id="su_no" value="' + esc(s.notes || '') + '">', 3) + '</div>' +
+    '<div class="tiny mute" style="margin:6px 0">Credit days set the due date of every invoice from this supplier (delivery date + days), unless an invoice has its own due date.</div><button class="btn ghost sm" id="su_save">Save supplier</button>' +
+    '<div class="kv" style="margin-top:12px"><div>Bought (incl. GST)</div><div><b>' + inr(s.bought) + '</b></div><div>Paid</div><div>' + inr(s.paid) + '</div><div>Still to pay</div><div><b>' + inr(s.balance) + '</b>' + (s.overdue > 1 ? ' <span class="pill p-bad">' + inr(s.overdue, 0) + ' overdue</span>' : '') + '</div>' + (s.advanceUnlinked ? '<div>Advance not linked</div><div>' + inr(s.advanceUnlinked) + '</div>' : '') + '</div>' +
+    '<h3 style="margin-top:14px">Goods bought</h3><div class="tscroll"><table class="t"><tr><th>Product</th><th class="n">Qty</th><th class="n">Amount</th><th class="n">Last rate</th>' + (showCost ? '<th class="n">Landed cost</th>' : '') + '<th>Last</th></tr>' +
+    s.goods.map(g => '<tr><td>' + esc(g.name) + '<div class="tiny mute">' + esc(g.sku || 'not linked') + (g.seller && g.seller !== g.name ? ' · ' + esc(g.seller) : '') + '</div></td><td class="n">' + qfmt(g.qty) + ' ' + esc(g.unit) + '</td><td class="n">' + inr(g.amount, 0) + '</td><td class="n">' + inr(g.rate) + '</td>' + (showCost ? '<td class="n">' + (g.cost ? inr(g.cost) : '–') + '</td>' : '') + '<td>' + pdmy(g.last) + '<div class="tiny mute">' + esc(g.lastNo || '') + '</div></td></tr>').join('') + '</table></div>' +
+    '<h3 style="margin-top:14px">Invoices</h3>' + s.invoices.map(i => '<div class="li" data-pay="' + esc(i.id) + '"><div class="grow"><b>' + esc(i.no) + '</b> · ' + pdmy(i.date) + (i.file ? ' 📎' : '') + '<div class="tiny mute">' + (i.inv !== 'Posted' ? 'invoice to come · ' : '') + 'balance ' + inr(i.balance, 0) + '</div></div><div class="right"><b>' + inr(i.total, 0) + '</b><div><span class="pill ' + PY_PILL[i.status] + '">' + i.status + '</span></div></div></div>').join(''), { wide: true });
+  $('#su_save', m).onclick = async () => {
+    PY.sdata = await run('Saving…', () => call('saveSupplier', { key: key, name: $('#su_n', m).value, gstin: $('#su_g', m).value, credit: $('#su_c', m).value, contact: $('#su_p', m).value, phone: $('#su_ph', m).value, bank: $('#su_bk', m).value, notes: $('#su_no', m).value }));
+    PY.data = null; m.close(); toast('Supplier saved'); drawSuppliers();
+  };
+  $$('[data-pay]', m).forEach(el => el.onclick = async () => { m.close(); PU.tab = 'pay'; PY.f = 'all'; PY.sup = key; await viewPayables(); supPaySheet(el.dataset.pay); });
 }
 
 /* ───────────── porter / packing charges ───────────── */
@@ -1247,10 +1421,21 @@ function drawStock() {
       '<td class="n ' + (r.q < 0 ? 'neg' : '') + '"><b>' + qfmt(r.q) + '</b> ' + esc(r.p.unit || '') + (!wide && loc === 'All' ? '<div class="tiny mute" style="white-space:normal">' + Object.keys(r.st.q).filter(l => r.st.q[l]).map(l => esc(LOC_SHORT[l] || l) + ' ' + qfmt(r.st.q[l])).join(' · ') + '</div>' : '') + '</td>' +
       (can('costs') ? '<td class="n">' + (v ? inr(v, 0) : '') + '</td>' : '') + '</tr>';
   }).join('');
-  $('#sv').innerHTML = rows.length ? '<div class="card" style="padding:6px"><div class="tscroll"><table class="t"><tr><th>Product</th>' + (wide ? locs.map(l => '<th class="n">' + esc(LOC_SHORT[l] || l) + '</th>').join('') : '') + '<th class="n">' + (loc === 'All' ? 'Total' : 'Qty') + '</th>' + (can('costs') ? '<th class="n">Value at cost</th>' : '') + '</tr>' + body +
+  $('#sv').innerHTML = (loc === 'All' && rows.length ? companySummary(rows) : '') + (rows.length ? '<div class="card" style="padding:6px"><div class="tscroll"><table class="t"><tr><th>Product</th>' + (wide ? locs.map(l => '<th class="n">' + esc(LOC_SHORT[l] || l) + '</th>').join('') : '') + '<th class="n">' + (loc === 'All' ? 'Total' : 'Qty') + '</th>' + (can('costs') ? '<th class="n">Value at cost</th>' : '') + '</tr>' + body +
     (can('costs') ? '<tr><td colspan="' + (wide ? locs.length + 2 : 2) + '"><b>Total value at cost</b> <span class="tiny mute">(items with a cost)</span></td><td class="n"><b>' + inr(val, 0) + '</b></td></tr>' : '') + '</table></div></div>' +
-    '<div class="tiny mute">Includes goods in from invoices plus everything the Night Closing app records (transfers, events). Negative = opening stock / sales not loaded yet.</div>' : '<div class="empty">No stock recorded yet.<br><span class="small">Post an invoice, or load opening stock with “Stock count / adjust”.</span></div>';
+    '<div class="tiny mute">Includes goods in from invoices plus everything the Night Closing app records (transfers, events). Negative = opening stock / sales not loaded yet.</div>' : '<div class="empty">No stock recorded yet.<br><span class="small">Post an invoice, or load opening stock with “Stock count / adjust”.</span></div>');
   $$('#sv tr[data-sku]').forEach(tr => tr.onclick = () => { if (S.bySku[tr.dataset.sku]) productSheet(tr.dataset.sku); });
+}
+/** Whole company at a glance: kg / pieces / value at cost per store and in total (sales, transfers and goods in are all in the ledger). */
+function companySummary(rows) {
+  const locs = S.locations.filter(l => rows.some(r => r.st.q[l])), cost = can('costs');
+  const z = () => ({ kg: 0, pc: 0, v: 0, neg: 0 }), T = z(), L = {}; locs.forEach(l => L[l] = z());
+  rows.forEach(r => { const kg = (r.p.unit || 'kg') === 'kg', c = r.p.cost || 0;
+    locs.forEach(l => { const q = r.st.q[l] || 0; if (!q) return; const o = L[l]; if (q < 0) o.neg++; if (kg) o.kg += q; else o.pc += q; o.v += q * c; });
+    const q = r.st.t || 0; if (q < 0) T.neg++; if (kg) T.kg += q; else T.pc += q; T.v += q * c; });
+  const cell = (n, o, b) => '<tr' + (b ? ' style="font-weight:700"' : '') + '><td>' + esc(n) + '</td><td class="n">' + qfmt(r2(o.kg)) + ' kg</td><td class="n">' + qfmt(Math.round(o.pc)) + ' pcs</td>' + (cost ? '<td class="n">' + inr(o.v, 0) + '</td>' : '') + '<td class="n">' + (o.neg ? '<span class="neg">' + o.neg + '</span>' : '') + '</td></tr>';
+  return '<div class="card" style="padding:8px 10px"><h3 style="margin:2px 0 6px">Whole company – stock now</h3><div class="tscroll"><table class="t"><tr><th>Store</th><th class="n">Loose</th><th class="n">Packs</th>' + (cost ? '<th class="n">Value at cost</th>' : '') + '<th class="n">Items below 0</th></tr>' +
+    locs.map(l => cell(LOC_SHORT[l] || l, L[l])).join('') + cell('Total', T, true) + '</table></div><div class="tiny mute">= opening / counted stock + invoices received − bills &amp; QueueBuster sales ± transfers and adjustments, as of now.</div></div>';
 }
 function stockCsv() {
   const rows = stockRows(), locs = S.locations;
@@ -3448,7 +3633,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = 'f91b4dc8e5';
+<script>window.NV_BUILD = 'a3464c8e7e';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
