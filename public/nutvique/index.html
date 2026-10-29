@@ -1675,6 +1675,8 @@ async function viewMore() {
     h += '<div class="card"><h3>Store-only prices</h3><div class="small mute">New prices that apply at one store before the others. Bills at that store use them; other stores keep the normal price.</div>' +
       (ls.length ? ls.map(l => '<div class="row" style="margin-top:10px"><div class="grow"><b>' + esc(l) + '</b> · ' + Object.keys(sp[l]).length + ' items</div><button class="btn sm ghost" data-spv="' + esc(l) + '">View</button><button class="btn sm gold" data-spa="' + esc(l) + '">Apply to all stores</button></div>').join('') : '<div class="small" style="margin-top:8px">None at the moment.</div>') + '</div>'; }
   if (can('customers')) h += '<div class="card"><h3>Customers</h3><div class="small mute">All customers with mobile and name, bills sent on WhatsApp, pending coupons, referrals. Download to Excel.</div><button class="btn sm" id="cust" style="margin-top:10px">Open</button></div>';
+  if (isOwnerUi() || can('prices')) h += '<div class="card"><h3>🎁 Hamper recipes</h3><div class="small mute">What goes into each gift hamper (box, jars, grams of each product) – taken out of stock on every hamper sale.</div><button class="btn sm" id="hrl" style="margin-top:10px">Open</button></div>';
+  if (S.user && (S.user.role === 'Owner' || S.user.role === 'Manager')) h += '<div class="card"><h3>🏢 Corporate orders (Tally)</h3><div class="small mute">Upload the Tally invoice PDF – the sale goes into the Sales report and the items (and hamper contents) come out of stock.</div><button class="btn sm" id="col" style="margin-top:10px">Open</button></div>';
   if (can('sales') || isOwnerUi()) h += '<div class="card"><h3>🏦 Bank tally – UPI &amp; card</h3><div class="small mute">Next day: UPI and card sold against what ICICI and Paytm paid into the bank (read from the ICICI emails).</div><button class="btn sm" id="btl" style="margin-top:10px">Open</button></div>';
   if (can('sales') || isOwnerUi()) h += '<div class="card"><h3>💰 Cash pickups</h3><div class="small mute">Every time cash is taken from a store drawer – who took it, how much, and whether the owner has confirmed receiving it.</div><button class="btn sm" id="kpl" style="margin-top:10px">Open</button></div>';
   if (can('sales')) h += '<div class="card"><h3>UPI payments (bank emails)</h3><div class="small mute">Every payment ICICI emails about, and the bill it belongs to. Payments not linked to a bill are flagged.</div><button class="btn sm" id="upil" style="margin-top:10px">Open</button></div>';
@@ -1698,6 +1700,8 @@ async function viewMore() {
   if ($('#apv')) $('#apv').onclick = () => approvalsSheet(true);
   if ($('#upil')) $('#upil').onclick = () => upiSheet();
   if ($('#btl')) $('#btl').onclick = () => bankTallySheet();
+  if ($('#hrl')) $('#hrl').onclick = () => hamperRecipesSheet();
+  if ($('#col')) $('#col').onclick = () => corpScreen();
   if ($('#kpl')) $('#kpl').onclick = () => cashPickupsSheet(isOwnerUi() ? 'waiting' : 'all');
   if ($('#apc')) $('#apc').onclick = codesSheet;
   if (!can('settings')) return;
@@ -1905,7 +1909,9 @@ function pickBillLoc() {
   $('#view').innerHTML = '<h2>Where are you billing?</h2>' + B.boot.locs.map(l => '<button class="btn ghost block" style="margin-bottom:8px;text-align:left" data-l="' + esc(l.name) + '"><b>' +
     esc(l.name === 'Event' ? 'Event stall' : l.name) + '</b>' + (cov.indexOf(l.name) >= 0 ? ' <span class="pill p-ok">today only</span>' : '') + '<div class="tiny mute">Bills ' + esc(l.series) + '/' + esc(B.boot.fy) + '/… · FSSAI ' + esc(l.fssai) + '</div></button>').join('') +
     ((B.boot.otherLocs || []).length ? '<h3 style="margin-top:16px">Covering a shift at another store?</h3><div class="small mute" style="margin-bottom:8px">Pick the store – the owner or a manager gets a request at once. Once approved you can bill there until midnight today.</div>' +
-      B.boot.otherLocs.map(l => '<button class="btn ghost block" style="margin-bottom:8px;text-align:left" data-ask="' + esc(l) + '">🔒 <b>' + esc(l) + '</b><div class="tiny mute">Ask for access for today</div></button>').join('') : '');
+      B.boot.otherLocs.map(l => '<button class="btn ghost block" style="margin-bottom:8px;text-align:left" data-ask="' + esc(l) + '">🔒 <b>' + esc(l) + '</b><div class="tiny mute">Ask for access for today</div></button>').join('') : '') +
+    (B.boot.corp ? '<h3 style="margin-top:16px">Corporate orders</h3><button class="btn ghost block" style="text-align:left" id="bl_corp">🏢 <b>Corporate order (Tally invoice)</b><div class="tiny mute">Upload the Tally invoice PDF – sale, items and stock (incl. hamper contents) go into the app</div></button>' : '');
+  if ($('#bl_corp')) $('#bl_corp').onclick = () => corpScreen();
   $$('#view [data-l]').forEach(b => b.onclick = () => { B.loc = b.dataset.l; store.set('bloc', B.loc); B.today = null; listsOk(); viewBill(); });
   $$('#view [data-ask]').forEach(b => b.onclick = () => askStoreAccess(b.dataset.ask));
 }
@@ -2033,6 +2039,7 @@ function lineCard(l, i, c) {
     '<span class="amt">₹' + money(c ? c.amount : 0) + '</span></div>';
   if (l.unit === 'kg' && num(l.rate) > 0) h += '<div class="agr"><label>Weigh for ₹</label><input class="i" data-f="worth" inputmode="decimal" placeholder="e.g. 500" value="' + esc(l.worth || '') + '"><span class="wth">' + (num(l.worth) > 0 ? worthTxt(l) : 'worth – weight fills in') + '</span></div>';
   if (!noDisc() && !B.coupon && num(l.rate) > 0) h += '<div class="agr"><label>Agreed price ₹</label><input class="i" data-f="agreed" inputmode="decimal" placeholder="agreed price" value="' + esc(l.agreed || '') + '"><span class="agp">' + (num(l.discPct) ? r2c(num(l.discPct)) + '% off' : '') + '</span></div>';
+  if (l.sku && /^NV-HMP-/.test(l.sku)) h += '<div class="tiny" style="margin-top:6px;background:var(--warnbg);padding:6px 8px;border-radius:8px">🎁 <b>In each hamper:</b> ' + esc(partsTxt(l.parts || hamperRecipe(l.sku))) + (B.loc === 'Event' ? ' <span class="mute">(event stock is not moved)</span>' : '') + ' <a href="#" data-hp="' + i + '">change</a></div>';
   if (l.unit === 'kg') h += '<div class="qk">' + (IN_APP ? '<button data-w="' + i + '" class="sw">⚖ Scale</button>' : '') + [100, 200, 250, 500, 1000].map(g => '<button data-g="' + g + '">' + (g >= 1000 ? g / 1000 + ' kg' : g + ' g') + '</button>').join('') + '</div>';
   h += '<div class="tiny mute" style="margin-top:4px">' + (l.sku ? esc(l.sku) + ' · ' : '') + 'HSN ' + esc(l.hsn || '–') + ' · GST ' + (l.gst || dfltGst()) + '%' +
     (have != null ? ' · <span class="' + (have - lineQty(l) < 0 ? 'neg' : '') + '">stock here ' + qfmt(have) + ' ' + esc(l.unit) + '</span>' : '') + (p && p.mrp ? ' · MRP ₹' + money(p.mrp) : '') + '</div></div>';
@@ -2105,6 +2112,7 @@ function bindBill() {
     $$('[data-g]', el).forEach(b => b.onclick = () => { l.worth = ''; l.inUnit = 'g'; l.inQty = b.dataset.g; if (+b.dataset.g >= 1000) { l.inUnit = 'kg'; l.inQty = String(+b.dataset.g / 1000); } drawBill(); });
   });
   $$('[data-del]').forEach(b => b.onclick = () => { B.lines.splice(+b.dataset.del, 1); drawBill(); });
+  $$('[data-hp]').forEach(a => a.onclick = e => { e.preventDefault(); const l = B.lines[+a.dataset.hp]; hamperEditor(l.sku, l.parts || hamperRecipe(l.sku), p => { l.parts = p; drawBill(); }, 'For this bill only – the saved recipe stays as it is.'); });
   $('#b_ph').oninput = e => { B.cust.phone = e.target.value.replace(/[^\d+ ]/g, ''); custLookup(); };
   drawCust(); custLookup();
   const vcShow = () => { const b = $('#b_vc'); if (b) b.style.display = /^[6-9]\d{9}$/.test((B.cust.phone || '').replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '')) ? '' : 'none'; };
@@ -2243,7 +2251,7 @@ async function saveBill() {
     approvalId: B.approval && B.approval.id || '', approvalCode: B.approval && B.approval.code || '', upiMsg: (B.pay.mode === 'UPI' || B.pay.mode === 'Split') && B.upiMsg || '',
     coupon: B.coupon ? B.coupon.code : '', refBy: B.ci && B.ci.isNew && B.refBy ? B.refBy : '',
     customer: { name: B.cust.name, phone: B.noDetails ? '' : ph, gstin: B.biz ? B.cust.gstin : '', address: B.biz ? B.cust.address : '' },
-    lines: B.lines.map(l => Object.assign({ sku: l.sku, name: l.name, hsn: l.hsn, unit: l.unit, qty: r3(lineQty(l)), rate: l.rate, gst: l.gst, discPct: num(l.discPct) },
+    lines: B.lines.map(l => Object.assign({ sku: l.sku, name: l.name, hsn: l.hsn, unit: l.unit, qty: r3(lineQty(l)), rate: l.rate, gst: l.gst, discPct: num(l.discPct) }, l.parts ? { parts: l.parts.map(p => ({ sku: p.sku, qty: p.qty })) } : {},
       !l.sku && canSaveNew() && l.saveNew !== false ? { saveNew: true, mrp: num(l.mrp) || '', pack: l.pack || '', cat: l.cat || '' } : {})),
     pay: { mode: B.pay.mode, cash: num(B.pay.cash), upi: num(B.pay.upi), card: num(B.pay.card), other: 0 } };
   let r;
@@ -2443,6 +2451,104 @@ function billDone(b, fresh) {
     if (!r) return; m.close(); toast('Balance received – bill is fully paid'); B.today = null; loadToday(); billDone(r.bill, false);
   };
 }
+/* ───── gift hampers: recipe + contents per sale; corporate orders from Tally (v18.26) ───── */
+function hamperRecipe(sku) { return ((B.boot && B.boot.hampers) || {})[sku] || []; }
+function qtyTxt(p) { return p.unit === 'kg' ? (p.qty >= 1 ? r3(p.qty) + ' kg' : Math.round(p.qty * 1000) + ' g') : p.qty + ' pcs'; }
+function partsTxt(parts) { return parts && parts.length ? parts.map(p => qtyTxt(p) + ' ' + String(p.name || p.sku).replace(/^Nutvique /, '')).join(' · ') : 'no recipe yet – nothing will be taken out of stock'; }
+function prodList() { if (!document.getElementById('nv_pl')) { const d = document.createElement('datalist'); d.id = 'nv_pl'; d.innerHTML = S.products.filter(p => p.status !== 'Discontinued' && !/^NV-HMP-/.test(p.sku)).map(p => '<option value="' + esc(p.name) + '">').join(''); document.body.appendChild(d); } return 'nv_pl'; }
+function prodByName(n) { n = String(n || '').trim().toLowerCase(); return S.products.find(p => p.name.toLowerCase() === n) || S.products.find(p => p.sku.toLowerCase() === n); }
+function hamperEditor(hsku, parts, onSave, hint) {
+  const hp = S.bySku[hsku] || { name: hsku }; let rows = (parts || []).map(p => ({ name: (S.bySku[p.sku] || {}).name || p.name || p.sku, sku: p.sku, unit: p.unit || (S.bySku[p.sku] || {}).unit || 'kg', qty: p.qty }));
+  const m = modal('🎁 ' + hp.name, '<div class="tiny mute" style="margin-bottom:8px">What goes into ONE hamper: the box, the jars/tins and the products with their weight. ' + esc(hint || '') + '</div><div id="he_r"></div>' +
+    '<button class="btn ghost sm" id="he_add" style="margin-top:6px">+ Add item</button><button class="btn gold block" id="he_ok" style="margin-top:12px">Save</button>', { wide: true });
+  const draw = () => {
+    $('#he_r', m).innerHTML = rows.map((r, i) => '<div class="row" style="gap:6px;flex-wrap:nowrap;margin-bottom:6px"><input class="i grow" list="' + prodList() + '" data-n="' + i + '" value="' + esc(r.name) + '" placeholder="product, box or jar">' +
+      '<input class="i num" style="max-width:90px" inputmode="decimal" data-q="' + i + '" value="' + esc(r.unit === 'kg' ? (r.qty ? Math.round(r.qty * 1000) : '') : (r.qty || '')) + '" placeholder="' + (r.unit === 'kg' ? 'grams' : 'pcs') + '"><span class="tiny mute" style="width:28px">' + (r.unit === 'kg' ? 'g' : 'pcs') + '</span><button class="btn sm ghost" data-x="' + i + '">×</button></div>').join('') || '<div class="empty small">No items – add the box, jars and products.</div>';
+    $$('[data-n]', m).forEach(inp => inp.onchange = () => { const r = rows[+inp.dataset.n], p = prodByName(inp.value); if (p) { r.sku = p.sku; r.name = p.name; r.unit = p.unit || 'kg'; } else { r.sku = ''; r.name = inp.value; } draw(); });
+    $$('[data-q]', m).forEach(inp => inp.oninput = () => { const r = rows[+inp.dataset.q]; r.qty = r.unit === 'kg' ? num(inp.value) / 1000 : Math.round(num(inp.value)); });
+    $$('[data-x]', m).forEach(b => b.onclick = () => { rows.splice(+b.dataset.x, 1); draw(); });
+  };
+  $('#he_add', m).onclick = () => { rows.push({ name: '', sku: '', unit: 'kg', qty: 0 }); draw(); };
+  $('#he_ok', m).onclick = async () => {
+    const bad = rows.find(r => r.name && !r.sku); if (bad) return toast('“' + bad.name + '” is not in the product list – pick it from the list', true);
+    const out = rows.filter(r => r.sku && r.qty > 0).map(r => ({ sku: r.sku, name: r.name, unit: r.unit, qty: r.unit === 'kg' ? Math.round(r.qty * 1000) / 1000 : r.qty }));
+    const res = await Promise.resolve(onSave(out)); if (res !== false) m.close();
+  };
+  draw();
+}
+async function hamperRecipesSheet() {
+  const m = modal('🎁 Hamper recipes', '<div id="hr_b"><div class="empty"><span class="spin dk"></span></div></div>');
+  const draw = R => {
+    if (B.boot) B.boot.hampers = R;
+    const hs = S.products.filter(p => /^NV-HMP-/.test(p.sku));
+    $('#hr_b', m).innerHTML = '<div class="tiny mute" style="margin-bottom:8px">The standard contents of each hamper. Every hamper sold at a store or in a corporate order takes these out of stock (the person billing can change them for one sale).</div>' +
+      hs.map(p => '<div class="card" style="padding:12px"><div class="row"><b class="grow">' + esc(p.name) + '</b><button class="btn sm ghost" data-he="' + esc(p.sku) + '">Edit</button></div><div class="small" style="margin-top:4px">' + esc(partsTxt(R[p.sku])) + '</div></div>').join('');
+    $$('[data-he]', m).forEach(b => b.onclick = () => hamperEditor(b.dataset.he, R[b.dataset.he] || [], async parts => { const x = await run('Saving…', () => call('saveHamperRecipe', { sku: b.dataset.he, parts: parts.map(p => ({ sku: p.sku, qty: p.qty })) })).catch(() => null); if (!x) return false; draw(x.recipes); toast('Recipe saved'); }, 'Saved for all future hamper sales.'));
+  };
+  try { draw((await call('hamperRecipes')).recipes); } catch (e) { $('#hr_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; }
+}
+async function corpScreen() {
+  const m = modal('🏢 Corporate orders (Tally)', '<label class="btn gold block" style="text-align:center;cursor:pointer">📄 Upload a Tally invoice (PDF)<input type="file" id="co_f" accept="application/pdf,image/*" style="display:none"></label>' +
+    '<button class="btn ghost block" id="co_m" style="margin-top:6px">Type an invoice without the PDF</button><div id="co_l" style="margin-top:12px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
+  const rs = x => '₹' + money(x || 0).replace(/\.00$/, '');
+  const drawList = r => {
+    $('#co_l', m).innerHTML = '<h3>Entered</h3>' + (r.list.length ? r.list.map(o => '<div class="card" style="padding:12px' + (o.status === 'Cancelled' ? ';opacity:.55' : '') + '"><div class="row"><b class="grow">' + esc(o.customer) + '</b><b>' + rs(o.total) + '</b></div>' +
+      '<div class="tiny mute">Tally ' + esc(o.inv) + ' · ' + esc(o.date.split('-').reverse().join('-')) + ' · ' + esc(o.status) + '</div><div class="small" style="margin-top:4px">' + o.lines.map(l => esc(l.qty + (l.unit === 'kg' ? ' kg ' : ' × ') + l.name.replace(/^Nutvique /, ''))).join(' · ') + '</div>' +
+      (o.fills.length ? '<div class="tiny" style="margin-top:4px">🎁 Filled: ' + esc(Object.values(o.fills.reduce((a, f) => { const k = f.item; a[k] = a[k] || { item: f.item, unit: f.unit, total: 0 }; a[k].total += f.total; return a; }, {})).map(f => (f.unit === 'kg' ? Math.round(f.total * 1000) / 1000 + ' kg ' : f.total + ' × ') + f.item.replace(/^Nutvique /, '')).join(' · ')) + '</div>' : '') +
+      '<div class="tiny mute" style="margin-top:4px">' + esc(o.note.replace(/ · PDF https\S+/, '')) + (/PDF (https\S+)/.test(o.note) ? ' · <a target="_blank" rel="noopener" href="' + esc(o.note.match(/PDF (https\S+)/)[1]) + '">PDF</a>' : '') + '</div>' +
+      (r.canCancel && o.status !== 'Cancelled' ? '<button class="btn ghost sm" data-cc="' + esc(o.id) + '" style="margin-top:6px;color:var(--bad)">Cancel…</button>' : '') + '</div>').join('') : '<div class="empty small">No corporate orders yet.</div>');
+    $$('[data-cc]', m).forEach(b => b.onclick = async () => { const reason = prompt('Why cancel this corporate order? (stock goes back)'); if (!reason) return; const x = await run('Cancelling…', () => call('corpCancel', { id: b.dataset.cc, reason: reason })).catch(() => null); if (x) drawList(x); });
+    m._locs = r.locations;
+  };
+  const load = async () => { try { drawList(await call('corpList')); } catch (e) { $('#co_l', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
+  $('#co_f', m).onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const b64 = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.readAsDataURL(f); });
+    const d = await run('Reading the Tally invoice…', () => call('corpRead', { name: f.name, mime: f.type || 'application/pdf', b64: b64 })).catch(() => null);
+    e.target.value = ''; if (d) corpForm(d, m._locs, load);
+  };
+  $('#co_m', m).onclick = () => corpForm({ lines: [], readError: '' }, m._locs, load);
+  load();
+}
+function corpForm(d, locs, done) {
+  const lines = (d.lines || []).map(l => Object.assign({ name: (S.bySku[l.sku] || {}).name || '' }, l));
+  if (!lines.length) lines.push({ text: '', sku: '', name: '', qty: '', amount: '', gst: 5 });
+  const m = modal('Corporate order – check and save', (d.readError ? '<div class="warnbox" style="margin-bottom:8px">' + esc(d.readError) + '</div>' : d.read ? '<div class="okbox" style="margin-bottom:8px">Read from the PDF – check every line before saving.</div>' : '') +
+    '<div class="grid2"><div><label class="f">Tally invoice no.</label><input class="i" id="cf_inv" value="' + esc(d.inv || '') + '"></div><div><label class="f">Invoice date</label><input class="i" type="date" id="cf_dt" max="' + today() + '" value="' + esc(d.date || '') + '"></div>' +
+    '<div class="span2"><label class="f">Customer (company)</label><input class="i" id="cf_cu" value="' + esc(d.customer || '') + '"></div><div><label class="f">Customer GSTIN</label><input class="i" id="cf_gs" value="' + esc(d.gstin || '') + '"></div>' +
+    '<div><label class="f">Goods taken from</label><select class="i" id="cf_fr">' + (locs || []).map(l => '<option' + (l === 'Central Warehouse' ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select></div>' +
+    '<div><label class="f">Payment</label><select class="i" id="cf_ps"><option>Unpaid</option><option>Part paid</option><option>Paid</option></select></div><div><label class="f">Received ₹</label><input class="i num" id="cf_rc" inputmode="decimal" placeholder="0"></div></div>' +
+    '<h3>Items</h3><div class="tiny mute" style="margin-bottom:6px">Amount = value before GST, as on the Tally invoice. Hampers: tap “contents” to change what was filled in them.</div><div id="cf_l"></div><button class="btn ghost sm" id="cf_add">+ Add item</button>' +
+    '<div class="grid2" style="margin-top:10px"><div><label class="f">Invoice total ₹ (incl. GST)</label><input class="i num" id="cf_tt" inputmode="decimal" value="' + esc(d.total || '') + '"></div><div id="cf_sum" class="small" style="align-self:end"></div></div>' +
+    '<label class="f">Note</label><input class="i" id="cf_no" placeholder="optional">' +
+    (d.fileUrl ? '<div class="tiny" style="margin-top:6px"><a target="_blank" rel="noopener" href="' + esc(d.fileUrl) + '">Open the uploaded PDF</a></div>' : '') +
+    '<button class="btn gold block" id="cf_sv" style="margin-top:12px">Save corporate order</button>', { wide: true });
+  const sum = () => { const t = lines.reduce((a, l) => a + num(l.amount) * (1 + num(l.gst || 5) / 100), 0); $('#cf_sum', m).innerHTML = 'Items + GST ≈ <b>₹' + money(Math.round(t)) + '</b>'; };
+  const draw = () => {
+    $('#cf_l', m).innerHTML = lines.map((l, i) => { const p = S.bySku[l.sku], hp = l.sku && /^NV-HMP-/.test(l.sku);
+      return '<div class="card" style="padding:10px">' + (l.text ? '<div class="tiny mute">On the invoice: ' + esc(l.text) + '</div>' : '') +
+        '<div class="row" style="gap:6px;flex-wrap:nowrap"><input class="i grow" list="' + prodListAll() + '" data-p="' + i + '" value="' + esc(p ? p.name : (l.name || '')) + '" placeholder="pick the product"><button class="btn sm ghost" data-x="' + i + '">×</button></div>' +
+        '<div class="grid3" style="margin-top:6px"><div><label class="f">Qty (' + (p && p.unit === 'kg' ? 'kg' : 'pcs') + ')</label><input class="i num" data-q="' + i + '" inputmode="decimal" value="' + esc(l.qty || '') + '"></div><div><label class="f">Amount ₹ before GST</label><input class="i num" data-a="' + i + '" inputmode="decimal" value="' + esc(l.amount || '') + '"></div><div><label class="f">GST %</label><input class="i num" data-g="' + i + '" inputmode="decimal" value="' + esc(l.gst || 5) + '"></div></div>' +
+        (hp ? '<div class="tiny" style="margin-top:6px;background:var(--warnbg);padding:6px 8px;border-radius:8px">🎁 In each hamper: ' + esc(partsTxt(l.parts || hamperRecipe(l.sku))) + ' <a href="#" data-hp="' + i + '">contents</a></div>' : '') + '</div>'; }).join('');
+    $$('[data-p]', m).forEach(inp => inp.onchange = () => { const l = lines[+inp.dataset.p], p = prodByName(inp.value); l.sku = p ? p.sku : ''; l.name = inp.value; l.parts = null; if (p && !l.gst) l.gst = p.gst || 5; draw(); });
+    $$('[data-q]', m).forEach(inp => inp.oninput = () => { lines[+inp.dataset.q].qty = inp.value; });
+    $$('[data-a]', m).forEach(inp => inp.oninput = () => { lines[+inp.dataset.a].amount = inp.value; sum(); });
+    $$('[data-g]', m).forEach(inp => inp.oninput = () => { lines[+inp.dataset.g].gst = inp.value; sum(); });
+    $$('[data-x]', m).forEach(b => b.onclick = () => { lines.splice(+b.dataset.x, 1); draw(); });
+    $$('[data-hp]', m).forEach(a => a.onclick = e => { e.preventDefault(); const l = lines[+a.dataset.hp]; hamperEditor(l.sku, l.parts || hamperRecipe(l.sku), p => { l.parts = p; draw(); }, 'For this order only.'); });
+    sum();
+  };
+  $('#cf_add', m).onclick = () => { lines.push({ sku: '', name: '', qty: '', amount: '', gst: 5 }); draw(); };
+  $('#cf_sv', m).onclick = async () => {
+    const bad = lines.find(l => (l.name || l.qty) && !l.sku); if (bad) return toast('Pick the product for “' + (bad.text || bad.name) + '” from the list', true);
+    const r = await run('Saving…', () => call('corpSave', { fileId: d.fileId || '', inv: $('#cf_inv', m).value.trim(), date: $('#cf_dt', m).value, customer: $('#cf_cu', m).value.trim(), gstin: $('#cf_gs', m).value.trim(),
+      stockFrom: $('#cf_fr', m).value, payStatus: $('#cf_ps', m).value, received: num($('#cf_rc', m).value), total: num($('#cf_tt', m).value), note: $('#cf_no', m).value.trim(),
+      lines: lines.filter(l => l.sku).map(l => ({ sku: l.sku, text: l.text || '', qty: num(l.qty), amount: num(l.amount), gst: num(l.gst), parts: l.parts ? l.parts.map(p => ({ sku: p.sku, qty: p.qty })) : null })) })).catch(() => null);
+    if (r) { m.close(); toast('Corporate order saved – stock updated'); if (done) done(); }
+  };
+  draw();
+}
+function prodListAll() { if (!document.getElementById('nv_pla')) { const d = document.createElement('datalist'); d.id = 'nv_pla'; d.innerHTML = S.products.filter(p => p.status !== 'Discontinued').map(p => '<option value="' + esc(p.name) + '">').join(''); document.body.appendChild(d); } return 'nv_pla'; }
 function moveSheet(b) {
   const stores = ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120'].filter(l => l !== b.loc);
   const m = modal('Move ' + b.no + ' to another store', '<div class="small">Now at <b>' + esc(b.loc) + '</b> · ₹' + money(b.totals.total) + '. The bill number stays the same; the sale, its payment and the stock move to the store you pick.</div>' +
@@ -3342,7 +3448,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = 'e9c4900b03';
+<script>window.NV_BUILD = '1d2f754f6b';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
