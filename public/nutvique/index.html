@@ -1704,6 +1704,7 @@ async function viewMore() {
     f('Gemini model') + f('Last GTIN used on DataKart') + '</div>' +
     '<h3 style="margin-top:18px">Customers → Google Contacts</h3><div class="grid2">' + fld('Google Contacts: save customers', '<select class="i" data-s="Google Contacts: save customers">' + ["Owner's bills only", 'All bills', 'Off'].map(o => '<option' + ((s['Google Contacts: save customers'] || "Owner's bills only") === o ? ' selected' : '') + '>' + o + '</option>').join('') + '</select>') + '</div><div class="tiny mute">New customers are saved to the Google Contacts of nutzyfoods@gmail.com (label “Nutvique customers”). They show on any phone where that account syncs contacts.</div>' +
     '<h3 style="margin-top:18px">UPI payment check (ICICI SMS / email)</h3><div class="grid2">' + fld('UPI email check', '<select class="i" data-s="UPI email check"><option' + (s['UPI email check'] !== 'On' ? ' selected' : '') + '>Off</option><option' + (s['UPI email check'] === 'On' ? ' selected' : '') + '>On</option></select>') + f('UPI email search', 'placeholder="from:(icici.bank.in) newer_than:2d"') + '</div><div class="tiny mute">On = the UPI QR screen waits for ICICI\'s credit SMS (forwarded by the owner\'s iPhone) and shows “✓ received”. Email search “off” = SMS only.</div>' +
+    '<h3 style="margin-top:18px">Store closing emails</h3><div class="grid2">' + f('Day close emails: also send to', 'placeholder="a@x.com, b@y.com"') + '</div><div class="tiny mute">Every Day close goes by email to the owner email, every manager who has an email in People, and these addresses (comma-separated).</div>' +
     '<h3 style="margin-top:18px">Discounts</h3><div class="grid2">' + f('Discount: round off without approval up to ₹', 'inputmode="decimal" placeholder="20"') + '</div><div class="tiny mute">Anyone who bills can take this much off a bill (e.g. ₹1,312.50 → ₹1,300) without asking. Above it, staff need approval; managers can give up to 10% alone. 0 = always ask.</div>' +
     '<h3 style="margin-top:18px">🍀 Lucky draw (store bills)</h3><div class="grid2">' + f('Lucky draw: bill of at least ₹', 'inputmode="decimal" placeholder="1000"') + f('Lucky draw: chance of 10% coupon (out of 100)', 'inputmode="decimal" placeholder="25 – the rest get 5%"') +
     f('Lucky draw: coupon valid (days)', 'inputmode="numeric" placeholder="30"') + f('Lucky draw: coupon needs bill of ₹', 'inputmode="decimal" placeholder="1000"') + '</div>' +
@@ -3178,7 +3179,7 @@ async function dayCloseSheet(loc, date) {
       const v = id => $('#' + id, m).value.trim();
       const r = await run('Saving the day close…', () => call('dayCloseSave', { date: R.date, loc: R.loc, opening: v('dc_op'), qbCash: v('dc_qc'), qbUpi: v('dc_qu'), qbCard: v('dc_qk'),
         paidOut: v('dc_po'), paidNote: v('dc_pn'), deposited: v('dc_dp'), counted: v('dc_ct'), denoms: Object.keys(dn).length ? JSON.stringify(dn) : '', cardSettle: v('dc_cs'), upiReceived: v('dc_ur'), notes: v('dc_no') })).catch(() => null);
-      if (r) { draw(r); toast(r.saved && r.saved.Status === 'Tallied' ? 'Day closed – everything tallies ✓' : 'Day closed – difference recorded'); }
+      if (r) { draw(r); toast((r.saved && r.saved.Status === 'Tallied' ? 'Day closed – everything tallies ✓' : 'Day closed – difference recorded') + (/^sent to (\d+)/.test(r.mailed || '') ? ' · emailed ' + RegExp.$1 : '')); }
     };
     if ($('#dc_ck', m)) $('#dc_ck', m).onclick = async () => { const x = await run('Saving…', () => call('dayCloseCheck', { date: R.date, loc: R.loc, reopen: sv.Status === 'Checked' })).catch(() => null); if (x) load(); };
   };
@@ -3224,7 +3225,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = 'a42c0df70c';
+<script>window.NV_BUILD = 'de6c2ac564';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
