@@ -1675,6 +1675,7 @@ async function viewMore() {
     h += '<div class="card"><h3>Store-only prices</h3><div class="small mute">New prices that apply at one store before the others. Bills at that store use them; other stores keep the normal price.</div>' +
       (ls.length ? ls.map(l => '<div class="row" style="margin-top:10px"><div class="grow"><b>' + esc(l) + '</b> · ' + Object.keys(sp[l]).length + ' items</div><button class="btn sm ghost" data-spv="' + esc(l) + '">View</button><button class="btn sm gold" data-spa="' + esc(l) + '">Apply to all stores</button></div>').join('') : '<div class="small" style="margin-top:8px">None at the moment.</div>') + '</div>'; }
   if (can('customers')) h += '<div class="card"><h3>Customers</h3><div class="small mute">All customers with mobile and name, bills sent on WhatsApp, pending coupons, referrals. Download to Excel.</div><button class="btn sm" id="cust" style="margin-top:10px">Open</button></div>';
+  if (can('sales') || isOwnerUi()) h += '<div class="card"><h3>🏦 Bank tally – UPI &amp; card</h3><div class="small mute">Next day: UPI and card sold against what ICICI and Paytm paid into the bank (read from the ICICI emails).</div><button class="btn sm" id="btl" style="margin-top:10px">Open</button></div>';
   if (can('sales') || isOwnerUi()) h += '<div class="card"><h3>💰 Cash pickups</h3><div class="small mute">Every time cash is taken from a store drawer – who took it, how much, and whether the owner has confirmed receiving it.</div><button class="btn sm" id="kpl" style="margin-top:10px">Open</button></div>';
   if (can('sales')) h += '<div class="card"><h3>UPI payments (bank emails)</h3><div class="small mute">Every payment ICICI emails about, and the bill it belongs to. Payments not linked to a bill are flagged.</div><button class="btn sm" id="upil" style="margin-top:10px">Open</button></div>';
   if (canApprove() && !can('approve')) h += '<div class="card"><h3>Store access requests</h3><div class="small mute">Staff covering a shift at another store ask here for one day.</div><button class="btn sm" id="apv" style="margin-top:10px">Requests</button></div>';
@@ -1696,6 +1697,7 @@ async function viewMore() {
   });
   if ($('#apv')) $('#apv').onclick = () => approvalsSheet(true);
   if ($('#upil')) $('#upil').onclick = () => upiSheet();
+  if ($('#btl')) $('#btl').onclick = () => bankTallySheet();
   if ($('#kpl')) $('#kpl').onclick = () => cashPickupsSheet(isOwnerUi() ? 'waiting' : 'all');
   if ($('#apc')) $('#apc').onclick = codesSheet;
   if (!can('settings')) return;
@@ -1710,7 +1712,7 @@ async function viewMore() {
     f('Gemini model') + f('Last GTIN used on DataKart') + '</div>' +
     '<h3 style="margin-top:18px">Customers → Google Contacts</h3><div class="grid2">' + fld('Google Contacts: save customers', '<select class="i" data-s="Google Contacts: save customers">' + ["Owner's bills only", 'All bills', 'Off'].map(o => '<option' + ((s['Google Contacts: save customers'] || "Owner's bills only") === o ? ' selected' : '') + '>' + o + '</option>').join('') + '</select>') + '</div><div class="tiny mute">New customers are saved to the Google Contacts of nutzyfoods@gmail.com (label “Nutvique customers”). They show on any phone where that account syncs contacts.</div>' +
     '<h3 style="margin-top:18px">UPI payment check (ICICI SMS / email)</h3><div class="grid2">' + fld('UPI email check', '<select class="i" data-s="UPI email check"><option' + (s['UPI email check'] !== 'On' ? ' selected' : '') + '>Off</option><option' + (s['UPI email check'] === 'On' ? ' selected' : '') + '>On</option></select>') + f('UPI email search', 'placeholder="from:(icici.bank.in) newer_than:2d"') + '</div><div class="tiny mute">On = the UPI QR screen waits for ICICI\'s credit SMS (forwarded by the owner\'s iPhone) and shows “✓ received”. Email search “off” = SMS only.</div>' +
-    '<h3 style="margin-top:18px">Store closing emails</h3><div class="grid2">' + f('Day close emails: also send to', 'placeholder="a@x.com, b@y.com"') + '</div><div class="tiny mute">Every Day close goes by email to the owner email, every manager who has an email in People, and these addresses (comma-separated).</div>' +
+    '<h3 style="margin-top:18px">Store closing emails</h3><div class="grid2">' + f('Day close emails: also send to', 'placeholder="a@x.com, b@y.com"') + f('Card terminals (ID = store)', 'placeholder="EP292213=Central Market – Sector 120"') + '</div><div class="tiny mute">Every Day close goes by email to the owner email, every manager who has an email in People, and these addresses (comma-separated).</div>' +
     '<h3 style="margin-top:18px">Discounts</h3><div class="grid2">' + f('Discount: round off without approval up to ₹', 'inputmode="decimal" placeholder="20"') + '</div><div class="tiny mute">Anyone who bills can take this much off a bill (e.g. ₹1,312.50 → ₹1,300) without asking. Above it, staff need approval; managers can give up to 10% alone. 0 = always ask.</div>' +
     '<h3 style="margin-top:18px">🍀 Lucky draw (store bills)</h3><div class="grid2">' + f('Lucky draw: bill of at least ₹', 'inputmode="decimal" placeholder="1000"') + f('Lucky draw: chance of 10% coupon (out of 100)', 'inputmode="decimal" placeholder="25 – the rest get 5%"') +
     f('Lucky draw: coupon valid (days)', 'inputmode="numeric" placeholder="30"') + f('Lucky draw: coupon needs bill of ₹', 'inputmode="decimal" placeholder="1000"') + '</div>' +
@@ -3250,6 +3252,40 @@ async function cashPickupsSheet(startStatus) {
   const load = async () => { try { draw(await call('cashPickupList', q())); } catch (e) { $('#kp_x', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
   ['kp_st', 'kp_f', 'kp_t', 'kp_l'].forEach(id => $('#' + id, m).onchange = load); load();
 }
+/* ───── next-day bank tally: UPI & card sold vs what ICICI / Paytm paid in (v18.24) ───── */
+async function bankTallySheet() {
+  const m = modal('🏦 Bank tally – UPI & card', '<div class="row" style="gap:6px;flex-wrap:wrap"><input class="i" type="date" id="bt_f" style="max-width:150px"><input class="i" type="date" id="bt_t" max="' + today() + '" style="max-width:150px"><button class="btn ghost sm" id="bt_s">↻ Read bank emails now</button></div>' +
+    '<div id="bt_x" style="margin-top:10px"><div class="empty"><span class="spin dk"></span> Reading the ICICI emails…</div></div>', { wide: true });
+  const rs = x => (x < 0 ? '−' : '') + '₹' + money(Math.abs(x || 0)).replace(/\.00$/, '');
+  const d1 = new Date(Date.now() - 864e5), d14 = new Date(Date.now() - 14 * 864e5);
+  $('#bt_t', m).value = d1.toISOString().slice(0, 10); $('#bt_f', m).value = d14.toISOString().slice(0, 10);
+  const q = () => ({ from: $('#bt_f', m).value, to: $('#bt_t', m).value });
+  const pill = s => '<span class="pill ' + (s === 'Tallied' || s === 'Checked' ? 'p-ok' : s === 'Difference' ? 'p-bad' : 'p-mute') + '">' + esc(s) + '</span>';
+  let R = null;
+  const draw = r => {
+    R = r;
+    $('#bt_x', m).innerHTML = '<div class="tiny mute" style="margin-bottom:6px">Sold = UPI + card in this app and QueueBuster (all stores and events). Received = ICICI UPI QR (paid next morning) + Paytm (one NEFT per day, after Paytm\'s charges) + ICICI card machine (merchant statement). ' +
+      (r.lastRead ? 'Bank emails last read ' + new Date(r.lastRead).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '') + (r.scan && r.scan.errors && r.scan.errors.length ? ' · <span style="color:var(--bad)">' + esc(r.scan.errors.join('; ')) + '</span>' : '') + '</div>' +
+      (r.list.length ? '<div class="tscroll"><table class="t"><tr><th>Day</th><th class="n">Sold</th><th class="n">Received</th><th class="n">Diff</th><th class="n">Running</th><th>Status</th></tr>' +
+        r.list.map(x => '<tr data-bd="' + x.date + '" style="cursor:pointer"><td class="nowrap">' + esc(x.date.split('-').reverse().slice(0, 2).join('-')) + '</td><td class="n">' + rs(x.sold) + '</td><td class="n">' + rs(x.received) + '</td><td class="n" style="color:' + (x.status === 'Difference' ? 'var(--bad)' : 'inherit') + '">' + (x.received || x.status !== 'Waiting for bank' ? rs(x.diff) : '–') + '</td><td class="n small">' + rs(x.cumDiff) + '</td><td>' + pill(x.status) + '</td></tr>').join('') + '</table></div>' +
+        '<div class="bigp" style="margin-top:8px"><div><span>Sold in these dates</span><b>' + rs(r.totals.sold) + '</b></div><div><span>Received</span><b>' + rs(r.totals.received) + '</b></div><div><span>Gap</span><b>' + rs(r.totals.received - r.totals.sold) + '</b></div></div>' +
+        '<div class="tiny mute" style="margin-top:6px">Tap a day for the details. ICICI sometimes pays a day late, so one day can show a minus and the next day a plus – the Running column evens that out. Paytm pays after its charges, so a small minus on Paytm days is normal. The last 1–2 days stay “Waiting for bank” until the next statement email.</div>'
+        : '<div class="empty small">No UPI or card sales in these dates.</div>');
+    $$('[data-bd]', m).forEach(tr => tr.onclick = () => dayDetail(R.list.find(x => x.date === tr.dataset.bd)));
+  };
+  const dayDetail = x => {
+    const dm = modal('🏦 ' + x.date.split('-').reverse().join('-'), '<div class="bigp"><div><span>Sold (UPI + card)</span><b>' + rs(x.sold) + '</b></div><div><span>Received</span><b>' + rs(x.received) + '</b></div><div><span>Difference</span><b style="color:' + (x.status === 'Difference' ? 'var(--bad)' : 'inherit') + '">' + rs(x.diff) + '</b></div></div>' + '<div style="margin:6px 0">' + pill(x.status) + (x.check && x.check.by ? ' <span class="tiny">by ' + esc(x.check.by) + (x.check.note ? ' – ' + esc(x.check.note) : '') + '</span>' : '') + '</div>' +
+      '<h3>Sold</h3><table class="t"><tr><th>Where</th><th class="n">UPI</th><th class="n">Card</th></tr>' + x.byLoc.map(l => '<tr><td>' + esc(l.loc === 'Event' ? 'Event stalls' : (LOC_SHORT[l.loc] || l.loc)) + '</td><td class="n">' + rs(l.upi) + '</td><td class="n">' + rs(l.card) + '</td></tr>').join('') + '<tr><td><b>Total</b></td><td class="n"><b>' + rs(x.upi) + '</b></td><td class="n"><b>' + rs(x.card) + '</b></td></tr></table>' +
+      '<h3>Received</h3><table class="t"><tr><td>ICICI UPI QR</td><td class="n">' + rs(x.icUpi) + '</td></tr><tr><td>Paytm (net of Paytm charges)</td><td class="n">' + rs(x.paytm) + '</td></tr><tr><td>ICICI card machine (gross)</td><td class="n">' + rs(x.cardGross) + '</td></tr>' +
+      (x.mdr ? '<tr><td class="tiny">ICICI UPI charges (debited)</td><td class="n tiny">' + rs(-x.mdr) + '</td></tr>' : '') + (x.cardCharges ? '<tr><td class="tiny">Card charges + GST</td><td class="n tiny">' + rs(-x.cardCharges) + '</td></tr>' : '') + '</table>' +
+      (x.cardTx.length ? '<h3>Card payments (ICICI machine)</h3><table class="t">' + x.cardTx.map(c => '<tr><td>' + esc(c.time) + ' · ' + esc(LOC_SHORT[c.loc] || c.loc) + '<div class="tiny mute">' + esc(c.card) + '</div></td><td class="n">' + rs(c.amount) + '</td><td class="small">' + (c.bill ? '✓ ' + esc(c.bill) : '<span class="dcbad">no app bill</span>') + '</td></tr>').join('') + '</table>' : '') +
+      (x.credits.length ? '<div class="tiny mute" style="margin-top:6px">Bank entries: ' + x.credits.map(c => esc(c.src) + ' ' + rs(c.amount) + ' on ' + esc(c.on.split('-').reverse().slice(0, 2).join('-'))).join(' · ') + '</div>' : '<div class="warnbox" style="margin-top:8px">No bank entry for this day yet – the account statement email may not have come (set ICICI e-statement to daily).</div>') +
+      (R.canCheck ? '<label class="f" style="margin-top:10px">Note</label><input class="i" id="bt_n" value="' + esc(x.check && x.check.note || '') + '" placeholder="e.g. ₹200 Paytm charges"><button class="btn gold block" id="bt_c" style="margin-top:8px">' + (x.status === 'Checked' ? 'Reopen this day' : 'Mark as checked ✓') + '</button>' : ''), { wide: true });
+    if ($('#bt_c', dm)) $('#bt_c', dm).onclick = async () => { const r = await run('Saving…', () => call('bankTallyCheck', { date: x.date, note: $('#bt_n', dm).value.trim(), reopen: x.status === 'Checked', list: q() })).catch(() => null); if (r) { dm.close ? dm.close() : dm.remove(); draw(r); toast('Saved'); } };
+  };
+  const load = async scan => { $('#bt_x', m).innerHTML = '<div class="empty"><span class="spin dk"></span>' + (scan ? ' Reading the ICICI emails…' : '') + '</div>'; try { draw(await call('bankTally', Object.assign(q(), { scan: !!scan }))); } catch (e) { $('#bt_x', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
+  $('#bt_f', m).onchange = () => load(); $('#bt_t', m).onchange = () => load(); $('#bt_s', m).onclick = () => load(true); load();
+}
 /** Owner / sales: every store's day close for one date. */
 async function dayCloseList(date) {
   const m = modal('Day close – all stores', '<input class="i" type="date" id="dl_d" value="' + (date || today()) + '" max="' + today() + '" style="max-width:170px"><div id="dl_b" style="margin-top:10px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
@@ -3289,7 +3325,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '0b1571c6f5';
+<script>window.NV_BUILD = '8aa2b23ed6';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
