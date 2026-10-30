@@ -131,7 +131,7 @@ a{color:var(--new)}
 /* ───────────── state ───────────── */
 const S = { pin: '', token: '', user: null, role: '', products: [], bySku: {}, stock: {}, locations: [], settings: {}, categories: [], view: 'search',
   filter: 'all', q: '', drafts: 0, gs1Pending: 0, at: null, inv: null, invWarn: [], stockLoc: 'All', stockQ: '' };
-const LOC_SHORT = { 'Central Warehouse': 'CW', 'Gulshan One29 Mall': 'Gulshan', 'City Galleria – Gaur City-2': 'Galleria', 'Central Market – Sector 120': 'Sec 120' };
+const LOC_SHORT = { 'Event': 'Event stock', 'Central Warehouse': 'CW', 'Gulshan One29 Mall': 'Gulshan', 'City Galleria – Gaur City-2': 'Galleria', 'Central Market – Sector 120': 'Sec 120' };
 const $ = (s, el) => (el || document).querySelector(s), $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = v => { const x = Number(String(v == null ? '' : v).replace(/[₹,\s]/g, '')); return isFinite(x) ? x : 0; };
@@ -1147,7 +1147,7 @@ function cnKey() { return 'nvcount_' + CN.loc; }
 function cnStore() { try { localStorage.setItem(cnKey(), JSON.stringify({ at: CN.data && CN.data.at, vals: CN.vals, rem: CN.rem, date: CN.date })); } catch (e) { } }
 function cnRestore() { try { const o = JSON.parse(localStorage.getItem(cnKey()) || 'null'); return o; } catch (e) { return null; } }
 async function stockCount() {
-  const locs = S.locations.filter(l => l !== 'Event');
+  const locs = S.locations;   // v18.30: event stalls have their own stock ("Event") and can be counted too
   if (!CN.loc || locs.indexOf(CN.loc) < 0) CN.loc = S.user && locs.indexOf(S.user.home) >= 0 ? S.user.home : (locs.length === 1 ? locs[0] : '');
   $('#sk_b').innerHTML = '<div class="cnhead"><select class="i" id="cn_loc"><option value="">Pick store…</option>' + locs.map(l => '<option value="' + esc(l) + '"' + (l === CN.loc ? ' selected' : '') + '>' + esc(l === 'Central Warehouse' ? 'Warehouse' : (LOC_SHORT[l] || l)) + '</option>').join('') + '</select>' +
     '<input class="i" type="date" id="cn_date" value="' + esc(CN.date || today()) + '" title="Count date">' +
@@ -2207,7 +2207,7 @@ function canSaveNew() { return isOwner() || ((S.user || {}).role === 'Manager' &
 function mrpX() { return Number((S.settings || {}).mrpX) || 1.25; }
 function lineCard(l, i, c) {
   const p = l.sku ? S.bySku[l.sku] : null;
-  const have = l.sku && B.loc !== 'Event' && !/^NV-HMP-/.test(l.sku) ? ((stockOf(l.sku).q || {})[B.loc] || 0) : null;
+  const have = l.sku && !/^NV-HMP-/.test(l.sku) ? ((stockOf(l.sku).q || {})[B.loc] || 0) : null;
   let h = '<div class="bl" data-i="' + i + '"><div class="t"><b>' + (l.sku ? esc(l.name) : '<input class="i" data-f="name" placeholder="Item name" value="' + esc(l.name) + '">') + '</b><button class="btn sm ghost" data-del="' + i + '" aria-label="Remove">×</button></div>';
   if (!l.sku) h += '<div class="grid3" style="margin-top:6px"><div><label class="f">Rate ₹ incl. GST</label><input class="i num" data-f="rate" inputmode="decimal" value="' + (l.rate || '') + '"></div>' +
     '<div><label class="f">HSN</label><input class="i" data-f="hsn" inputmode="numeric" value="' + esc(l.hsn || '') + '"></div><div><label class="f">GST %</label><input class="i num" data-f="gst" inputmode="decimal" value="' + (l.gst || '') + '"></div></div>' +
@@ -2344,7 +2344,7 @@ function drawRes() {
   if (!q) { box.innerHTML = ''; return; }
   const list = resList(q);
   box.innerHTML = '<div class="bres">' + (list.length ? list.map(p => '<div class="li" data-sku="' + esc(p.sku) + '"><div class="grow"><b>' + esc(p.name) + '</b><div class="tiny mute">' + esc(p.sku) +
-    (B.loc !== 'Event' ? ' · here ' + qfmt(((stockOf(p.sku).q || {})[B.loc]) || 0) + ' ' + unitOf(p) : '') + '</div></div><div class="nowrap"><b>₹' + money(priceAt(p)) + '</b><span class="tiny mute">/' + unitOf(p) + '</span></div></div>').join('')
+    (B.loc ? ' · here ' + qfmt(((stockOf(p.sku).q || {})[B.loc]) || 0) + ' ' + unitOf(p) : '') + '</div></div><div class="nowrap"><b>₹' + money(priceAt(p)) + '</b><span class="tiny mute">/' + unitOf(p) + '</span></div></div>').join('')
     : '<div class="empty small">No product matches “' + esc(q) + '”.</div>') + '</div>';
   $$('.li', box).forEach(li => li.onmousedown = e => { e.preventDefault(); addItem(li.dataset.sku); });
 }
@@ -2589,7 +2589,7 @@ function couponWa(i, brand) {
 function billDone(b, fresh) {
   const live = b.status !== 'Cancelled';
   const m = modal(fresh ? 'Bill saved' : 'Bill ' + b.no,
-    '<div class="bdone">' + (fresh ? '<div class="okbox">✓ Saved' + (b.loc !== 'Event' && b.lines.some(l => l.sku) ? ' · stock taken out of ' + esc(LOC_SHORT[b.loc] || b.loc) : '') + '</div>' : '') +
+    '<div class="bdone">' + (fresh ? '<div class="okbox">✓ Saved' + (b.lines.some(l => l.sku) ? ' · stock taken out of ' + esc(LOC_SHORT[b.loc] || b.loc) : '') + '</div>' : '') +
     (b.status === 'Cancelled' ? '<div class="warnbox bad">Cancelled' + (b.cancelReason ? ': ' + esc(b.cancelReason) : '') + '</div>' : '') +
     '<div class="no">' + esc(b.no) + '</div><div class="mute">' + esc(b.date.split('-').reverse().join('-')) + ' ' + esc(b.time) + ' · ' + b.lines.length + ' item' + (b.lines.length === 1 ? '' : 's') + '</div>' +
     '<div style="font-size:28px;font-weight:800;margin:8px 0">₹' + money(b.totals.total) + '</div>' +
@@ -2798,7 +2798,7 @@ function shortSheet(b) {
   };
 }
 function cancelSheet(b) {
-  const m = modal('Cancel ' + b.no, '<div class="warnbox">The bill number stays used and the bill is marked CANCELLED. ' + (b.loc !== 'Event' ? 'Stock goes back into ' + esc(b.loc) + '. ' : '') +
+  const m = modal('Cancel ' + b.no, '<div class="warnbox">The bill number stays used and the bill is marked CANCELLED. ' + (b.loc !== 'Event' || b.date >= '2026-10-30' ? 'Stock goes back into ' + esc(b.loc === 'Event' ? 'the event stock' : b.loc) + '. ' : '') +
     'If the customer already paid, refund them separately.</div><label class="f">Reason</label><input class="i" id="cx_r" placeholder="e.g. wrong item billed, customer returned"><button class="btn red block" id="cx_go" style="margin-top:10px">Cancel bill</button>');
   $('#cx_go', m).onclick = async e => {
     if (!confirmTwice(e.target)) return;
@@ -3633,7 +3633,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = 'a3464c8e7e';
+<script>window.NV_BUILD = '2a816acae2';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
