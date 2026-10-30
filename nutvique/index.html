@@ -59,6 +59,7 @@ input.num{text-align:right}
 .btn.block{width:100%;display:block;text-align:center}a.btn{display:inline-block;text-decoration:none;text-align:center;line-height:1.3}
 .pill{display:inline-block;border-radius:20px;padding:2px 9px;font-size:12px;font-weight:600;white-space:nowrap}
 .p-ok{background:var(--okbg);color:var(--ok)}.p-warn{background:var(--warnbg);color:var(--warn)}.p-bad{background:var(--badbg);color:var(--bad)}.p-new{background:var(--newbg);color:var(--new)}.p-mute{background:#eee;color:#555}
+.kp{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:8px 0}.kp>div{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 10px}.kp span{display:block;font-size:12px;color:var(--mute);line-height:1.35}.kp b{display:block;font-size:20px;margin:2px 0;color:var(--navy)}
 .neg{color:var(--bad);font-weight:700}
 .search{position:sticky;top:56px;z-index:10;background:var(--bg);padding:6px 0 8px}
 @media(max-width:899px){.search{top:52px}}
@@ -1727,10 +1728,10 @@ async function custList(m, reload) {
   }
   const D = CUL.data, s = D.stats, soon = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
   const stores = [...new Set(D.list.flatMap(x => x.stores))].sort();
-  box.innerHTML = '<div class="bigp"><div><span>Customers</span><b>' + s.customers + '</b></div><div><span>Got bill on WhatsApp</span><b>' + s.wa + '</b></div><div><span>With pending coupons</span><b>' + s.withCoupons + '</b><span>' + s.coupons + ' coupon' + (s.coupons === 1 ? '' : 's') + (s.expiring ? ' · ' + s.expiring + ' end within 7 days' : '') + '</span></div></div>' +
-    '<div class="chips" id="cul_f" style="margin:8px 0">' + [['all', 'All'], ['loyal', 'Loyal (3+ bills)'], ['wa', 'Bill sent on WhatsApp'], ['cp', 'Pending coupons'], ['soon', 'Coupon ending in 7 days'], ['nowa', 'Mobile given, no WhatsApp']].map(f => '<button data-f="' + f[0] + '" class="' + (CUL.f === f[0] ? 'on' : '') + '">' + f[1] + '</button>').join('') + '</div>' +
-    '<div class="row" style="flex-wrap:nowrap"><input class="i grow" id="cul_q" type="search" placeholder="Search name, mobile or code" value="' + esc(CUL.q) + '" style="min-width:0">' +
-    '<select class="i" id="cul_l" style="max-width:150px"><option value="">All stores</option>' + stores.map(l => '<option' + (l === CUL.loc ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select></div>' +
+  box.innerHTML = '<div class="row" style="flex-wrap:nowrap;margin-bottom:8px"><input class="i grow" id="cul_q" type="search" placeholder="🔍 Find customer – name or mobile number" value="' + esc(CUL.q) + '" style="min-width:0;font-size:16px"></div>' +
+    '<div class="kp"><div><span>Customers</span><b>' + s.customers + '</b><span>' + (s.repeat || 0) + ' came back' + (s.customers ? ' (' + Math.round(100 * (s.repeat || 0) / s.customers) + '%)' : '') + '</span></div><div><span>Average bill</span><b>' + inr(s.avg || 0, 0) + '</b><span>' + (s.vip || 0) + ' VIP (₹' + Number(s.vipFrom || 10000).toLocaleString('en-IN') + '+ spent)</span></div><div><span>Due to come back</span><b>' + (s.due || 0) + '</b><span>past their usual gap</span></div><div><span>Got bill on WhatsApp</span><b>' + s.wa + '</b></div><div><span>With pending coupons</span><b>' + s.withCoupons + '</b><span>' + s.coupons + ' coupon' + (s.coupons === 1 ? '' : 's') + (s.expiring ? ' · ' + s.expiring + ' end within 7 days' : '') + '</span></div></div>' +
+    '<div class="chips" id="cul_f" style="margin:8px 0">' + [['all', 'All'], ['repeat', 'Repeat (2+ visits)'], ['loyal', 'Loyal (3+ bills)'], ['vip', '⭐ VIP'], ['due', 'Due to come back'], ['lost', 'Not seen 30+ days'], ['wa', 'Bill sent on WhatsApp'], ['cp', 'Pending coupons'], ['soon', 'Coupon ending in 7 days'], ['nowa', 'Mobile given, no WhatsApp']].map(f => '<button data-f="' + f[0] + '" class="' + (CUL.f === f[0] ? 'on' : '') + '">' + f[1] + '</button>').join('') + '</div>' +
+    '<div class="row" style="flex-wrap:nowrap"><select class="i" id="cul_l" style="max-width:220px"><option value="">All stores</option>' + stores.map(l => '<option' + (l === CUL.loc ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select></div>' +
     '<div class="row" style="margin:8px 0;justify-content:space-between"><span class="small mute" id="cul_c"></span><span><button class="btn sm ghost" id="cul_r">Refresh</button> <button class="btn sm" id="cul_x">Download (Excel)</button></span></div>' +
     (isOwnerUi() ? '<button class="btn gold block" id="cul_gc" style="margin-bottom:8px">🎁 Give a coupon to the customers shown</button>' : '') +
     (D.full ? '' : '<div class="tiny mute" style="margin-bottom:6px">Mobile numbers are partly hidden for your login. Only the owner (or people with the "all stores" right) see full numbers.</div>') +
@@ -1740,11 +1741,15 @@ async function custList(m, reload) {
     return D.list.filter(x => {
       if (CUL.loc && x.stores.indexOf(CUL.loc) < 0) return false;
       if (CUL.f === 'loyal' && x.bills < 3) return false;
+      if (CUL.f === 'repeat' && !(x.visits > 1)) return false;
+      if (CUL.f === 'vip' && !x.vip) return false;
+      if (CUL.f === 'due' && !(x.state === 'Due' || x.state === 'At risk')) return false;
+      if (CUL.f === 'lost' && !(x.since >= 30)) return false;
       if (CUL.f === 'wa' && !x.wa) return false;
       if (CUL.f === 'nowa' && x.wa) return false;
       if (CUL.f === 'cp' && !x.pending.length) return false;
       if (CUL.f === 'soon' && !x.pending.some(p => p.till && p.till <= soon)) return false;
-      if (q && !((x.name || '').toLowerCase().replace(/\s+/g, '').includes(q) || (qd.length >= 3 && x.phone.includes(qd)) || (x.code || '').toLowerCase().includes(q) || x.pending.some(p => p.code.toLowerCase().includes(q)))) return false;
+      if (q && !((CUL.qh && x.h === CUL.qh) || (x.name || '').toLowerCase().replace(/\s+/g, '').includes(q) || (qd.length >= 3 && x.phone.includes(qd)) || (x.code || '').toLowerCase().includes(q) || x.pending.some(p => p.code.toLowerCase().includes(q)))) return false;
       return true;
     });
   };
@@ -1754,10 +1759,10 @@ async function custList(m, reload) {
     $('#cul_c', m).textContent = L.length + ' customer' + (L.length === 1 ? '' : 's') + (L.length > show.length ? ' (showing ' + show.length + ')' : '');
     let h;
     if (!L.length) h = '<div class="empty small">No customers match.</div>';
-    else if (wide) h = '<div class="card" style="padding:6px"><div class="tscroll"><table class="t"><tr><th>Customer</th><th>Mobile</th><th class="n">Bills</th><th class="n">Spent</th><th>First bill</th><th>Last bill</th><th>WhatsApp bills</th><th>Pending coupons</th><th>Ref code</th></tr>' +
-      show.map((x, i) => '<tr data-cu="' + i + '" style="cursor:pointer"><td><b>' + esc(x.name || '–') + '</b></td><td class="nowrap">' + esc(x.phone) + '</td><td class="n">' + x.bills + '</td><td class="n">' + inr(x.spent, 0) + '</td><td class="nowrap">' + dmy(x.first) + '</td><td class="nowrap">' + dmy(x.last) + '<div class="tiny mute">' + esc(x.lastLoc) + '</div></td><td>' + (x.wa ? '✅ ' + x.wa + '<div class="tiny mute">last ' + dmy(x.waLast) + '</div>' : '<span class="mute">–</span>') + '</td><td>' + cpTxt(x) + '</td><td>' + esc(x.code || '') + '</td></tr>').join('') + '</table></div></div>';
-    else h = '<div class="cnlist">' + show.map((x, i) => '<div class="cnr" data-cu="' + i + '" style="cursor:pointer"><div class="cnr1"><b class="grow">' + esc(x.name || 'No name') + '</b><span class="small nowrap">' + esc(x.phone) + '</span></div>' +
-      '<div class="cnr2"><div class="cnk"><span>Bills</span><b>' + x.bills + '</b></div><div class="cnk"><span>Spent</span><b>' + inr(x.spent, 0) + '</b></div><div class="cnk"><span>Last bill</span><b>' + dmy(x.last) + '</b></div><div class="cnk"><span>WhatsApp</span><b>' + (x.wa ? '✅ ' + x.wa : '–') + '</b></div></div>' +
+    else if (wide) h = '<div class="card" style="padding:6px"><div class="tscroll"><table class="t"><tr><th>Customer</th><th>Mobile</th><th class="n">Bills</th><th class="n">Spent</th><th class="n">Avg bill</th><th>First bill</th><th>Last bill</th><th>WhatsApp bills</th><th>Pending coupons</th><th>Ref code</th></tr>' +
+      show.map((x, i) => '<tr data-cu="' + i + '" style="cursor:pointer"><td><b>' + esc(x.name || '–') + '</b><div>' + segPill(x) + '</div></td><td class="nowrap">' + esc(x.phone) + '</td><td class="n">' + x.bills + '</td><td class="n">' + inr(x.spent, 0) + '</td><td class="n">' + inr(x.avg || 0, 0) + '</td><td class="nowrap">' + dmy(x.first) + '</td><td class="nowrap">' + dmy(x.last) + '<div class="tiny mute">' + esc(x.lastLoc) + (x.since != null ? ' · ' + agoTxt(x.since) : '') + '</div></td><td>' + (x.wa ? '✅ ' + x.wa + '<div class="tiny mute">last ' + dmy(x.waLast) + '</div>' : '<span class="mute">–</span>') + '</td><td>' + cpTxt(x) + '</td><td>' + esc(x.code || '') + '</td></tr>').join('') + '</table></div></div>';
+    else h = '<div class="cnlist">' + show.map((x, i) => '<div class="cnr" data-cu="' + i + '" style="cursor:pointer"><div class="cnr1"><b class="grow">' + esc(x.name || 'No name') + '</b><span class="small nowrap">' + esc(x.phone) + '</span></div><div style="margin:2px 0">' + segPill(x) + '</div>' +
+      '<div class="cnr2"><div class="cnk"><span>Bills</span><b>' + x.bills + '</b></div><div class="cnk"><span>Spent</span><b>' + inr(x.spent, 0) + '</b></div><div class="cnk"><span>Last bill</span><b>' + dmy(x.last) + '</b><span class="tiny mute">' + agoTxt(x.since) + '</span></div><div class="cnk"><span>WhatsApp</span><b>' + (x.wa ? '✅ ' + x.wa : '–') + '</b></div></div>' +
       (x.pending.length ? '<div style="margin-top:6px">' + cpTxt(x) + '</div>' : '') + '</div>').join('') + '</div>';
     if (L.length > show.length) h += '<button class="btn ghost block" id="cul_more" style="margin-top:8px">Show more</button>';
     $('#cul_rows', m).innerHTML = h;
@@ -1765,19 +1770,30 @@ async function custList(m, reload) {
     if ($('#cul_more', m)) $('#cul_more', m).onclick = () => { CUL.n += 300; draw(); };
   };
   $$('#cul_f button', m).forEach(b => b.onclick = () => { CUL.f = b.dataset.f; CUL.n = 150; $$('#cul_f button', m).forEach(x => x.classList.toggle('on', x === b)); draw(); });
-  $('#cul_q', m).oninput = e => { CUL.q = e.target.value; CUL.n = 150; draw(); };
+  const qin = async () => { const d10 = CUL.q.replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, ''); CUL.qh = /^[6-9]\d{9}$/.test(d10) ? await phoneHash(d10) : ''; CUL.n = 150; draw(); };
+  $('#cul_q', m).oninput = e => { CUL.q = e.target.value; qin(); };
+  $('#cul_q', m).onkeydown = e => { if (e.key !== 'Enter') return; const L = pick(); if (L.length === 1) custDetail(L[0]); else { const d10 = CUL.q.replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, ''); if (!L.length && /^[6-9]\d{9}$/.test(d10)) custDetail({ phone: d10, name: 'Customer' }); } };
   $('#cul_l', m).onchange = e => { CUL.loc = e.target.value; CUL.n = 150; draw(); };
   $('#cul_r', m).onclick = () => custList(m, true);
   if ($('#cul_gc', m)) $('#cul_gc', m).onclick = () => { const L = pick(); if (!L.length) return toast('No customers in this list', true); couponForm(L, () => custList(m, true)); };
   $('#cul_x', m).onclick = () => {
     const L = pick(), q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-    const rows = [['Customer name', 'Mobile', 'Bills', 'Total spent (Rs)', 'First bill date', 'Last bill date', 'Last store', 'Stores', 'Bills sent on WhatsApp', 'Last WhatsApp bill', 'Referral code', 'Pending coupons', 'Pending coupon details', 'Coupons used', 'Coupons expired']]
+    const rows = [['Customer name', 'Mobile', 'Bills', 'Total spent (Rs)', 'First bill date', 'Last bill date', 'Last store', 'Stores', 'Bills sent on WhatsApp', 'Last WhatsApp bill', 'Referral code', 'Pending coupons', 'Pending coupon details', 'Coupons used', 'Coupons expired', 'Visits', 'Average bill (Rs)', 'Comes every (days)', 'Days since last visit', 'Type', 'Status', 'VIP']]
       .concat(L.map(x => [x.name, x.phone, x.bills, x.spent, dmy(x.first), dmy(x.last), x.lastLoc, x.stores.join(' / '), x.wa, dmy(x.waLast), x.code, x.pending.length,
-        x.pending.map(p => p.code + ' ' + p.pct + '% (' + p.kind + ', bill Rs ' + p.min + '+, till ' + dmy(p.till) + ')').join('; '), x.used, x.expired]));
+        x.pending.map(p => p.code + ' ' + p.pct + '% (' + p.kind + ', bill Rs ' + p.min + '+, till ' + dmy(p.till) + ')').join('; '), x.used, x.expired, x.visits, x.avg, x.gap || '', x.since, x.type, x.state, x.vip ? 'Yes' : '']));
     const csv = rows.map(r => r.map(q).join(',')).join('\r\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'Nutvique customers ' + today() + '.csv'; document.body.appendChild(a); a.click(); a.remove();
   };
-  draw();
+  if (CUL.q) qin(); else draw();
+  setTimeout(() => { const q = $('#cul_q', m); if (q && window.innerWidth >= 760) q.focus(); }, 50);
+}
+const agoTxt = n => n == null ? '' : n <= 0 ? 'today' : n === 1 ? 'yesterday' : n + ' days ago';
+async function phoneHash(ph) {
+  try { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('nv|' + ph)); return [...new Uint8Array(b)].slice(0, 6).map(x => x.toString(16).padStart(2, '0')).join(''); } catch (e) { return ''; }
+}
+function segPill(x) {
+  const c = { Active: 'p-ok', Due: 'p-warn', 'At risk': 'p-bad', Lapsed: 'p-mute', 'Not back yet': 'p-warn' }[x.state] || 'p-mute';
+  return (x.vip ? '<span class="pill p-new" style="margin-right:3px">⭐ VIP</span>' : '') + (x.type ? '<span class="pill p-mute" style="margin-right:3px">' + esc(x.type) + '</span>' : '') + (x.state ? '<span class="pill ' + c + '">' + esc(x.state) + '</span>' : '');
 }
 const isOwnerUi = () => !!(S.user && S.user.role === 'Owner');
 /** Owner: loyalty coupon for one or many customers – % / minimum bill / validity decided here (v18.20). */
@@ -1807,15 +1823,47 @@ function couponForm(list, done) {
 }
 async function custDetail(x) {
   const m = modal(x.name || 'Customer', '<div class="empty"><span class="spin dk"></span></div>', { wide: true });
-  let d; try { d = await call('customerDetail', { key: x.key }); } catch (e) { $('.sb', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
-  const st = { Active: 'p-ok', Used: 'p-mute', Expired: 'p-warn' }, act = d.coupons.filter(c => c.status === 'Active');
-  $('.sb', m).innerHTML = (isOwnerUi() ? '<button class="btn gold block" id="cd_gc" style="margin-bottom:10px">🎁 Give a loyalty coupon</button>' : '') + '<div class="kv"><div>Name</div><div><b>' + esc(d.name || '–') + '</b></div><div>Mobile</div><div>' + esc(d.phone) + '</div>' +
-    (d.code ? '<div>Referral code</div><div><b>' + esc(d.code) + '</b></div>' : '') + (d.referredBy ? '<div>Referred by</div><div>' + esc(d.referredBy) + ' · ' + esc(d.referral) + '</div>' : '') +
-    '<div>Bills</div><div>' + d.bills.length + ' · ' + inr(d.bills.reduce((a, b) => a + b.total, 0), 0) + '</div><div>Bills on WhatsApp</div><div>' + d.bills.filter(b => b.sent).length + '</div>' +
+  let d; try { d = await call('customerDetail', x.phone ? { phone: x.phone } : { key: x.key }); } catch (e) { $('.sb', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+  x = Object.assign({}, x, { key: d.key, name: d.name });
+  const st = { Active: 'p-ok', Used: 'p-mute', Expired: 'p-warn' }, act = d.coupons.filter(c => c.status === 'Active'), A = d.a || {};
+  const fq = (q, u) => /^kg$/i.test(u || '') ? (q < 1 ? Math.round(q * 1000) + ' g' : (+q.toFixed(3)) + ' kg') : (+(+q).toFixed(3)) + ' ' + (u || 'pcs');
+  const bars = (rows, fmt) => { const mx = Math.max(1, ...rows.map(r => r[1])); return rows.length ? rows.map(r => '<div style="margin:5px 0"><div class="row small" style="justify-content:space-between;flex-wrap:nowrap"><span>' + esc(r[0]) + '</span><b class="nowrap">' + (fmt ? fmt(r) : inr(r[1], 0)) + '</b></div><div style="height:7px;border-radius:4px;background:var(--line)"><div style="height:7px;border-radius:4px;background:var(--gold,#b8892b);width:' + Math.max(3, Math.round(100 * r[1] / mx)) + '%"></div></div></div>').join('') : '<div class="small mute">–</div>'; };
+  const obj = o => Object.keys(o || {}).map(k => [k, o[k].amt, o[k].n]).sort((a, b) => b[1] - a[1]);
+  const pct = r => inr(r[1], 0) + ' · ' + (A.spent ? Math.round(100 * r[1] / A.spent) : 0) + '%';
+  const nb = r => inr(r[1], 0) + ' · ' + r[2] + ' bill' + (r[2] === 1 ? '' : 's');
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const card = (t, h) => '<div class="card" style="padding:10px 12px;margin:0"><h3 style="margin:0 0 6px">' + t + '</h3>' + h + '</div>';
+  let h = (isOwnerUi() ? '<button class="btn gold block" id="cd_gc" style="margin-bottom:10px">🎁 Give a loyalty coupon</button>' : '') +
+    '<div class="row" style="justify-content:space-between;align-items:flex-start"><div><b style="font-size:18px">' + esc(d.name || 'No name') + '</b> <span class="small">' + esc(d.phone) + '</span><div style="margin-top:4px">' + segPill(A) + '</div></div>' +
+    (d.code ? '<div class="small" style="text-align:right">Referral code<br><b>' + esc(d.code) + '</b></div>' : '') + '</div>' +
+    '<div class="kp" style="margin-top:10px"><div><span>Total spent</span><b>' + inr(A.spent, 0) + '</b><span>' + A.bills + ' bill' + (A.bills === 1 ? '' : 's') + ' · ' + A.visits + ' visit' + (A.visits === 1 ? '' : 's') + '</span></div>' +
+    '<div><span>Average bill</span><b>' + inr(A.avg, 0) + '</b><span>biggest ' + inr(A.max, 0) + (A.storeAvg ? ' · all customers avg ' + inr(A.storeAvg, 0) : '') + '</span></div>' +
+    '<div><span>Last visit</span><b>' + (A.since <= 1 ? agoTxt(A.since) : A.since + ' days ago') + '</b><span>' + dmy(A.last) + (A.favStore ? ' · ' + esc(A.favStore.split(' – ')[0]) : '') + '</span></div>' +
+    '<div><span>Comes every</span><b>' + (A.gap ? '~' + A.gap + ' days' : '–') + '</b><span>' + (A.next ? 'next expected ' + dmy(A.next) : 'customer since ' + dmy(A.first)) + '</span></div></div>' +
+    (A.tips && A.tips.length ? '<div class="okbox" style="margin:10px 0"><b>💡 Suggestions</b><ul style="margin:6px 0 0 18px;padding:0">' + A.tips.map(t => '<li class="small" style="margin:3px 0">' + esc(t) + '</li>').join('') + '</ul></div>' : '') +
+    '<h3>Favourite products</h3>' + ((A.products || []).length ? '<div class="tscroll"><table class="t"><tr><th>Product</th><th class="n">Times</th><th class="n">Total qty</th><th class="n">Spent</th><th>Last bought</th><th>Usually every</th></tr>' +
+      A.products.slice(0, 15).map(p => '<tr><td>' + esc(p.name.replace(/^Nutvique\s+/, '')) + '</td><td class="n">' + p.times + '</td><td class="n nowrap">' + fq(p.qty, p.unit) + '</td><td class="n">' + inr(p.amt, 0) + '</td><td class="nowrap">' + dmy(p.last) + '<div class="tiny mute">' + agoTxt(p.ago) + '</div></td><td class="small">' + (p.every ? '~' + p.every + ' days' + (p.due ? ' <span class="pill p-warn">due</span>' : '') : '<span class="mute">once</span>') + '</td></tr>').join('') + '</table></div>' +
+      (A.products.length > 15 ? '<div class="tiny mute">+ ' + (A.products.length - 15) + ' more products</div>' : '') : '<div class="small mute">No item details.</div>') +
+    '<div class="grid2" style="margin-top:12px;gap:10px">' +
+      card('What they buy', bars((A.cats || []).map(c => [c.name, c.amt]), pct)) +
+      card('Spend by month', bars((A.months || []).map(r => [MON[+r.m.slice(5) - 1] + ' ' + r.m.slice(0, 4), r.amt]))) +
+      card('Stores', bars(obj(A.stores), nb)) +
+      card('Payment', bars(Object.keys(A.pay || {}).filter(k => A.pay[k] > 0).map(k => [k, A.pay[k]]).sort((a, b) => b[1] - a[1]), pct)) +
+      card('Day of week', bars(obj(A.days), nb)) +
+      card('Time of day', bars(obj(A.times), nb)) +
+    '</div>' +
+    '<div class="kv" style="margin-top:12px"><div>Discounts received</div><div>' + inr(A.disc || 0, 0) + (A.spent ? ' (' + (Math.round(1000 * (A.disc || 0) / (A.spent + (A.disc || 0))) / 10) + '% of the price)' : '') + '</div><div>Coupons used</div><div>' + (A.couponsUsed || 0) + '</div><div>Bills on WhatsApp</div><div>' + d.bills.filter(b => b.sent).length + ' of ' + d.bills.length + '</div>' +
+    (d.referredBy ? '<div>Referred by</div><div>' + esc(d.referredBy) + ' · ' + esc(d.referral) + '</div>' : '') +
     (d.referred.length ? '<div>Friends referred</div><div>' + d.referred.map(r => esc(r.name || 'Customer') + ' (' + esc(r.status) + ')').join(', ') + '</div>' : '') + '</div>' +
     '<h3>Pending coupons (' + act.length + ')</h3>' + (act.length ? act.map(c => '<div class="okbox" style="margin-bottom:6px"><b>' + esc(c.code) + '</b> – ' + c.pct + '% off a bill of ₹' + c.min + '+ · valid till <b>' + dmy(c.till) + '</b><div class="tiny">' + esc(c.kind) + (c.from && c.kind !== 'Lucky draw' ? ' – earned from ' + esc(c.from) : '') + (c.fromNext ? ' · usable from tomorrow' : '') + '</div></div>').join('') : '<div class="small mute">No pending coupons.</div>') +
-    '<h3>All coupons</h3>' + (d.coupons.length ? '<div class="tscroll"><table class="t"><tr><th>Coupon</th><th>Type</th><th>Issued</th><th>Valid till</th><th>Status</th></tr>' + d.coupons.map(c => '<tr><td><b>' + esc(c.code) + '</b> ' + c.pct + '%</td><td class="small">' + esc(c.kind) + '</td><td class="nowrap">' + dmy(c.issued) + '</td><td class="nowrap">' + dmy(c.till) + '</td><td><span class="pill ' + (st[c.status] || 'p-mute') + '">' + esc(c.status) + '</span>' + (c.usedOn ? '<div class="tiny mute">' + esc(c.usedOn) + '</div>' : '') + '</td></tr>').join('') + '</table></div>' : '<div class="small mute">None.</div>') +
-    '<h3>Bills</h3><div class="tscroll"><table class="t"><tr><th>Bill</th><th>Date</th><th>Store</th><th class="n">Total</th><th>Payment</th><th>WhatsApp</th></tr>' + d.bills.map(b => '<tr><td class="nowrap">' + esc(b.no) + '</td><td class="nowrap">' + dmy(b.date) + '</td><td class="small">' + esc(b.loc) + '</td><td class="n">' + inr(b.total, 0) + '</td><td class="small">' + esc(b.pay) + '</td><td class="small">' + (b.sent ? '✅ ' + esc(b.sent) : '–') + '</td></tr>').join('') + '</table></div>';
+    (d.coupons.length > act.length ? '<details style="margin-top:6px"><summary class="small">All coupons (' + d.coupons.length + ')</summary><div class="tscroll"><table class="t"><tr><th>Coupon</th><th>Type</th><th>Issued</th><th>Valid till</th><th>Status</th></tr>' + d.coupons.map(c => '<tr><td><b>' + esc(c.code) + '</b> ' + c.pct + '%</td><td class="small">' + esc(c.kind) + '</td><td class="nowrap">' + dmy(c.issued) + '</td><td class="nowrap">' + dmy(c.till) + '</td><td><span class="pill ' + (st[c.status] || 'p-mute') + '">' + esc(c.status) + '</span>' + (c.usedOn ? '<div class="tiny mute">' + esc(c.usedOn) + '</div>' : '') + '</td></tr>').join('') + '</table></div></details>' : '') +
+    '<h3>Buying history (' + d.bills.length + ' bill' + (d.bills.length === 1 ? '' : 's') + ')</h3><div class="tiny mute" style="margin-bottom:4px">Tap a bill to see what was bought.</div>' +
+    d.bills.map((b, i) => '<div class="card" style="padding:8px 10px;margin:0 0 6px"><div class="row" data-bx="' + i + '" style="cursor:pointer;flex-wrap:nowrap;justify-content:space-between"><div><b>' + dmy(b.date) + '</b> <span class="tiny mute">' + esc(b.time || '') + '</span><div class="tiny mute">' + esc(b.no) + ' · ' + esc(b.loc) + ' · ' + esc(b.pay) + (b.sent ? ' · ✅ WhatsApp' : '') + '</div></div><div style="text-align:right"><b>' + inr(b.total, 0) + '</b><div class="tiny mute">' + (b.lines || []).length + ' item' + ((b.lines || []).length === 1 ? '' : 's') + ' ▾</div></div></div>' +
+      '<div id="bx' + i + '" style="display:none;margin-top:6px">' + ((b.lines || []).length ? '<table class="t"><tr><th>Item</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Amount</th></tr>' + b.lines.map(l => '<tr><td class="small">' + esc(l.item.replace(/^Nutvique\s+/, '')) + '</td><td class="n nowrap">' + fq(l.qty, l.unit) + '</td><td class="n">' + inr(l.rate, 0) + '</td><td class="n">' + inr(l.amount, 0) + '</td></tr>').join('') + '</table>' : '<div class="small mute">No item lines.</div>') +
+      (b.disc ? '<div class="tiny mute">Discount ' + inr(b.disc, 0) + ' · billed by ' + esc(b.by) + '</div>' : '<div class="tiny mute">Billed by ' + esc(b.by) + '</div>') + '</div></div>').join('') +
+    '<div class="tiny mute" style="margin-top:8px">Counts bills made in this app with the customer\'s mobile. QueueBuster bills (before the app) have no mobile, so they are not included.</div>';
+  $('.sb', m).innerHTML = h;
+  $$('[data-bx]', m).forEach(el => el.onclick = () => { const b = $('#bx' + el.dataset.bx, m); b.style.display = b.style.display === 'none' ? '' : 'none'; });
   if ($('#cd_gc', m)) $('#cd_gc', m).onclick = () => couponForm([{ key: x.key, name: d.name, phone: d.phone }], () => { CUL.data = null; });
 }
 async function referralScreen(mm) {
@@ -1899,7 +1947,7 @@ async function viewMore() {
     fld('Cost includes GST', '<select class="i" data-s="Cost includes GST"><option' + (s['Cost includes GST'] !== 'Yes' ? ' selected' : '') + '>No</option><option' + (s['Cost includes GST'] === 'Yes' ? ' selected' : '') + '>Yes</option></select>') +
     fld('Spread charges by', '<select class="i" data-s="Spread charges by"><option' + (s['Spread charges by'] !== 'Quantity' ? ' selected' : '') + '>Value</option><option' + (s['Spread charges by'] === 'Quantity' ? ' selected' : '') + '>Quantity</option></select>') +
     f('Gemini model') + f('Last GTIN used on DataKart') + '</div>' +
-    '<h3 style="margin-top:18px">Customers → Google Contacts</h3><div class="grid2">' + fld('Google Contacts: save customers', '<select class="i" data-s="Google Contacts: save customers">' + ["Owner's bills only", 'All bills', 'Off'].map(o => '<option' + ((s['Google Contacts: save customers'] || "Owner's bills only") === o ? ' selected' : '') + '>' + o + '</option>').join('') + '</select>') + '</div><div class="tiny mute">New customers are saved to the Google Contacts of nutzyfoods@gmail.com (label “Nutvique customers”). They show on any phone where that account syncs contacts.</div>' +
+    '<h3 style="margin-top:18px">Customers → Google Contacts</h3><div class="grid2">' + fld('Google Contacts: save customers', '<select class="i" data-s="Google Contacts: save customers">' + ["Owner's bills only", 'All bills', 'Off'].map(o => '<option' + ((s['Google Contacts: save customers'] || "Owner's bills only") === o ? ' selected' : '') + '>' + o + '</option>').join('') + '</select>') + f('Customers: VIP if total spend ₹', 'inputmode="decimal" placeholder="10000"') + '</div><div class="tiny mute">New customers are saved to the Google Contacts of nutzyfoods@gmail.com (label “Nutvique customers”). They show on any phone where that account syncs contacts.</div>' +
     '<h3 style="margin-top:18px">UPI payment check (ICICI SMS / email)</h3><div class="grid2">' + fld('UPI email check', '<select class="i" data-s="UPI email check"><option' + (s['UPI email check'] !== 'On' ? ' selected' : '') + '>Off</option><option' + (s['UPI email check'] === 'On' ? ' selected' : '') + '>On</option></select>') + f('UPI email search', 'placeholder="from:(icici.bank.in) newer_than:2d"') + '</div><div class="tiny mute">On = the UPI QR screen waits for ICICI\'s credit SMS (forwarded by the owner\'s iPhone) and shows “✓ received”. Email search “off” = SMS only.</div>' +
     '<h3 style="margin-top:18px">Store closing emails</h3><div class="grid2">' + f('Day close emails: also send to', 'placeholder="a@x.com, b@y.com"') + f('Card terminals (ID = store)', 'placeholder="EP292213=Central Market – Sector 120"') + '</div><div class="tiny mute">Every Day close goes by email to the owner email, every manager who has an email in People, and these addresses (comma-separated).</div>' +
     '<h3 style="margin-top:18px">Discounts</h3><div class="grid2">' + f('Discount: round off without approval up to ₹', 'inputmode="decimal" placeholder="20"') + '</div><div class="tiny mute">Anyone who bills can take this much off a bill (e.g. ₹1,312.50 → ₹1,300) without asking. Above it, staff need approval; managers can give up to 10% alone. 0 = always ask.</div>' +
@@ -2059,12 +2107,13 @@ function drawCust() {
       '<label class="f" style="margin-top:8px">Referred by (friend\'s referral code or mobile) – optional</label><div class="row" style="flex-wrap:nowrap"><input class="i grow" id="b_ref" value="' + esc(B.refBy || '') + '" placeholder="e.g. NV7K3PQ" style="text-transform:uppercase"><button class="btn sm ghost" id="b_refc">Check</button></div>' +
       (c.ref ? '<div class="tiny ' + (c.ref.ok ? '' : 'neg') + '" style="margin-top:4px">' + esc(c.ref.ok ? '✓ Referred by ' + c.ref.label + ' – they get a ' + c.rules.pct + '% coupon when this customer\'s first ₹' + c.rules.refMin + '+ bill is saved.' : c.ref.msg) + '</div>' : '');
   } else {
-    h += '<div class="tiny"><span class="pill p-ok">' + (c.bills ? c.bills + ' earlier bill' + (c.bills === 1 ? '' : 's') : 'Known customer') + '</span>' + (c.code ? ' Referral code <b>' + esc(c.code) + '</b>' : '') + (c.referredBy && /^Waiting/.test(c.referral) ? ' · referred by ' + esc(c.referredBy) + ' (' + esc(c.referral.toLowerCase()) + ')' : '') + '</div>';
+    h += '<div class="tiny"><span class="pill p-ok">' + (c.bills ? c.bills + ' earlier bill' + (c.bills === 1 ? '' : 's') : 'Known customer') + '</span>' + (c.code ? ' Referral code <b>' + esc(c.code) + '</b>' : '') + (c.referredBy && /^Waiting/.test(c.referral) ? ' · referred by ' + esc(c.referredBy) + ' (' + esc(c.referral.toLowerCase()) + ')' : '') + (c.bills && typeof can === 'function' && can('customers') ? ' <button class="btn sm ghost" id="b_hist" style="padding:2px 8px">📜 History</button>' : '') + '</div>';
   }
   if (c.coupons.length) h += '<div style="margin-top:8px">' + c.coupons.map(cp => { const on = B.coupon && B.coupon.code === cp.code;
     return '<div class="cpn' + (on ? ' on' : '') + '"><div class="grow"><b>' + (cp.lucky ? '🍀 ' : '') + esc(cp.code) + ' · ' + cp.pct + '% off</b><div class="tiny mute">on a bill of ₹' + cp.min + '+ · valid till ' + esc(cp.till.split('-').reverse().join('-')) + (cp.lucky ? ' · lucky draw' : cp.from ? ' · for referring ' + esc(cp.from) : '') + '</div></div>' +
       (cp.next ? '<span class="tiny mute" style="text-align:right">From the<br>next visit</span>' : '<button class="btn sm ' + (on ? 'ghost' : 'gold') + '" data-cp="' + esc(cp.code) + '">' + (on ? 'Remove' : 'Use') + '</button>') + '</div>'; }).join('') + '</div>';
   box.innerHTML = h;
+  if ($('#b_hist')) $('#b_hist').onclick = () => custDetail({ phone: c.phone, name: c.name || B.cust.name || 'Customer' });
   if ($('#b_ref')) { $('#b_ref').oninput = e => { B.refBy = e.target.value.trim(); }; $('#b_refc').onclick = () => custLookup(true); $('#b_ref').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); custLookup(true); } }; }
   $$('[data-cp]', box).forEach(b => b.onclick = () => {
     const cp = c.coupons.find(x => x.code === b.dataset.cp);
@@ -3633,7 +3682,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '02d7c93f90';
+<script>window.NV_BUILD = 'c52b7f4b1e';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
