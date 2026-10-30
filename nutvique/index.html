@@ -1861,7 +1861,7 @@ async function viewMore() {
       (ls.length ? ls.map(l => '<div class="row" style="margin-top:10px"><div class="grow"><b>' + esc(l) + '</b> · ' + Object.keys(sp[l]).length + ' items</div><button class="btn sm ghost" data-spv="' + esc(l) + '">View</button><button class="btn sm gold" data-spa="' + esc(l) + '">Apply to all stores</button></div>').join('') : '<div class="small" style="margin-top:8px">None at the moment.</div>') + '</div>'; }
   if (can('customers')) h += '<div class="card"><h3>Customers</h3><div class="small mute">All customers with mobile and name, bills sent on WhatsApp, pending coupons, referrals. Download to Excel.</div><button class="btn sm" id="cust" style="margin-top:10px">Open</button></div>';
   if (isOwnerUi() || can('prices')) h += '<div class="card"><h3>🎁 Hamper recipes</h3><div class="small mute">What goes into each gift hamper (box, jars, grams of each product) – taken out of stock on every hamper sale.</div><button class="btn sm" id="hrl" style="margin-top:10px">Open</button></div>';
-  if (S.user && (S.user.role === 'Owner' || S.user.role === 'Manager')) h += '<div class="card"><h3>🏢 Corporate orders (Tally)</h3><div class="small mute">Upload the Tally invoice PDF – the sale goes into the Sales report and the items (and hamper contents) come out of stock.</div><button class="btn sm" id="col" style="margin-top:10px">Open</button></div>';
+  if (S.user && can('corporate')) h += '<div class="card"><h3>🏢 Corporate orders (Tally)</h3><div class="small mute">Upload the Tally invoice PDF – the sale goes into the Sales report and the items (and hamper contents) come out of stock.</div><button class="btn sm" id="col" style="margin-top:10px">Open</button></div>';
   if (can('sales') || isOwnerUi()) h += '<div class="card"><h3>🏦 Bank tally – UPI &amp; card</h3><div class="small mute">Next day: UPI and card sold against what ICICI and Paytm paid into the bank (read from the ICICI emails).</div><button class="btn sm" id="btl" style="margin-top:10px">Open</button></div>';
   if (can('sales') || isOwnerUi()) h += '<div class="card"><h3>💰 Cash pickups</h3><div class="small mute">Every time cash is taken from a store drawer – who took it, how much, and whether the owner has confirmed receiving it.</div><button class="btn sm" id="kpl" style="margin-top:10px">Open</button></div>';
   if (can('sales')) h += '<div class="card"><h3>UPI payments (bank emails)</h3><div class="small mute">Every payment ICICI emails about, and the bill it belongs to. Payments not linked to a bill are flagged.</div><button class="btn sm" id="upil" style="margin-top:10px">Open</button></div>';
@@ -3633,7 +3633,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '2a816acae2';
+<script>window.NV_BUILD = '02d7c93f90';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
