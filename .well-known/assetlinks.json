@@ -1,0 +1,14 @@
+[
+    {
+        "relation": [
+            "delegate_permission/common.handle_all_urls"
+        ],
+        "target": {
+            "namespace": "android_app",
+            "package_name": "com.nutzyfoods.nutvique",
+            "sha256_cert_fingerprints": [
+                "81:13:25:2C:A9:7F:81:CE:84:CB:D6:2E:58:38:56:D3:10:10:D7:61:A6:8C:31:2A:93:8C:C6:51:F1:9B:94:86"
+            ]
+        }
+    }
+]
