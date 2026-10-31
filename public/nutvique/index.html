@@ -1615,6 +1615,17 @@ async function viewGs1() {
     await run('Saving…', () => call('markGs1', { skus: [p.sku], status: 'Uploaded', gtin: g.trim() })); await refresh(true); viewGs1();
   });
 }
+/** New gift hamper / tray: ask what goes inside ONE of it, so every sale takes the right stock out (owner, 1 Nov 2026). */
+function hamperContentsAsk(sku) {
+  if (typeof hamperEditor !== 'function') return;
+  hamperEditor(sku, [], async parts => {
+    if (!parts.length) { toast('Add what goes inside – the tray / box, jars and each product with its weight', true); return false; }
+    const x = await run('Saving…', () => call('saveHamperRecipe', { sku: sku, parts: parts.map(p => ({ sku: p.sku, qty: p.qty })) })).catch(() => null);
+    if (!x) return false;
+    if (typeof B !== 'undefined' && B && B.boot) B.boot.hampers = x.recipes;
+    toast('Contents saved – every sale of this hamper takes them out of stock');
+  }, 'NEW HAMPER – fill in what goes inside ONE of it (tray / box, jars and each product in grams). You can change it later in Hamper recipes.');
+}
 function newProductSheet() {
   const c = { name: 'Nutvique ', short: '', cat: '', pack: 'Loose', net: '', netUnit: 'g', hsn: '', gst: 5, sell: '', mrp: '', cost: '', seller: '', supplier: '' };
   const m = modal('New product', '<div class="grid2">' + fld('Nutvique name', '<input class="i" id="n_name" value="Nutvique ">', 2) + fld('Seller name (as on supplier invoice)', '<input class="i" id="n_seller">') + fld('Supplier', '<input class="i" id="n_sup">') +
@@ -1627,13 +1638,17 @@ function newProductSheet() {
   const pv = async () => { try { const r = await call('previewNew', { items: [{ name: g('n_name'), cat: g('n_cat'), pack: g('n_pack'), net: g('n_net'), netUnit: g('n_nu'), seller: g('n_seller'), hsn: g('n_hsn') }] });
     $('#n_pv', m).textContent = 'Will get SKU ' + r.items[0].sku + ' · GTIN ' + r.gtins[0] + ' · HSN ' + (r.items[0].hsn || '?') + (r.items[0].hsnFrom ? ' (' + r.items[0].hsnFrom + ')' : '') + ' · GST ' + r.items[0].gst + '%'; } catch (e) { } };
   ['n_name', 'n_cat', 'n_pack', 'n_net', 'n_nu', 'n_hsn', 'n_seller'].forEach(id => $('#' + id, m).onchange = pv);
+  $('#n_cat', m).addEventListener('change', () => { if (g('n_cat') === 'Gift Hampers') { $('#n_pack', m).value = 'Packed'; toast('Gift hamper / tray: after you create it, you fill in what goes inside one'); } });
   $('#n_sell', m).onchange = () => { $('#n_mrp', m).value = suggestMrp(g('n_sell')); };
   $('#n_mk', m).onclick = () => { const s = suggestSell(num(g('n_cost'))); $('#n_sell', m).value = s; $('#n_mrp', m).value = suggestMrp(s); };
   $('#n_go', m).onclick = async () => {
     const it = { name: g('n_name'), seller: g('n_seller'), supplier: g('n_sup'), short: g('n_short'), cat: g('n_cat'), pack: g('n_pack'), net: g('n_net'), netUnit: g('n_nu'), cost: g('n_cost'), hsn: g('n_hsn'), sell: g('n_sell'), mrp: g('n_mrp') };
     if (!it.cat) return toast('Pick the category.', true);
+    if (it.cat !== 'Gift Hampers' && /hamper|gift tray|gift pack|gift basket/i.test(it.name) && confirm('This looks like a gift hamper / tray. Put it in the "Gift Hampers" category so you can fill in what goes inside it?')) { it.cat = 'Gift Hampers'; it.pack = 'Packed'; }
+    if (it.cat === 'Gift Hampers') it.pack = 'Packed';
     const r = await run('Creating…', () => call('createProduct', { items: [it] }));
     m.close(); await refresh(true); toast('Created ' + r.created[0].name + ' · GTIN ' + r.created[0].gtin); if (S.view === 'gs1') viewGs1();
+    if (it.cat === 'Gift Hampers' || /^NV-HMP-/.test(r.created[0].sku)) hamperContentsAsk(r.created[0].sku);
   };
 }
 
@@ -3755,7 +3770,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '556370cad0';
+<script>window.NV_BUILD = '7d59ad4ea4';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
