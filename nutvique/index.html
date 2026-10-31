@@ -144,7 +144,7 @@ const store = { get(k) { try { return localStorage.getItem('nvinv_' + k); } catc
 const ymd = d => { const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 10); };
 const today = () => ymd(new Date());
 const isOwner = () => !!(S.user && S.user.role === 'Owner');
-const can = k => !!(S.user && (S.user.role === 'Owner' || (S.user.rights || []).indexOf(k) >= 0));
+const can = k => !!(S.user && (S.user.role === 'Owner' || ((S.user.rights || []).indexOf(k) >= 0 && (k !== 'transfer' || S.user.role === 'Manager'))));
 const canApprove = () => !!(S.user && (S.user.role === 'Owner' || S.user.role === 'Manager' || (S.user.rights || []).indexOf('approve') >= 0));
 const IN_APP = !!window.NV_APP;   // true in the installed app (camera + Bluetooth work), false inside Google's page
 
@@ -339,6 +339,7 @@ const ICONS = {
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
   invoices: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h8M9 17h8"/></svg>',
   count: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>',
+  transfer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h15l-4-4M20 16H5l4 4"/></svg>',
   stock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4-9 4z"/><path d="M3 7v10l9 4 9-4V7M12 11v10"/></svg>',
   gs1: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5v14M7 5v14M11 5v14M14 5v14M18 5v14M20 5v14"/></svg>',
   sales: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
@@ -360,7 +361,7 @@ function shell() {
 }
 function renderNav() {
   const tabs = [can('bill') && ['bill', 'Bill'], can('sales') && ['sales', 'Sales'], ['search', 'Search'], can('invoices') && ['invoices', 'Invoices', S.drafts],
-    can('stockView') && ['stock', 'Stock', S.trWait], (can('stock') || can('count')) && ['count', 'Inventory'], can('gs1') && ['gs1', 'GS1', S.gs1Pending], ['more', 'More']].filter(Boolean);
+    can('stockView') && ['stock', 'Stock'], (can('transfer') || can('checkTransfer')) && ['transfer', 'Transfer', S.trWait], (can('stock') || can('count')) && ['count', 'Inventory'], can('gs1') && ['gs1', 'GS1', S.gs1Pending], ['more', 'More']].filter(Boolean);
   if (!tabs.some(t => t[0] === S.view)) S.view = tabs[0][0];
   $('#nav').innerHTML = tabs.map(t => '<button data-v="' + t[0] + '" class="' + (S.view === t[0] ? 'on' : '') + '">' + ICONS[t[0]] + t[1] + (t[2] ? '<span class="badge">' + t[2] + '</span>' : '') + '</button>').join('');
   $$('#nav button').forEach(b => b.onclick = () => go(b.dataset.v));
@@ -368,7 +369,7 @@ function renderNav() {
 }
 function go(v) { S.view = v; renderNav(); renderView(); window.scrollTo(0, 0); }
 function renderView() {
-  ({ bill: viewBill, sales: viewSales, search: viewSearch, invoices: viewInvoices, stock: viewStock, count: viewCount, gs1: viewGs1, more: viewMore }[S.view] || viewSearch)();
+  ({ bill: viewBill, sales: viewSales, search: viewSearch, invoices: viewInvoices, stock: viewStock, transfer: viewTransfer, count: viewCount, gs1: viewGs1, more: viewMore }[S.view] || viewSearch)();
 }
 
 /* ───────────── stock helpers ───────────── */
@@ -1105,8 +1106,8 @@ async function downloadExport(kind, skus) {
 
 /* ───────────── STOCK ───────────── */
 async function trWaitCount() {
-  if (!can('checkTransfer')) return;
-  try { const t = await call('transfers'); const n = t.waiting.filter(x => x.canCheck).length; if (n !== S.trWait) { S.trWait = n; renderNav(); } } catch (e) { }
+  if (!can('checkTransfer') && !can('transfer')) return;
+  try { const t = await call('transfers'); const n = t.waiting.filter(x => x.canCheck).length + (t.toSend || 0); if (n !== S.trWait) { S.trWait = n; renderNav(); } } catch (e) { }
 }
 /* ───────────── STOCK: view · in · transfer · check · out · history ───────────── */
 const SK = { tab: 'stock', boot: null };
@@ -1335,7 +1336,72 @@ function stockTransfer() {
     if (short.length && !confirm(short.length + ' product(s) are more than the stock recorded at ' + d.from + '. Send anyway?')) return;
     const r = await run('Sending…', () => call('sendTransfer', d)).catch(() => null);
     if (!r) return;
-    SK.boot.transfers = r.transfers; toast('Transfer ' + r.no + ' sent – waiting for ' + d.to + ' to check'); SK.tab = 'ck'; viewStock();
+    SK.boot.transfers = r.transfers; toast('Transfer ' + r.no + ' sent – waiting for ' + d.to + ' to check'); SK.tab = 'ck'; TV.tab = 'ck'; (S.view === 'transfer' ? viewTransfer : viewStock)();
+  };
+}
+/* ───────────── TRANSFER tab: requests (owner / manager asks → From-store manager sends → receiving store checks) ───────────── */
+const TV = { tab: 'rq' };
+async function viewTransfer() {
+  const tabs = [['rq', 'Requests'], can('transfer') && ['ask', 'Ask for transfer'], can('transfer') && ['tr', 'Send directly'], ['ck', 'Check / receive']].filter(Boolean);
+  if (!tabs.some(t => t[0] === TV.tab)) TV.tab = 'rq';
+  $('#view').innerHTML = '<div class="chips" id="tv_t" style="margin-bottom:10px">' + tabs.map(t => '<button data-t="' + t[0] + '" class="' + (TV.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') + '</div><div id="sk_b"><div class="empty"><span class="spin dk"></span></div></div>';
+  $$('#tv_t button').forEach(b => b.onclick = () => { TV.tab = b.dataset.t; viewTransfer(); });
+  try { SK.boot = await call('stockBoot'); } catch (e) { $('#sk_b').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+  if (S.view !== 'transfer') return;
+  SK.boot.requests = SK.boot.requests || { open: [], done: [] };
+  const bd = (k, n) => { const b = $('#tv_t [data-t="' + k + '"]'); if (b && n) b.innerHTML += ' <span class="badge" style="position:static">' + n + '</span>'; };
+  bd('rq', SK.boot.requests.open.filter(t => t.canSend).length); bd('ck', SK.boot.transfers.waiting.filter(t => t.canCheck).length);
+  ({ rq: trRequests, ask: trAsk, tr: stockTransfer, ck: stockCheck }[TV.tab])();
+}
+function trRequests() {
+  const R = SK.boot.requests;
+  const card = t => '<div class="card" style="padding:12px"><div class="row"><b class="grow">' + esc(t.no) + '</b><span class="pill ' + (t.status === 'Sent' ? 'p-ok' : t.status === 'Cancelled' ? 'p-bad' : 'p-warn') + '">' + esc(t.status === 'Requested' ? 'To send' : t.status) + '</span></div>' +
+    '<div class="small">' + esc(LOC_SHORT[t.from] || t.from) + ' → <b>' + esc(LOC_SHORT[t.to] || t.to) + '</b> · ' + esc(t.date) + ' · asked by ' + esc(t.by) + (t.trf ? ' · sent as ' + esc(t.trf) + ' by ' + esc(t.sentBy) : '') + '</div>' +
+    '<div class="tiny mute" style="margin-top:4px">' + t.lines.map(l => esc(l.name) + ' ' + qfmt(l.qty) + ' ' + esc(l.unit)).join(' · ') + '</div>' +
+    (t.note ? '<div class="tiny" style="margin-top:4px">' + esc(t.note) + '</div>' : '') +
+    (t.status === 'Requested' ? '<div class="row" style="margin-top:10px">' + (t.canCancel ? '<button class="btn sm ghost" data-cx="' + esc(t.no) + '" style="color:var(--bad)">Cancel</button>' : '') + '<div class="grow"></div>' +
+      (t.canSend ? '<button class="btn gold" data-sd="' + esc(t.no) + '">Send this stock</button>' : '<span class="tiny mute">Waiting for the ' + esc(LOC_SHORT[t.from] || t.from) + ' manager to send it</span>') + '</div>' : '') + '</div>';
+  $('#sk_b').innerHTML = (can('transfer') ? '<button class="btn gold block" id="rq_new" style="margin-bottom:12px">+ Ask for a transfer</button>' : '') +
+    '<h3>Open requests (' + R.open.length + ')</h3>' + (R.open.map(card).join('') || '<div class="empty small">No open requests.</div>') +
+    '<h3 style="margin-top:16px">Last 30 days</h3>' + (R.done.map(card).join('') || '<div class="empty small">Nothing yet.</div>');
+  if ($('#rq_new')) $('#rq_new').onclick = () => { TV.tab = 'ask'; viewTransfer(); };
+  $$('[data-sd]').forEach(b => b.onclick = () => sendSheet(R.open.find(t => t.no === b.dataset.sd)));
+  $$('[data-cx]').forEach(b => b.onclick = async e => {
+    if (!confirmTwice(e.target)) return;
+    const r = await run('Cancelling…', () => call('cancelRequest', { no: b.dataset.cx })).catch(() => null);
+    if (!r) return; SK.boot.requests = r.requests; toast('Request cancelled'); trWaitCount(); trRequests();
+  });
+}
+function sendSheet(t) {
+  const m = modal('Send ' + t.no, '<div class="small">' + esc(t.from) + ' → <b>' + esc(t.to) + '</b> · asked by ' + esc(t.by) + '</div>' +
+    '<div class="small mute" style="margin:8px 0">Weigh / count what you are sending and change the number if it is different. ' + esc(t.to) + ' checks it when it arrives – stock moves only after that.</div>' +
+    t.lines.map(l => '<div class="row" style="margin-bottom:8px;flex-wrap:nowrap"><div class="grow"><b>' + esc(l.name) + '</b><div class="tiny mute">asked ' + qfmt(l.qty) + ' ' + esc(l.unit) + ' · in stock at ' + esc(LOC_SHORT[t.from] || t.from) + ': ' + qfmt(stockOf(l.sku).q[t.from] || 0) + '</div></div><input class="i num" style="width:100px" data-s="' + esc(l.sku) + '" inputmode="decimal" value="' + l.qty + '"></div>').join('') +
+    fld('Remarks', '<input class="i" id="sd_r" placeholder="optional">') +
+    '<div class="row" style="margin-top:14px"><div class="grow"></div><button class="btn gold" id="sd_ok">Send – ' + esc(LOC_SHORT[t.to] || t.to) + ' checks it</button></div>');
+  $('#sd_ok', m).onclick = async () => {
+    const lines = Array.from($$('[data-s]', m)).map(i => ({ sku: i.dataset.s, qty: num(i.value) })).filter(l => l.qty > 0);
+    if (!lines.length) return toast('Nothing to send', true);
+    const r = await run('Sending…', () => call('fulfilRequest', { no: t.no, lines: lines, remarks: $('#sd_r', m).value })).catch(() => null);
+    if (!r) return;
+    m.close(); SK.boot.requests = r.requests; SK.boot.transfers = r.transfers; toast('Transfer ' + r.trf + ' sent – waiting for ' + t.to + ' to check'); trWaitCount(); viewTransfer();
+  };
+}
+function trAsk() {
+  const B0 = SK.boot, lines = [];
+  $('#sk_b').innerHTML = '<div class="card"><h3>Ask for a transfer</h3><div class="small mute">The manager of the <b>From</b> store sees it under Transfer → Requests and sends the stock. The receiving store then checks what arrived – stock moves only then.</div><div class="grid2" style="margin-top:8px">' +
+    fld('From', '<select class="i" id="rq_f">' + B0.toLocs.map(l => '<option' + (l === B0.central ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>') + fld('To', '<select class="i" id="rq_t"></select>') +
+    fld('Note', '<input class="i" id="rq_n" placeholder="optional, e.g. needed for the weekend">') + '</div>' +
+    '<h3 style="margin-top:12px">Products</h3><div id="rq_l"></div><button class="btn gold block" id="rq_go" style="margin-top:12px">Send request to the manager</button></div>';
+  const toOpts = () => { const f = $('#rq_f').value; $('#rq_t').innerHTML = B0.toLocs.filter(l => l !== f).map(l => '<option>' + esc(l) + '</option>').join(''); };
+  toOpts();
+  const ed = lineEditor($('#rq_l'), lines, { loc: () => $('#rq_f').value });
+  $('#rq_f').onchange = () => { toOpts(); ed.draw(); };
+  $('#rq_go').onclick = async () => {
+    const d = { from: $('#rq_f').value, to: $('#rq_t').value, note: $('#rq_n').value, lines: ed.get() };
+    if (!d.lines.length) return toast('Add products with quantities', true);
+    const r = await run('Sending…', () => call('requestTransfer', d)).catch(() => null);
+    if (!r) return;
+    SK.boot.requests = r.requests; toast('Request ' + r.no + ' sent to ' + (LOC_SHORT[d.from] || d.from)); TV.tab = 'rq'; viewTransfer();
   };
 }
 function stockCheck() {
@@ -1360,7 +1426,7 @@ function checkSheet(t) {
     const rec = {}; $$('[data-r]', m).forEach(i => rec[i.dataset.r] = i.value);
     const r = await run(approve ? 'Approving…' : 'Rejecting…', () => call('checkTransfer', { no: t.no, approve: approve, received: rec, remarks: $('#ck_r', m).value })).catch(() => null);
     if (!r) return;
-    m.close(); SK.boot.transfers = r.transfers; S.stock = r.stock; toast(approve ? 'Approved – stock updated' : 'Rejected – no stock moved'); viewStock();
+    m.close(); SK.boot.transfers = r.transfers; S.stock = r.stock; toast(approve ? 'Approved – stock updated' : 'Rejected – no stock moved'); trWaitCount(); (S.view === 'transfer' ? viewTransfer : viewStock)();
   };
   $('#ck_ok', m).onclick = () => go(true);
   $('#ck_no', m).onclick = e => { if (confirmTwice(e.target)) go(false); };
@@ -2691,18 +2757,25 @@ function qtyTxt(p) { return p.unit === 'kg' ? (p.qty >= 1 ? r3(p.qty) + ' kg' : 
 function partsTxt(parts) { return parts && parts.length ? parts.map(p => qtyTxt(p) + ' ' + String(p.name || p.sku).replace(/^Nutvique /, '')).join(' · ') : 'no recipe yet – nothing will be taken out of stock'; }
 function prodList() { if (!document.getElementById('nv_pl')) { const d = document.createElement('datalist'); d.id = 'nv_pl'; d.innerHTML = S.products.filter(p => p.status !== 'Discontinued' && !/^NV-HMP-/.test(p.sku)).map(p => '<option value="' + esc(p.name) + '">').join(''); document.body.appendChild(d); } return 'nv_pl'; }
 function prodByName(n) { n = String(n || '').trim().toLowerCase(); return S.products.find(p => p.name.toLowerCase() === n) || S.products.find(p => p.sku.toLowerCase() === n); }
+/** Same full product search as billing (type any part of the name). Suggests the items of the same kind first. */
+async function heMakePick(curSku, title) {
+  const cur = S.bySku[curSku], cands = cur && cur.cat ? S.products.filter(p => p.cat === cur.cat && p.status !== 'Discontinued' && !/^NV-HMP-/.test(p.sku)).map(p => p.sku).slice(0, 80) : [];
+  const s = await pickProduct({ title: title + ' – type any part of the name', candidates: cands, seller: cur ? (cur.cat || '') : '' });
+  if (s && /^NV-HMP-/.test(s)) { toast('A hamper cannot go inside a hamper – pick a product, box or jar', true); return null; }
+  return s;
+}
 function hamperEditor(hsku, parts, onSave, hint) {
   const hp = S.bySku[hsku] || { name: hsku }; let rows = (parts || []).map(p => ({ name: (S.bySku[p.sku] || {}).name || p.name || p.sku, sku: p.sku, unit: p.unit || (S.bySku[p.sku] || {}).unit || 'kg', qty: p.qty }));
   const m = modal('🎁 ' + hp.name, '<div class="tiny mute" style="margin-bottom:8px">What goes into ONE hamper: the box, the jars/tins and the products with their weight. ' + esc(hint || '') + '</div><div id="he_r"></div>' +
     '<button class="btn ghost sm" id="he_add" style="margin-top:6px">+ Add item</button><button class="btn gold block" id="he_ok" style="margin-top:12px">Save</button>', { wide: true });
   const draw = () => {
-    $('#he_r', m).innerHTML = rows.map((r, i) => '<div class="row" style="gap:6px;flex-wrap:nowrap;margin-bottom:6px"><input class="i grow" list="' + prodList() + '" data-n="' + i + '" value="' + esc(r.name) + '" placeholder="product, box or jar">' +
+    $('#he_r', m).innerHTML = rows.map((r, i) => '<div class="row" style="gap:6px;flex-wrap:nowrap;margin-bottom:6px"><button class="i grow" data-n="' + i + '" style="text-align:left;cursor:pointer;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.name ? esc(String(r.name).replace(/^Nutvique /, '')) : '<span class="mute">Tap to pick product, box or jar</span>') + ' <span class="mute">▾</span></button>' +
       '<input class="i num" style="max-width:90px" inputmode="decimal" data-q="' + i + '" value="' + esc(r.unit === 'kg' ? (r.qty ? Math.round(r.qty * 1000) : '') : (r.qty || '')) + '" placeholder="' + (r.unit === 'kg' ? 'grams' : 'pcs') + '"><span class="tiny mute" style="width:28px">' + (r.unit === 'kg' ? 'g' : 'pcs') + '</span><button class="btn sm ghost" data-x="' + i + '">×</button></div>').join('') || '<div class="empty small">No items – add the box, jars and products.</div>';
-    $$('[data-n]', m).forEach(inp => inp.onchange = () => { const r = rows[+inp.dataset.n], p = prodByName(inp.value); if (p) { r.sku = p.sku; r.name = p.name; r.unit = p.unit || 'kg'; } else { r.sku = ''; r.name = inp.value; } draw(); });
+    $$('[data-n]', m).forEach(b => b.onclick = async () => { const r = rows[+b.dataset.n], s = await heMakePick(r.sku, 'Change the item'); if (!s) return; const p = S.bySku[s]; r.sku = s; r.name = p.name; r.unit = p.unit || 'kg'; draw(); });
     $$('[data-q]', m).forEach(inp => inp.oninput = () => { const r = rows[+inp.dataset.q]; r.qty = r.unit === 'kg' ? num(inp.value) / 1000 : Math.round(num(inp.value)); });
     $$('[data-x]', m).forEach(b => b.onclick = () => { rows.splice(+b.dataset.x, 1); draw(); });
   };
-  $('#he_add', m).onclick = () => { rows.push({ name: '', sku: '', unit: 'kg', qty: 0 }); draw(); };
+  $('#he_add', m).onclick = async () => { const s = await heMakePick('', 'Add an item to the hamper'); if (!s) return; const p = S.bySku[s]; rows.push({ name: p.name, sku: s, unit: p.unit || 'kg', qty: 0 }); draw(); };
   $('#he_ok', m).onclick = async () => {
     const bad = rows.find(r => r.name && !r.sku); if (bad) return toast('“' + bad.name + '” is not in the product list – pick it from the list', true);
     const out = rows.filter(r => r.sku && r.qty > 0).map(r => ({ sku: r.sku, name: r.name, unit: r.unit, qty: r.unit === 'kg' ? Math.round(r.qty * 1000) / 1000 : r.qty }));
@@ -3682,7 +3755,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = 'c52b7f4b1e';
+<script>window.NV_BUILD = '556370cad0';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
