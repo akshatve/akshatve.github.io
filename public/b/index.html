@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Your bill – Nutvique</title>
+<style>body{margin:0;background:#F4F2EC;font:15px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1d2433}
+.w{max-width:520px;margin:60px auto;padding:24px;text-align:center}.s{width:28px;height:28px;border:3px solid #ddd;border-top-color:#1F2A44;border-radius:50%;margin:0 auto 14px;animation:r 1s linear infinite}
+@keyframes r{to{transform:rotate(360deg)}}a{color:#1F2A44}</style></head>
+<body><div class="w" id="w"><div class="s"></div>Opening your bill…</div>
+<script>
+// Customer bill link (sent by WhatsApp). The bill is fetched from the Nutvique back end without any Google sign-in,
+// so it opens on every phone – also on phones signed in to several Google accounts.
+(function () {
+  var API = 'https://script.google.com/macros/s/AKfycbzzWrQoosUFIlSWu4-jvlaG7j2CYpWTcgw6wByaY2aQD6vZ5tWIOJ36wyk1XMT8sM3RHQ/exec';
+  var t = (new URLSearchParams(location.search).get('b') || '').replace(/[^a-z0-9]/gi, '');
+  var w = document.getElementById('w');
+  var fail = function (msg) { w.innerHTML = '<b>' + msg + '</b><br><br>Please contact the store – we will send the bill again.'; };
+  if (t.length < 16) return fail('This bill link is not complete.');
+  fetch(API, { method: 'POST', body: JSON.stringify({ action: 'billView', data: { b: t } }), credentials: 'omit' })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (!j.ok || !j.r || !j.r.html) return fail(j && j.e ? j.e : 'Bill not found.');
+      document.open(); document.write(j.r.html); document.close();
+      if (j.r.title) document.title = j.r.title;
+    })
+    .catch(function () { fail('Could not open the bill right now (check the internet and try again).'); });
+})();
+</script></body></html>
