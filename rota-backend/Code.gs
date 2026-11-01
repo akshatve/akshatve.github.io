@@ -36,7 +36,7 @@ const RECEIPT_NEEDED = { porter: 1, rapido: 1, cab: 1 };
 const T = {
   staff: ['Staff', ['Name', 'Emp ID', 'Location', 'Role', 'Active', 'Shift preference', 'Weekly off preference', 'Monthly salary ₹',
     'Joined on', 'Phone ID', 'Phone set on', 'Notes', 'Updated', 'On rota', 'App rights']],
-  locs: ['Locations', ['Location', 'Type', 'Latitude', 'Longitude', 'Radius (m)', 'Active', 'Notes']],
+  locs: ['Locations', ['Location', 'Type', 'Latitude', 'Longitude', 'Radius (m)', 'Active', 'Notes', 'From', 'To', 'Default start', 'Default end']],
   rota: ['Rota', ['Week (Mon)', 'Date', 'Day', 'Name', 'Location', 'Shift', 'Start', 'End', 'Status', 'Note', 'Saved by', 'Saved at']],
   punch: ['Punches', ['ID', 'Date', 'Name', 'Type', 'Time', 'Location', 'Distance (m)', 'Inside', 'Latitude', 'Longitude',
     'Accuracy (m)', 'Selfie', 'Phone ID', 'Flags', 'Reason', 'Approved', 'Approved by', 'Saved at']],
@@ -114,7 +114,7 @@ const RRIGHT_LABEL = {}; RRIGHTS.forEach(r => RRIGHT_LABEL[r[0]] = r[1]);
 const DEFAULT_RIGHTS = { Manager: ['rota'], Staff: [] };
 const ACTION_NEED = { board: ['team', 'approve', 'times', 'payAdj'], attendance: ['team', 'approve', 'times', 'payAdj'], fixDay: ['times', 'payAdj'], approvePunch: 'approve',
   photo: ['team', 'approve', 'times', 'trips'], trips: 'trips', tripDecide: 'trips', staffList: ['staff', 'pay', 'rota'], staffSave: ['staff', 'pay'], resetPhone: 'staff',
-  syncStaff: 'staff', rotaGet: 'rota', rotaAuto: 'rota', rotaSave: 'rota', payroll: 'pay', locSave: 'settings', settingsGet: 'settings', settingsSave: 'settings',
+  syncStaff: 'staff', rotaGet: 'rota', rotaAuto: 'rota', rotaSave: 'rota', payroll: 'pay', locSave: ['settings', 'rota'], settingsGet: 'settings', settingsSave: 'settings',
   rightsList: 'owner', rightsSave: 'owner' };
 function can_(me, need) {
   if (me.owner) return true;
@@ -280,6 +280,15 @@ function ensureSetup_() {
     dirty_();
     log_('v2: break 30 min, grace 5 min, rights, Jitender → City Galleria, Pankaj Verma off the rota', 'system');
   }
+  if (!p.getProperty('V3_EVENTS')) {                 // 1 Nov 2026: event stalls in the rota
+    p.setProperty('V3_EVENTS', '1');
+    const ls = tab_('locs'); ls.getRange(1, 1, 1, T.locs[1].length).setValues([T.locs[1]]).setFontWeight('bold').setBackground('#1F2A44').setFontColor('#F7F1DE');
+    ls.getRange(1, 8, ls.getMaxRows(), 4).setNumberFormat('@');
+    if (!rows_('locs').some(r => s_(r[1]) === 'Event'))
+      append_('locs', [['Event stall', 'Event', '', '', 300, 'Yes', 'General event stall – rename it for each event or add events with their own dates', '', '', '11:00', '22:00']]);
+    dirty_();
+    log_('v5: event stalls, after-midnight clock-outs, clock-out approval', 'system');
+  }
   if (!p.getProperty('GOLIVE_V1')) {                 // the day the app is first used = "Attendance starts on" (earlier days count as paid)
     p.setProperty('GOLIVE_V1', '1');
     if (!setv_('Attendance starts on')) { const sh = tab_('set'), keys = rows_('set').map(r => s_(r[0])), i = keys.indexOf('Attendance starts on');
@@ -362,9 +371,14 @@ function myStaff_(me) {
   return s;
 }
 function locs_(all) {
-  return rows_('locs').map(r => ({ name: s_(r[0]), type: s_(r[1]) || 'Store', lat: r[2] === '' ? null : n_(r[2]), lng: r[3] === '' ? null : n_(r[3]),
-    radius: n_(r[4]) || setn_('Geofence radius (m)', 200), active: s_(r[5]) !== 'No', notes: s_(r[6]) })).filter(l => l.name && (all || l.active));
+  return rows_('locs').map(r => ({ name: s_(r[0]), type: ['Store', 'Office', 'Event'].indexOf(s_(r[1])) >= 0 ? s_(r[1]) : 'Store', lat: r[2] === '' ? null : n_(r[2]), lng: r[3] === '' ? null : n_(r[3]),
+    radius: n_(r[4]) || setn_('Geofence radius (m)', 200), active: s_(r[5]) !== 'No', notes: s_(r[6]), from: ymd_(r[7]), to: ymd_(r[8]), dstart: hm_(r[9]), dend: hm_(r[10]) }))
+    .filter(l => l.name && (all || l.active));
 }
+function locOf_(name) { return locs_(true).find(l => norm_(l.name) === norm_(name)) || null; }
+function isEvent_(name) { const l = name ? locOf_(name) : null; return !!(l && l.type === 'Event'); }
+/** Event is "on" for a date: no dates set, or the date is within From–To (+1 day for shifts that run past midnight). */
+function eventOn_(l, date) { return l.type !== 'Event' || ((!l.from || date >= addDays_(l.from, -1)) && (!l.to || date <= addDays_(l.to, 1))); }
 function staffList_(me) {
   const list = staffAll_().filter(s => inScope_(me, s.loc) || !s.loc).map(s => {
     const o = { name: s.name, id: s.id, loc: s.loc, role: s.role, active: s.active, onRota: s.onRota, pref: s.pref, offPref: s.offPref, joined: s.joined, phone: !!s.phone, phoneAt: s.phoneAt, notes: s.notes };
@@ -418,16 +432,27 @@ function syncStaff_(token, me) {
   const missing = have.filter(x => x.active && !j.r.users.some(u => u.active && norm_(u.name) === norm_(x.name))).map(x => x.name);
   return Object.assign(staffList_(me), { added: add.map(r => r[0]), noLogin: missing });
 }
+/** Stores, offices and event stalls. People with the rota right (but not settings) may only add / change events. */
 function locSave_(d, me) {
   return lock_(() => {
-    const name = txt_(d.name, 60); if (!name) throw new Error('Type the location name.');
+    const name = txt_(d.name, 60); if (!name) throw new Error('Type the name.');
+    const type = ['Office', 'Event'].indexOf(d.type) >= 0 ? d.type : 'Store';
     const sh = tab_('locs'), all = rows_('locs'), i = all.findIndex(r => norm_(r[0]) === norm_(d.oldName || name));
+    if (!can_(me, 'settings') && (type !== 'Event' || (i >= 0 && s_(all[i][1]) !== 'Event'))) throw new Error('You can add or change event stalls only – stores need the Settings right.');
+    if (all.some((r, k) => k !== i && norm_(r[0]) === norm_(name))) throw new Error('"' + name + '" already exists.');
     const lat = d.lat === '' || d.lat == null ? '' : n_(d.lat), lng = d.lng === '' || d.lng == null ? '' : n_(d.lng);
     if (lat !== '' && (Math.abs(lat) > 90 || Math.abs(lng) > 180)) throw new Error('Position looks wrong.');
-    const row = [name, d.type === 'Office' ? 'Office' : 'Store', lat, lng, Math.max(30, n_(d.radius) || 200), d.active === false ? 'No' : 'Yes', txt_(d.notes, 200)];
+    ['from', 'to'].forEach(k => { if (d[k] && !/^\d{4}-\d{2}-\d{2}$/.test(d[k])) throw new Error('Pick the event dates.'); });
+    if (d.from && d.to && d.to < d.from) throw new Error('The event ends before it starts.');
+    ['dstart', 'dend'].forEach(k => { if (d[k] && !/^\d{1,2}:\d{2}$/.test(d[k])) throw new Error('Stall hours like 11:00 and 23:00.'); });
+    const row = [name, type, lat, lng, Math.max(30, n_(d.radius) || 200), d.active === false ? 'No' : 'Yes', txt_(d.notes, 200),
+      type === 'Event' ? (d.from || '') : '', type === 'Event' ? (d.to || '') : '', type === 'Event' ? hm_(d.dstart) : '', type === 'Event' ? hm_(d.dend) : ''];
     if (i >= 0) { sh.getRange(i + 2, 1, 1, row.length).setValues([row]); dirty_('locs'); } else append_('locs', [row]);
-    log_('Location saved: ' + name + ' ' + lat + ',' + lng + ' r' + row[4], me.name);
-    return settingsGet_();
+    if (i >= 0 && d.oldName && norm_(d.oldName) !== norm_(name)) {        // keep planned shifts pointing at the renamed place
+      const rs = tab_('rota'), rr = rows_('rota'); rr.forEach((r, k) => { if (norm_(r[4]) === norm_(d.oldName)) rs.getRange(k + 2, 5).setValue(name); }); dirty_('rota');
+    }
+    log_((type === 'Event' ? 'Event' : 'Location') + ' saved: ' + name + ' ' + lat + ',' + lng + ' r' + row[4] + (type === 'Event' ? ' ' + row[7] + '–' + row[8] + ' ' + row[9] + '–' + row[10] : ''), me.name);
+    return can_(me, 'settings') ? settingsGet_() : { locations: locs_(true) };
   });
 }
 
@@ -451,7 +476,9 @@ function rotaGet_(d, me) {
   rows.forEach(x => { if (staff.some(s => norm_(s.name) === norm_(x.name))) cells[x.name + '|' + x.date] = { shift: x.shift, start: x.start, end: x.end, loc: x.loc, note: x.note, status: x.status }; });
   const status = rows.length ? (rows.some(x => x.status === 'Draft') ? 'Draft' : 'Published') : 'Not planned';
   return Object.assign({ week: week, days: [0, 1, 2, 3, 4, 5, 6].map(i => addDays_(week, i)), staff: staff.map(s => ({ name: s.name, loc: s.loc, pref: s.pref, offPref: s.offPref })),
-    cells: cells, status: status, shifts: { M: shiftTimes_('M'), E: shiftTimes_('E') }, locations: locs_(false).map(l => ({ name: l.name, type: l.type })) },
+    cells: cells, status: status, shifts: { M: shiftTimes_('M'), E: shiftTimes_('E') },
+    locations: locs_(false).filter(l => l.type !== 'Event' || ((!l.to || l.to >= week) && (!l.from || l.from <= end))).map(l => ({ name: l.name, type: l.type, from: l.from, to: l.to, dstart: l.dstart, dend: l.dend, notes: l.notes, hasPos: l.lat != null })),
+    canEditStores: can_(me, 'settings') },
     { warnings: rotaWarnings_(week, staff, cells) });
 }
 /** Auto plan for one week: one weekly off per person on Tue/Wed/Thu (spread out per store), Morning / Evening alternating week to week,
@@ -487,7 +514,7 @@ function rotaAuto_(d, me) {
     days.forEach(dt => {
       list.forEach(s => { const k = keep[s.name + '|' + dt]; if (k) cells[s.name + '|' + dt] = k; else put(s, dt, off[s.name] === dt ? 'OFF' : base[s.name]); });
       if (!isStore) return;
-      const on = list.filter(s => ['M', 'E'].indexOf(cells[s.name + '|' + dt].shift) >= 0);
+      const on = list.filter(s => ['M', 'E'].indexOf(cells[s.name + '|' + dt].shift) >= 0 && (!cells[s.name + '|' + dt].loc || cells[s.name + '|' + dt].loc === loc));
       ['M', 'E'].forEach(code => {
         if (on.length < 2 || on.some(s => cells[s.name + '|' + dt].shift === code)) return;
         const other = code === 'M' ? 'E' : 'M';
@@ -536,7 +563,7 @@ function rotaSave_(d, me) {
     if (c.shift === 'M' || c.shift === 'E') { const t = shiftTimes_(c.shift); start = t.start; fin = t.end; }
     if (c.shift === 'CUST') {
       start = hm_(c.start); fin = hm_(c.end);
-      if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(fin) || fin <= start) throw new Error(name + ' ' + date + ': custom shift needs start and end times.');
+      if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(fin) || fin === start) throw new Error(name + ' ' + date + ': custom shift needs start and end times.');
     }
     if (c.shift === 'OFF' && OFF_DAYS.indexOf(parse_(date).getDay()) < 0 && !c.allowOtherDay)
       throw new Error(name + ': weekly off can only be on Tuesday, Wednesday or Thursday (' + date + ' is a ' + DAY_NAMES[parse_(date).getDay()] + ').');
@@ -564,6 +591,40 @@ function myRota_(me) {
 
 // ───────────────────────────── punches (clock in / break / clock out) ─────────────────────────────
 const P_TYPES = { IN: 'Clock in', BO: 'Break out', BI: 'Back from break', OUT: 'Clock out' };
+// Shifts can run past midnight (event stalls). Until 8:00 am, a break / clock-out joins the previous day's shift if it is still open.
+const NIGHT_CUTOFF = 480;
+/** Minutes from the start of the working date (a time after midnight gives 1440+). */
+function minsOn_(date, d) { const dd = Math.round((parse_(ymd_(d)) - parse_(date)) / 864e5); return dd * 1440 + mins_(d); }
+/** Shift end in minutes; an end at or before the start means the next day. */
+function endMin_(start, end) { const a = toMin_(start), b = toMin_(end); return b <= a ? b + 1440 : b; }
+function openState_(ps) { const st = stateOf_(ps); return st === 'IN' || st === 'BREAK'; }
+/** The working date a punch belongs to. */
+function workDate_(name, type, now) {
+  const today = today_(), ps = punchesOn_(today, name);
+  if (type === 'IN' || ps.length || mins_(now) >= NIGHT_CUTOFF) return { date: today, ps: ps };
+  const y = addDays_(today, -1), py = punchesOn_(y, name);
+  return openState_(py) ? { date: y, ps: py } : { date: today, ps: ps };
+}
+/** The day the staff app should show: yesterday's shift while it is still open after midnight. */
+function curDate_(name) {
+  const today = today_();
+  if (mins_(new Date()) >= NIGHT_CUTOFF || punchesOn_(today, name).length) return today;
+  const y = addDays_(today, -1), py = punchesOn_(y, name), last = py[py.length - 1];
+  return openState_(py) || (last && ymd_(last.time) === today) ? y : today;   // keep showing last night's shift until 8 am
+}
+/** Email the owner when a clock-out needs approval (event stalls, after midnight). */
+function mailApproval_(name, date, now, where, ro, why) {
+  try {
+    const to = String(setv_('Summary email') || '').trim(); if (!to) return;
+    const end = ro && ro.start ? ro.end : '';
+    const over = ro && ro.start ? minsOn_(date, now) - endMin_(ro.start, ro.end) : 0;
+    MailApp.sendEmail(to, 'Approve clock-out: ' + name + ' ' + hmOf_(now) + (where ? ' – ' + where : ''),
+      name + ' clocked out at ' + hmOf_(now) + (date !== today_() ? ' (after midnight, shift of ' + date + ')' : '') + (where ? ' at ' + where : '') + '.\n' +
+      (end ? 'Rota shift ends ' + end + (over > 0 ? ' – ' + over + ' min later than the rota.' : '.') + '\n' : '') + why + '\n\n' +
+      'Approve = paid until ' + hmOf_(now) + '. Not approved = paid only until the rota end time.\n' +
+      'Open the app → Team → Date range (or the red badge): https://vermakshat.com/rota/');
+  } catch (e) { log_('Approval email failed: ' + e, name); }
+}
 function punchesOn_(date, name) {
   return rows_('punch').map((r, i) => ({ row: i + 2, id: s_(r[0]), date: ymd_(r[1]), name: s_(r[2]), type: s_(r[3]), time: r[4] instanceof Date ? r[4] : new Date(r[4]),
     loc: s_(r[5]), dist: r[6] === '' ? null : n_(r[6]), inside: s_(r[7]), lat: r[8] === '' ? null : n_(r[8]), lng: r[9] === '' ? null : n_(r[9]), acc: n_(r[10]),
@@ -585,9 +646,9 @@ function punch_(d, me) {
   if (!s.onRota) throw new Error('You are not on the staff rota, so you do not clock in here.');
   const type = String(d.type || '');
   if (!P_TYPES[type]) throw new Error('Unknown action.');
-  const now = new Date(), date = today_();
+  const now = new Date();
   return lock_(() => {
-    const ps = punchesOn_(date, s.name), st = stateOf_(ps);
+    const wd = workDate_(s.name, type, now), date = wd.date, ps = wd.ps, st = stateOf_(ps);
     const allowed = { OUT_NONE: ['IN'], OUT: ['IN'], IN: ['BO', 'OUT'], BREAK: ['BI', 'OUT'] }[st];
     if (allowed.indexOf(type) < 0) {
       const msg = { IN: 'You are already clocked in.', BO: st === 'BREAK' ? 'You are already on a break.' : 'Clock in first.', BI: 'You are not on a break.', OUT: 'You are not clocked in.' };
@@ -599,8 +660,14 @@ function punch_(d, me) {
     const lat = d.lat == null || d.lat === '' ? null : Number(d.lat), lng = d.lng == null || d.lng === '' ? null : Number(d.lng), acc = Number(d.acc) || 9999;
     if (lat == null || !isFinite(lat) || !isFinite(lng)) throw new Error('Location is off. Turn on Location (GPS) for this app and try again.');
     if (acc > setn_('Max GPS error (m)', 250)) throw new Error('GPS is not precise yet (±' + Math.round(acc) + ' m). Wait a few seconds near the store entrance and try again.');
-    const near = nearest_(lat, lng);
-    let inside = near && near.dist <= near.radius + Math.min(acc, 100);
+    const ro = rotaFor_(s.name, date);
+    // working at an event stall today? (rota says so, or the day's clock-in was at an event)
+    const inEvt = ps.find(p => p.type === 'IN' && isEvent_(p.loc));
+    const evt = ro && isEvent_(ro.loc) ? locOf_(ro.loc) : inEvt ? locOf_(inEvt.loc) : null;
+    let near = nearest_(lat, lng, date), inside;
+    if (evt && evt.lat == null) { near = { name: evt.name, dist: null, radius: evt.radius }; inside = true; if (type === 'IN') flags.push('Event stall (no position set)'); }
+    else if (evt) { const dist = haversine_(lat, lng, evt.lat, evt.lng); near = { name: evt.name, dist: dist, radius: evt.radius }; inside = dist <= evt.radius + Math.min(acc, 100); }
+    else inside = near && near.dist <= near.radius + Math.min(acc, 100);
     const onTrip = !!runningTrip_(s.name);
     let approved = 'Yes', reason = txt_(d.reason, 200);
     if (!inside) {
@@ -608,7 +675,10 @@ function punch_(d, me) {
       if (!onTrip && !reason) return { needReason: true, near: near ? { name: near.name, dist: Math.round(near.dist) } : null };
       flags.push(onTrip ? 'On a trip' : 'Outside store (' + distTxt_(near) + ')');
       if (!onTrip) approved = 'Pending';
-    } else if (s.loc && near.name !== s.loc && type === 'IN') flags.push('At ' + near.name + ' (home: ' + s.loc + ')');
+    } else if (s.loc && near.name !== s.loc && type === 'IN' && !evt) flags.push('At ' + near.name + ' (home: ' + s.loc + ')');
+    // a clock-out at an event stall, or after midnight, waits for the owner's approval
+    const late = type === 'OUT' && (evt || date !== today_());
+    if (late) { approved = 'Pending'; flags.push(evt ? 'Event clock-out – needs approval' : 'Clock-out after midnight – needs approval'); }
     // phone
     const phone = txt_(d.phone, 64), rule = setv_('One phone per person');
     if (rule !== 'Off' && phone) {
@@ -620,7 +690,6 @@ function punch_(d, me) {
     if (d.selfie) selfie = savePhoto_(d.selfie, date + '_' + s.name + '_' + type + '_' + Utilities.formatDate(now, tz_(), 'HHmmss') + '.jpg', 'Selfies');
     else if (setv_('Selfie required') === 'Yes') throw new Error('Take the selfie first.');
     // timing notes
-    const ro = rotaFor_(s.name, date);
     if (type === 'IN') {
       if (!ro) flags.push('Not on the rota');
       else if (['OFF', 'LP', 'LU', 'HOL'].indexOf(ro.shift) >= 0) flags.push('Working on ' + SHIFT_LABEL[ro.shift].toLowerCase());
@@ -628,14 +697,15 @@ function punch_(d, me) {
       if (st === 'OUT') flags.push('Second clock-in today');
     }
     const id = 'P' + Utilities.formatDate(now, tz_(), 'yyMMddHHmmss') + Math.floor(Math.random() * 90 + 10);
-    append_('punch', [[id, date, s.name, type, now, near ? near.name : '', near ? Math.round(near.dist) : '', inside ? 'Yes' : 'No', lat, lng, Math.round(acc),
+    append_('punch', [[id, date, s.name, type, now, near ? near.name : '', near && near.dist != null ? Math.round(near.dist) : '', inside ? 'Yes' : 'No', lat, lng, Math.round(acc),
       selfie, phone, flags.join('; '), reason, approved, '', now]]);
+    if (late) mailApproval_(s.name, date, now, evt ? evt.name : (near ? near.name : ''), ro, evt ? 'Event clock-out.' : 'Clock-out after midnight.');
     return Object.assign(myDay_(me), { saved: { type: type, label: P_TYPES[type], time: hmOf_(now), loc: near ? near.name : '', inside: inside, flags: flags } });
   });
 }
-function nearest_(lat, lng) {
+function nearest_(lat, lng, date) {
   let best = null;
-  locs_(false).filter(l => l.lat != null && l.lng != null).forEach(l => {
+  locs_(false).filter(l => l.lat != null && l.lng != null && eventOn_(l, date || today_())).forEach(l => {
     const dist = haversine_(lat, lng, l.lat, l.lng);
     if (!best || dist < best.dist) best = { name: l.name, dist: dist, radius: l.radius };
   });
@@ -643,11 +713,12 @@ function nearest_(lat, lng) {
 }
 function distTxt_(near) { return near ? (near.dist >= 1000 ? (near.dist / 1000).toFixed(1) + ' km' : Math.round(near.dist) + ' m') + ' from ' + near.name : 'away from every store'; }
 function myDay_(me) {
-  const s = staffByName_(me.name), date = today_();
-  if (!s) return { date: date, state: 'OUT_NONE', punches: [], shift: null };
+  const s = staffByName_(me.name);
+  if (!s) return { date: today_(), state: 'OUT_NONE', punches: [], shift: null };
+  const date = curDate_(s.name);
   const ps = punchesOn_(date, s.name), ro = rotaFor_(s.name, date);
   const calc = dayCalc_(date, s, ro, ps, null, true);
-  return { date: date, now: new Date().toISOString(), state: stateOf_(ps), shift: ro ? { code: ro.shift, label: SHIFT_LABEL[ro.shift], start: ro.start, end: ro.end, loc: ro.loc } : null,
+  return { date: date, now: new Date().toISOString(), state: stateOf_(ps), shift: ro ? { code: ro.shift, label: SHIFT_LABEL[ro.shift], start: ro.start, end: ro.end, loc: ro.loc, event: isEvent_(ro.loc) } : null,
     punches: ps.map(p => ({ type: p.type, label: P_TYPES[p.type], time: hmOf_(p.time), loc: p.loc, inside: p.inside === 'Yes', flags: p.flags, approved: p.approved })),
     calc: calc, trip: tripPub_(runningTrip_(s.name)) };
 }
@@ -664,43 +735,52 @@ function dayCalc_(date, s, ro, ps, fx, live) {
   if (startOn && date < startOn) { out.status = 'Before app'; out.credit = 1; return out; }
   if (s && s.joined && date < s.joined) { out.status = 'Not joined'; return out; }
   const valid = ps.filter(p => p.approved !== 'Pending' && p.approved !== 'No');
-  if (ps.some(p => p.approved === 'Pending')) out.flags.push('Entry outside store waiting for approval');
+  // a clock-out waiting for approval (or not approved) counts only up to the rota end time
+  const heldOut = ps.filter(p => p.type === 'OUT' && (p.approved === 'Pending' || p.approved === 'No')).pop() || null;
+  if (ps.some(p => p.approved === 'Pending' && p !== heldOut)) out.flags.push('Entry away from the store waiting for approval');
+  if (heldOut) out.flags.push('Clock-out ' + hmOf_(heldOut.time) + (heldOut.approved === 'Pending' ? ' waiting for approval' : ' not approved') + ' – counted to rota end');
   ps.forEach(p => { if (p.flags && /Different phone/.test(p.flags)) out.flags.push('Different phone'); });
-  // times: from corrections, else from punches
-  const nowMin = mins_(new Date()), isToday = date === today_();
-  let inMin = null, outMin = null, breakMin = 0, openBreak = false;
+  const sS = toMin_(t.start), sE = endMin_(t.start, t.end);
+  // times: from corrections, else from punches (minutes from the start of the working date; after midnight = 1440+)
+  const nowRel = minsOn_(date, new Date());
+  let inMin = null, outMin = null, breakMin = 0, openBreak = false, open = false;
   if (fx && fx.in) inMin = toMin_(fx.in);
   if (fx && fx.out) outMin = toMin_(fx.out);
+  let bo = null;
   if (inMin == null || outMin == null || !(fx && fx.brk !== '' && fx.brk != null)) {
-    let curIn = null, bo = null, firstIn = null, lastOut = null;
+    let curIn = null, firstIn = null, lastOut = null;
     valid.forEach(p => {
-      const m = mins_(p.time);
+      const m = minsOn_(date, p.time);
       if (p.type === 'IN') { if (firstIn == null) firstIn = m; curIn = m; }
       if (p.type === 'BO') bo = m;
       if (p.type === 'BI' && bo != null) { breakMin += m - bo; bo = null; }
       if (p.type === 'OUT') { if (bo != null) { breakMin += m - bo; bo = null; } lastOut = m; curIn = null; }
     });
-    if (bo != null) { openBreak = true; const endB = isToday && live ? nowMin : (outMin != null ? outMin : toMin_(t.end)); breakMin += Math.max(0, endB - bo); }
     if (inMin == null) inMin = firstIn;
-    if (outMin == null) {
-      if (curIn != null || (firstIn != null && lastOut == null)) {
-        if (isToday && live) outMin = Math.min(nowMin, 24 * 60);
-        else { outMin = Math.max(toMin_(t.end), inMin || 0); out.flags.push('No clock-out (counted to shift end)'); }
-      } else outMin = lastOut;
-    }
+    open = curIn != null || (firstIn != null && lastOut == null);
+    if (outMin == null && !open) outMin = lastOut;
   }
+  if (inMin != null && outMin != null && fx && fx.out && outMin <= inMin) outMin += 1440;      // corrected clock-out after midnight
+  const liveNow = live && nowRel >= 0 && nowRel < 1440 + (open ? NIGHT_CUTOFF : 0);
+  if (outMin == null && inMin != null) {
+    if (heldOut) outMin = Math.max(inMin, Math.min(minsOn_(date, heldOut.time), sE));
+    else if (liveNow) outMin = nowRel;
+    else { outMin = Math.max(sE, inMin); out.flags.push('No clock-out (counted to rota end)'); }
+  }
+  if (bo != null) { openBreak = true; breakMin += Math.max(0, (heldOut || !liveNow ? outMin : nowRel) - bo); }
   if (fx && fx.brk !== '' && fx.brk != null) breakMin = n_(fx.brk);
-  if (openBreak && !(isToday && live)) out.flags.push('Break not closed');
+  if (openBreak && !liveNow) out.flags.push('Break not closed');
   const nonWork = ['OFF', 'LP', 'LU', 'HOL'].indexOf(shift) >= 0;
   if (inMin == null) {
-    out.status = nonWork ? SHIFT_LABEL[shift] : (isToday && live ? (nowMin < toMin_(t.start) ? 'Not started' : 'Not in yet') : 'Absent');
+    const todayLive = live && nowRel >= 0 && nowRel < 1440;
+    out.status = nonWork ? SHIFT_LABEL[shift] : (todayLive ? (nowRel < sS ? 'Not started' : 'Not in yet') : 'Absent');
     out.credit = shift === 'OFF' || shift === 'LP' || shift === 'HOL' ? 1 : 0;
-    if (!shift && !(isToday && live)) out.status = 'No shift';
+    if (!shift && !todayLive) out.status = 'No shift';
     if (!shift) out.credit = 0;
     return out;
   }
   out.in = minTxt_(inMin); out.out = outMin != null ? minTxt_(outMin) : '';
-  const sS = toMin_(t.start), sE = toMin_(t.end), shiftLen = sE - sS, allow = setn_('Break allowed (min per shift)', 30), grace = setn_('Late grace (min)', 5);
+  const shiftLen = sE - sS, allow = setn_('Break allowed (min per shift)', 30), grace = setn_('Late grace (min)', 5);
   out.breakMin = Math.round(breakMin); out.extraBreak = Math.max(0, out.breakMin - allow - (fx ? n_(fx.brkPaid) : 0));
   if (fx && fx.brkPaid && out.breakMin > allow) out.flags.push('Extra break paid ' + Math.min(n_(fx.brkPaid), out.breakMin - allow) + ' min');
   out.worked = Math.max(0, outMin - inMin - out.breakMin);
@@ -721,7 +801,9 @@ function dayCalc_(date, s, ro, ps, fx, live) {
   }
   out.credit = round2_(Math.min(1, out.credited / shiftLen));
   if (!shift) out.flags.push('Not on the rota');
-  if (isToday && live && (outMin < sE || openBreak)) out.status = openBreak ? 'On break' : (valid.length && valid[valid.length - 1].type === 'OUT' ? 'Left' : 'Working');
+  if (heldOut && heldOut.approved === 'Pending') out.status = 'Clock-out to approve';
+  else if (liveNow && open) out.status = openBreak ? 'On break' : 'Working';
+  else if (liveNow && !open && outMin < sE && valid.length && valid[valid.length - 1].type === 'OUT') out.status = 'Left';
   else out.status = out.credit >= 0.99 ? 'Present' : out.late && out.credit >= 0.5 ? 'Late' : out.credit >= 0.5 ? 'Short hours' : 'Half day or less';
   if (out.late) out.flags.push('Late ' + out.late + ' min');
   if (out.extraBreak) out.flags.push('Extra break ' + out.extraBreak + ' min');
@@ -778,7 +860,9 @@ function attendance_(d, me) {
   const staff = staffAll_().filter(s => s.onRota && (inScope_(me, s.loc) || !s.loc) && (!d.name || norm_(s.name) === norm_(d.name)) && (s.active || d.name));
   const days = daysFor_(staff.map(s => s.name), from, to, true);
   const pending = punchesOn_(null, null).filter(p => p.approved === 'Pending' && staff.some(s => norm_(s.name) === norm_(p.name)))
-    .map(p => ({ id: p.id, date: p.date, name: p.name, type: p.type, label: P_TYPES[p.type], time: hmOf_(p.time), loc: p.loc, dist: p.dist, reason: p.reason, lat: p.lat, lng: p.lng, selfie: p.selfie ? 1 : 0 }));
+    .map(p => { const ro = rotaFor_(p.name, p.date), over = ro && ro.start && p.type === 'OUT' ? minsOn_(p.date, p.time) - endMin_(ro.start, ro.end) : 0;
+      return { id: p.id, date: p.date, name: p.name, type: p.type, label: P_TYPES[p.type], time: hmOf_(p.time) + (p.date !== ymd_(p.time) ? ' (+1)' : ''), loc: p.loc, dist: p.dist,
+        reason: p.reason, flags: p.flags, lat: p.lat, lng: p.lng, selfie: p.selfie ? 1 : 0, lateOut: p.type === 'OUT', shiftEnd: ro && ro.start ? ro.end : '', over: over }; });
   return { from: from, to: to, days: days, pending: pending, names: staff.map(s => s.name) };
 }
 /** Corrects a day: d = {date, name, status ('' = as per rota), in, out, brk, ot, lateOk, brkPaid, note}.
@@ -819,7 +903,20 @@ function approvePunch_(d, me) {
   if (!p) throw new Error('Entry not found.');
   const s = staffByName_(p.name); if (s && s.loc && !inScope_(me, s.loc)) throw new Error('Not your store.');
   if (norm_(p.name) === norm_(me.name) && !me.owner) throw new Error('Someone else must approve your own entry.');
+  if (p.approved !== 'Pending' && !me.owner) throw new Error('Already decided.');
   sh.getRange(p.row, C.punch['Approved'] + 1, 1, 2).setValues([[d.approve ? 'Yes' : 'No', me.name]]); dirty_('punch');
+  // approving a late clock-out = paying until that time: the minutes after the rota end are approved as overtime for that day
+  if (d.approve && p.type === 'OUT' && d.payLate !== false) lock_(() => {
+    const day = daysFor_([p.name], p.date, p.date, false)[0];
+    if (!day || !(day.ot > 0)) return;
+    const fs = tab_('fix'), all = rows_('fix'), i = all.findIndex(r => ymd_(r[0]) === p.date && norm_(r[1]) === norm_(p.name));
+    const row = i >= 0 ? all[i].slice() : [p.date, p.name, '', '', '', '', 0, '', '', '', '', ''];
+    row[0] = p.date; row[6] = Math.max(n_(row[6]), day.ot);
+    row[7] = [s_(row[7]), 'Clock-out ' + hmOf_(p.time) + ' approved – paid till then'].filter(Boolean).join(' · ').slice(0, 200); row[8] = me.name; row[9] = new Date();
+    if (i >= 0) fs.getRange(i + 2, 1, 1, row.length).setValues([row]); else append_('fix', [row]);
+    dirty_('fix');
+  });
+  log_((d.approve ? 'Approved ' : 'Not approved ') + P_TYPES[p.type] + ' ' + p.date + ' ' + hmOf_(p.time) + ' ' + p.name, me.name);
   return attendance_({ from: d.from, to: d.to }, me);
 }
 /** A selfie or receipt (base64) for managers. */
@@ -963,7 +1060,7 @@ function payFor_(s, month, days, trips) {
     o.workCredit += x.credit; o.paidDays += x.credit;
     if (x.late) { o.lateDays++; o.late += x.late; }
     o.extraBreak += x.extraBreak;
-    o.short += Math.max(0, Math.round((1 - x.credit) * (toMin_(x.end) - toMin_(x.start))));
+    o.short += Math.max(0, Math.round((1 - x.credit) * (endMin_(x.start, x.end) - toMin_(x.start))));
     o.otMin += Math.min(x.ot, x.otApproved || 0);
     if (x.flags.length) o.flags++;
   });
@@ -1014,7 +1111,7 @@ function boot_(me, token) {
   const out = { me: { name: me.name, role: me.role, home: me.home, admin: me.admin, pay: me.pay, owner: me.owner, rights: me.rights, staffLoc: s ? s.loc : '' },
     shifts: { M: shiftTimes_('M'), E: shiftTimes_('E') }, modes: TRIP_MODES.map(m => ({ key: m[0], label: m[1], kind: m[2], receipt: !!RECEIPT_NEEDED[m[0]] })),
     selfie: setv_('Selfie required') === 'Yes', breakAllow: setn_('Break allowed (min per shift)', 30), grace: setn_('Late grace (min)', 5), maxAcc: setn_('Max GPS error (m)', 250), rates: { bike: setn_('Bike rate ₹/km', 4), car: setn_('Car rate ₹/km', 10) },
-    locations: locs_(false).map(l => ({ name: l.name, lat: l.lat, lng: l.lng, radius: l.radius })) };
+    locations: locs_(false).map(l => ({ name: l.name, type: l.type, lat: l.lat, lng: l.lng, radius: l.radius })) };
   if (s && tracked_(s)) { out.day = myDay_(me); out.weeks = myRota_(me); }
   if (me.admin) {
     const staff = staffAll_().filter(x => x.active && (inScope_(me, x.loc) || !x.loc)).map(x => norm_(x.name));
@@ -1034,7 +1131,7 @@ function installTriggers() {
 function nightlySummary() {
   const to = String(setv_('Summary email') || '').trim(); if (!to) return;
   const date = today_(), staff = staffAll_().filter(s => tracked_(s));
-  const days = daysFor_(staff.map(s => s.name), date, date, false);
+  const days = daysFor_(staff.map(s => s.name), date, date, true);
   const line = x => '• ' + x.name + (x.loc ? ' (' + x.loc + ')' : '') + ' – ' + x.status + (x.in ? ', in ' + x.in + (x.out ? ' out ' + x.out : '') : '') + (x.flags.length ? ' – ' + x.flags.join('; ') : '');
   const absent = days.filter(x => x.status === 'Absent'), flagged = days.filter(x => x.status !== 'Absent' && x.flags.length);
   const present = days.filter(x => /^Present|Short|Half|Worked/.test(x.status));
@@ -1090,7 +1187,7 @@ function hm_(v) {
 function hmOf_(d) { return Utilities.formatDate(d, tz_(), 'HH:mm'); }
 function mins_(d) { const t = Utilities.formatDate(d, tz_(), 'HH:mm').split(':'); return Number(t[0]) * 60 + Number(t[1]); }
 function toMin_(hm) { const m = /^(\d{1,2}):(\d{2})/.exec(String(hm || '')); return m ? Number(m[1]) * 60 + Number(m[2]) : 0; }
-function minTxt_(m) { m = Math.max(0, Math.round(m)); return pad_(Math.floor(m / 60)) + ':' + pad_(m % 60); }
+function minTxt_(m) { m = Math.max(0, Math.round(m)); const nd = m >= 1440; m = m % 1440; return pad_(Math.floor(m / 60)) + ':' + pad_(m % 60) + (nd ? ' (+1)' : ''); }
 function pad_(n) { return String(n).padStart(2, '0'); }
 function iso_(v) { return Object.prototype.toString.call(v) === '[object Date]' ? v.toISOString() : s_(v); }
 function s_(v) { return v == null ? '' : String(v).trim(); }
