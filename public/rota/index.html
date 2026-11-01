@@ -360,7 +360,7 @@ function viewToday(m) {
   if (st === 'IN') { status = 'Working'; sub = 'Since ' + (d.punches.filter(p => p.type === 'IN').pop() || {}).time + ' · worked ' + hmin(c.worked); }
   if (st === 'BREAK') { status = 'On break'; sub = 'Since ' + last.time; }
   if (st === 'OUT') { status = 'Clocked out at ' + last.time; sub = 'Worked ' + hmin(c.worked) + (c.breakMin ? ' · break ' + c.breakMin + ' min' : ''); }
-  const shiftLen = sh && sh.start ? toMin(sh.end) - toMin(sh.start) : 540;
+  const shiftLen = sh && sh.start ? ((toMin(sh.end) - toMin(sh.start) + 1440) % 1440 || 1440) : 540;   // shifts can end after midnight
   const pct = Math.min(100, Math.round(((c.credited || 0) / shiftLen) * 100));
   const btns = {
     OUT_NONE: '<button class="btn gold huge" data-p="IN">⏱ Clock in</button>',
