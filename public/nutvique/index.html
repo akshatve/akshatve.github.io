@@ -461,7 +461,7 @@ async function productSheet(sku) {
     '<div class="card"><h3>Stock by location</h3><table class="t">' + locRows.map(x => '<tr><td>' + esc(x[0]) + '</td><td class="n ' + (x[1] < 0 ? 'neg' : '') + '">' + qfmt(x[1]) + ' ' + u + '</td></tr>').join('') +
     (d.pending.length ? d.pending.map(t => '<tr><td class="mute small">Transfer ' + esc(t.id) + ' waiting for check: ' + esc(LOC_SHORT[t.from] || t.from) + ' → ' + esc(LOC_SHORT[t.to] || t.to) + '</td><td class="n mute">' + qfmt(t.qty) + '</td></tr>').join('') : '') + '</table>' +
     (total < 0 ? '<div class="tiny mute" style="margin-top:6px">Negative = more went out than was recorded coming in (opening stock / earlier purchases not entered yet).</div>' : '') + '</div>';
-  if (can('prices') || can('stock')) h += '<div class="row" style="margin-bottom:12px">' + (can('prices') ? '<button class="btn sm" id="ed">Edit product / prices</button>' : '') + (can('stock') ? '<button class="btn sm ghost" id="adj">Stock count / adjust</button>' : '') + '</div>';
+  h += '<div class="row" style="margin-bottom:12px">' + (can('prices') ? '<button class="btn sm" id="ed">Edit product / prices</button>' : '') + (can('stock') ? '<button class="btn sm ghost" id="adj">Stock count / adjust</button>' : '') + '<button class="btn sm ghost" id="jl">🏷 Print jar label</button></div>';
   {
     if (d.buys && d.buys.length) h += '<div class="card"><h3>Purchases</h3><div class="tscroll"><table class="t"><tr><th>Date</th><th>Supplier · invoice</th><th>Seller name</th><th class="n">Qty</th><th class="n">Landed / ' + u + '</th></tr>' +
       d.buys.map(b => '<tr><td class="nowrap">' + esc(b.date || '') + '</td><td>' + esc(b.supplier || '') + '<div class="tiny mute">' + esc(b.no || b.inv) + '</div></td><td>' + esc(b.seller) + '</td><td class="n">' + qfmt(b.qty) + '</td><td class="n">' + inr(b.cost) + '</td></tr>').join('') + '</table></div></div>';
@@ -474,6 +474,7 @@ async function productSheet(sku) {
   $('.sb', m).innerHTML = h;
   if ($('#ed', m)) $('#ed', m).onclick = () => { m.close(); editProductSheet(p); };
   if ($('#adj', m)) $('#adj', m).onclick = () => { m.close(); adjustSheet(p.sku); };
+  if ($('#jl', m)) $('#jl', m).onclick = () => { m.close(); labelSheet(p.sku); };
 }
 function chg(o, n) { if (o === '' && n === '') return '–'; if (String(o) === String(n) || o === '') return inr(n, 0); return '<span class="mute" style="text-decoration:line-through">' + inr(o, 0) + '</span> ' + inr(n, 0); }
 
@@ -508,6 +509,91 @@ function editProductSheet(p) {
 }
 function fld(label, input, span) { return '<div' + (span ? ' style="grid-column:span ' + span + '"' : '') + '><label class="f">' + label + '</label>' + input + '</div>'; }
 function catSelect(id, val) { return '<select class="i" id="' + id + '"><option value="">– pick –</option>' + S.categories.map(c => '<option' + (c === val ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</select>'; }
+
+/* ───────────── JAR LABELS 3.4 × 2.7 inch (v18.37, owner 1 Nov 2026) ───────────── */
+const NV_INFO = new Set('8906222850701,8906222851159,8906222851210,8906222851234,8906222851258,8906222851265,8906222851272,8906222851289,8906222851296,8906222851302,8906222851319,8906222851326,8906222851333,8906222851357,8906222851364,8906222851371,8906222851388,8906222851395,8906222851401,8906222851418,8906222851425,8906222851432,8906222851449,8906222851456,8906222851463,8906222851470,8906222851487,8906222851494,8906222851500,8906222851517,8906222851524,8906222851531,8906222851548,8906222851555,8906222851562,8906222851579,8906222851586,8906222851593,8906222851609,8906222851616,8906222851623,8906222851630,8906222851647,8906222851654,8906222851661,8906222851678,8906222851685,8906222851692,8906222851708,8906222851715,8906222851722,8906222851739,8906222851746,8906222851753,8906222851760,8906222851777,8906222851784,8906222851791,8906222851807,8906222851814,8906222851821,8906222851838,8906222851845,8906222851852,8906222851869,8906222851876,8906222851883,8906222851890,8906222851906,8906222851913,8906222851920,8906222851975,8906222851982,8906222851999,8906222852002,8906222852019,8906222852170,8906222852187,8906222852200,8906222852217,8906222852262,8906222852279,8906222852286,8906222852293,8906222852309,8906222852323,8906222852330,8906222852354,8906222852361'.split(','));   // products with an information page at vermakshat.com/nv/<GTIN>/ (QR on the label)
+function labelPrice(p) { const loc = (typeof B !== 'undefined' && B && B.loc) || ''; const sp = ((S.storePrices || {})[loc] || {})[p.sku]; return { sell: sp && sp.sell ? sp.sell : p.sell, mrp: sp && sp.mrp ? sp.mrp : p.mrp }; }
+function ean13Ok(g) { if (!/^\d{13}$/.test(g)) return false; let s = 0; for (let i = 0; i < 12; i++) s += +g[i] * (i % 2 ? 3 : 1); return (10 - s % 10) % 10 === +g[12]; }
+function ean13Draw(x, code, x0, y0, m, h) {
+  const L = ['0001101', '0011001', '0010011', '0111101', '0100011', '0110001', '0101111', '0111011', '0110111', '0001011'],
+    G = ['0100111', '0110011', '0011011', '0100001', '0011101', '0111001', '0000101', '0010001', '0001001', '0010111'],
+    R = L.map(s => s.replace(/./g, c => c === '0' ? '1' : '0')),
+    P = ['LLLLLL', 'LLGLGG', 'LLGGLG', 'LLGGGL', 'LGLLGG', 'LGGLLG', 'LGGGLL', 'LGLGLG', 'LGLGGL', 'LGGLGL'];
+  const d = code.split('').map(Number), par = P[d[0]]; let bits = '101';
+  for (let i = 1; i <= 6; i++) bits += (par[i - 1] === 'L' ? L : G)[d[i]];
+  bits += '01010'; for (let i = 7; i <= 12; i++) bits += R[d[i]]; bits += '101';
+  const q = 9 * m, fs = Math.round(m * 7);
+  for (let i = 0; i < 95; i++) if (bits[i] === '1') { const guard = i < 3 || (i >= 45 && i < 50) || i >= 92; x.fillRect(x0 + q + i * m, y0, m, h + (guard ? Math.round(fs * 0.55) : 0)); }
+  x.font = '400 ' + fs + 'px Arial, Helvetica, sans-serif'; x.textAlign = 'center'; const ty = y0 + h + Math.round(fs * 0.95);
+  x.fillText(String(d[0]), x0 + q / 2, ty);
+  for (let i = 1; i <= 6; i++) x.fillText(String(d[i]), x0 + q + (3 + (i - 1) * 7 + 3.5) * m, ty);
+  for (let i = 7; i <= 12; i++) x.fillText(String(d[i]), x0 + q + (50 + (i - 7) * 7 + 3.5) * m, ty);
+  x.textAlign = 'left'; return q + 97 * m;
+}
+/** One label, 3.4 × 2.7 inch at 203 dpi (label printer resolution) = 690 × 548 dots. */
+function labelCanvas(p, ub) {
+  const W = 690, H = 548, M = 22, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, W, H); x.fillStyle = '#000'; x.textBaseline = 'alphabetic';
+  const font = (sz, b) => { x.font = (b ? '700 ' : '400 ') + sz + 'px Arial, Helvetica, sans-serif'; };
+  const pr = labelPrice(p), kg = (p.unit || 'kg') === 'kg', per = kg ? '/kg' : '', rs = v => '₹' + Number(v || 0).toLocaleString('en-IN');
+  const nm = String(p.name || '').replace(/^Nutvique\s+/i, '');
+  let fs = 50; font(fs, true); while (fs > 22 && x.measureText(nm).width > W - 2 * M) { fs--; font(fs, true); }
+  x.textAlign = 'center'; x.fillText(nm, W / 2, M + Math.round(fs * 0.86)); x.textAlign = 'left';
+  let y = M + fs + 42;
+  font(32, false); x.fillText('MRP ' + rs(pr.mrp) + per, M, y);
+  if (ub) { font(24, false); x.textAlign = 'right'; x.fillText('Use by: ' + ub, W - M, y); x.textAlign = 'left'; }
+  y += 28; font(19, false); x.fillText('(incl. of all taxes)', M, y);
+  if (!kg && p.net) { font(22, false); x.textAlign = 'right'; x.fillText('Net qty: ' + p.net + ' g', W - M, y); x.textAlign = 'left'; }
+  y += 60; font(30, false); x.fillText('Our Price', M, y); const lw = x.measureText('Our Price  ').width; font(52, true); x.fillText(rs(pr.sell) + per, M + lw, y);
+  y += 18; x.fillRect(M, y, W - 2 * M, 2);
+  const top = y + 18, g = String(p.gtin || '');
+  let bw = 0; if (ean13Ok(g)) bw = ean13Draw(x, g, M - 6, top, 3, 150);
+  let qx = W - M; const hasQr = NV_INFO.has(g) && typeof qrcode === 'function';
+  if (hasQr) { const q = qrcode(0, 'M'); q.addData('https://vermakshat.com/nv/' + g + '/'); q.make(); const n = q.getModuleCount(), s = Math.max(2, Math.floor(150 / n)), qs = s * n; qx = W - M - qs;
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) x.fillRect(qx + c * s, top + r * s, s, s);
+    font(16, false); x.textAlign = 'center'; x.fillText('Scan for details', qx + qs / 2, top + qs + 22); x.textAlign = 'left'; }
+  const sx = M - 6 + (bw ? bw + 12 : 6), sw = (hasQr ? qx - 14 : W - M) - sx; font(19, false);
+  const words = 'Store in a cool, dry & hygienic place, away from direct sunlight. Once opened, keep in an airtight container.'.split(' ');
+  let line = '', yy = top + 18; words.forEach(w => { const t = line ? line + ' ' + w : w; if (x.measureText(t).width > sw && line) { x.fillText(line, sx, yy); yy += 23; line = w; } else line = t; }); if (line) x.fillText(line, sx, yy);
+  return cv;
+}
+function printLabels(ps, ub) {
+  if (typeof PRINT_PAGE === 'undefined' || typeof packBits !== 'function') return toast('Printing is not available on this screen', true);
+  const H = 548, big = document.createElement('canvas'); big.width = 690; big.height = H * ps.length; const bx = big.getContext('2d'), pngs = [], seen = {};
+  ps.forEach((p, i) => { const cv = labelCanvas(p, ub); bx.drawImage(cv, 0, i * H); if (!seen[p.sku]) seen[p.sku] = cv.toDataURL('image/png'); pngs.push(seen[p.sku]); });
+  const job = Object.assign(packBits(big), { png: pngs[0], pngs: pngs, no: ps.length + ' jar label' + (ps.length > 1 ? 's' : ''), mm: 86, lab: { w: 86.4, h: 68.6, px: H } });
+  if (printWin && !printWin.closed) { try { printWin.postMessage({ nvjob: job }, '*'); printWin.focus(); return; } catch (e) { } }
+  const html = PRINT_PAGE.replace('/*JOB*/null', () => JSON.stringify(job));
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  printWin = window.open(url, 'nvprint'); if (!printWin) { toast('Allow pop-ups for this page to print', true); return; }
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+async function labelSheet(sku) {
+  try { await loadQr(); } catch (e) { }   // QR to the product page; labels still print without it
+  const rows = []; if (sku && S.bySku[sku]) rows.push({ sku: sku, n: 1 });
+  let ub0 = 'APR 2027'; try { ub0 = localStorage.getItem('nv_lbl_useby') || ub0; } catch (e) { }
+  const m = modal('🏷 Jar labels · 3.4 × 2.7 inch', '<div class="small mute">Name, price, MRP and barcode come straight from the app, so the label always matches the bill. Print on 3.4 × 2.7 inch labels at 100% (actual size).</div>' +
+    '<div id="lb_r" style="margin-top:10px"></div><button class="btn sm ghost" id="lb_add">+ Add product</button>' +
+    '<div style="margin-top:10px">' + fld('Use by', '<input class="i" id="lb_ub" value="' + esc(ub0) + '">') + '</div>' +
+    '<div id="lb_pv" style="margin-top:10px;text-align:center"></div><button class="btn gold block" id="lb_go" style="margin-top:12px">Print labels</button>', { wide: true });
+  const draw = () => {
+    $('#lb_r', m).innerHTML = rows.map((r, i) => { const p = S.bySku[r.sku], pr = labelPrice(p); return '<div class="row" style="margin-bottom:6px;flex-wrap:nowrap"><div class="grow"><b>' + esc(p.name) + '</b><div class="tiny mute">' + (ean13Ok(String(p.gtin || '')) ? esc(p.gtin) : '<span class="neg">no barcode</span>') + ' · ' + inr(pr.sell, 0) + ((p.unit || 'kg') === 'kg' ? '/kg' : '') + ' · MRP ' + inr(pr.mrp, 0) + '</div></div>' +
+      '<input class="i num" style="width:70px" data-n="' + i + '" inputmode="numeric" value="' + r.n + '"><span class="tiny mute">labels</span><button class="btn sm ghost" data-x="' + i + '">×</button></div>'; }).join('') || '<div class="empty small">Add the products to print.</div>';
+    $$('[data-n]', m).forEach(el => el.oninput = () => { rows[+el.dataset.n].n = Math.max(0, Math.round(num(el.value))); });
+    $$('[data-x]', m).forEach(b => b.onclick = () => { rows.splice(+b.dataset.x, 1); draw(); });
+    const pv = $('#lb_pv', m); pv.innerHTML = '';
+    if (rows[0]) { const cv = labelCanvas(S.bySku[rows[0].sku], $('#lb_ub', m).value.trim()); cv.style.width = '100%'; cv.style.maxWidth = '360px'; cv.style.border = '1px solid #ccc'; cv.style.borderRadius = '6px'; pv.appendChild(cv); }
+  };
+  $('#lb_add', m).onclick = async () => { const s = await pickProduct({ title: 'Add a product for labels' }); if (s && !rows.some(r => r.sku === s)) { rows.push({ sku: s, n: 1 }); draw(); } };
+  $('#lb_ub', m).onchange = () => { try { localStorage.setItem('nv_lbl_useby', $('#lb_ub', m).value.trim()); } catch (e) { } draw(); };
+  $('#lb_go', m).onclick = () => {
+    const list = []; rows.forEach(r => { for (let i = 0; i < r.n; i++) list.push(S.bySku[r.sku]); });
+    if (!list.length) return toast('Add products and the number of labels', true);
+    if (list.length > 150) return toast('Up to 150 labels at a time', true);
+    printLabels(list, $('#lb_ub', m).value.trim());
+  };
+  draw();
+}
 
 /* ───────────── product picker ───────────── */
 function pickProduct(opts) {
@@ -1997,6 +2083,7 @@ async function viewMore() {
   if (canApprove() && !can('approve')) h += '<div class="card"><h3>Store access requests</h3><div class="small mute">Staff covering a shift at another store ask here for one day.</div><button class="btn sm" id="apv" style="margin-top:10px">Requests</button></div>';
   if (can('approve')) h += '<div class="card"><h3>Discount approvals</h3><div class="small mute">Discount requests from staff and managers appear on your screen within seconds while the app is open. One-time codes are a back-up you can read out on the phone (each works once, up to 25%).</div>' +
     '<div class="row" style="margin-top:10px"><button class="btn sm" id="apv">Requests</button><button class="btn sm ghost" id="apc">One-time codes</button></div></div>';
+  h += '<div class="card"><h3>🏷 Jar labels</h3><div class="small mute">Print 3.4 × 2.7 inch jar labels – name, our price, MRP, use-by date, barcode and the product QR – straight from the app.</div><button class="btn sm" id="jlb" style="margin-top:10px">Print jar labels</button></div>';
   h += '<div class="card"><h3>Use it like an app</h3><div class="small">' + (IN_APP ? 'You are in the installed Nutvique app. ' : 'For the camera scanner and the Bluetooth scale, install the app: open <b>vermakshat.com/nutvique</b> in Chrome (Android) or Safari (iPhone) → Install / Add to Home Screen. ') +
     'A barcode scanner gun also works in the Search box.</div></div>';
   if (can('settings')) h += '<div class="card" id="setc"><h3>Settings</h3><div class="empty"><span class="spin dk"></span></div></div>' +
@@ -2015,6 +2102,7 @@ async function viewMore() {
   if ($('#upil')) $('#upil').onclick = () => upiSheet();
   if ($('#btl')) $('#btl').onclick = () => bankTallySheet();
   if ($('#hrl')) $('#hrl').onclick = () => hamperRecipesSheet();
+  if ($('#jlb')) $('#jlb').onclick = () => labelSheet();
   if ($('#col')) $('#col').onclick = () => corpScreen();
   if ($('#kpl')) $('#kpl').onclick = () => cashPickupsSheet(isOwnerUi() ? 'waiting' : 'all');
   if ($('#apc')) $('#apc').onclick = codesSheet;
@@ -3499,8 +3587,8 @@ select,input{font:inherit;border:1px solid #cfcab9;border-radius:8px;padding:7px
 .st{margin-top:10px;font-size:14px;min-height:20px}.ok{color:#167a4a}.bad{color:#b42318}
 .prev{background:#fff;text-align:center;padding:10px;margin-top:12px;border-radius:12px;border:1px solid #e4e1d8}.prev img{width:100%;max-width:400px;image-rendering:pixelated}
 .sm{font-size:12.5px;color:#666}
-#pimg{display:none}
-@media print{body{background:#fff}.top,.w>*:not(#pimg){display:none!important}.w{padding:0;max-width:none}#pimg{display:block!important;width:100%}}
+#pimg{display:none}#plabs{display:none}
+@media print{body{background:#fff}.top,.w>*:not(#pimg){display:none!important}.w{padding:0;max-width:none}#pimg{display:block!important;width:100%}body.lab #pimg{display:none!important}body.lab .w{display:none!important}body.lab #plabs{display:block!important}#plabs img{display:block;width:100%;page-break-after:always;break-after:page}}
 </style></head><body><div class="top">NUTVIQUE · Print bill <span id="no"></span></div><div class="w">
 <button class="btn g" id="bt">Print on Bluetooth printer</button>
 <div class="st" id="st"></div>
@@ -3515,7 +3603,7 @@ select,input{font:inherit;border:1px solid #cfcab9;border-radius:8px;padding:7px
 <div><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="inv">Print comes out inverted</label></div></div>
 <div class="sm" style="margin-top:8px">Bluetooth printing needs Chrome on Android or a laptop. If the printer does not show up in the list, use “Print with RawBT app” (free on Play Store) after pairing the printer in phone Bluetooth settings.</div></div>
 <div class="prev"><img id="pv"></div><img id="pimg">
-</div><script>
+</div><div id="plabs"></div><script>
 'use strict';
 let JOB = /*JOB*/null, dev = null, chr = null;
 const $ = s => document.querySelector(s), ls = { get(k) { try { return localStorage.getItem('nvp_' + k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem('nvp_' + k, v); } catch (e) { } } };
@@ -3523,23 +3611,23 @@ const st = (m, c) => { $('#st').textContent = m; $('#st').className = 'st ' + (c
 ['mm', 'pp', 'll', 'lang'].forEach(k => { const v = ls.get(k); if (v) $('#' + k).value = v; $('#' + k).onchange = () => { ls.set(k, $('#' + k).value); lw(); if (k === 'mm' && window.opener) { try { window.opener.postMessage({ nvpmm: $('#mm').value }, '*'); } catch (e) { } st('Paper width changed – tap Print again in the app to redraw the bill for ' + $('#mm').value + ' mm.'); } }; });
 $('#inv').checked = ls.get('inv') === '1'; $('#inv').onchange = () => ls.set('inv', $('#inv').checked ? '1' : '0');
 function lw() { $('#lw').style.display = $('#pp').value === 'label' ? '' : 'none'; }
-function show() { if (!JOB) return; $('#no').textContent = JOB.no; $('#pv').src = JOB.png; $('#pimg').src = JOB.png; let ps = document.getElementById('ps'); if (!ps) { ps = document.createElement('style'); ps.id = 'ps'; document.head.appendChild(ps); } ps.textContent = '@page{size:' + JOB.mm + 'mm auto;margin:0}'; if (String(JOB.mm) !== $('#mm').value) { $('#mm').value = String(JOB.mm); ls.set('mm', String(JOB.mm)); } }
+function show() { if (!JOB) return; $('#no').textContent = JOB.no; $('#pv').src = JOB.png; $('#pimg').src = JOB.png; let ps = document.getElementById('ps'); if (!ps) { ps = document.createElement('style'); ps.id = 'ps'; document.head.appendChild(ps); } document.body.classList.toggle('lab', !!JOB.lab); $('#plabs').innerHTML = ''; if (JOB.lab) { ps.textContent = '@page{size:' + JOB.lab.w + 'mm ' + JOB.lab.h + 'mm;margin:0}'; (JOB.pngs || [JOB.png]).forEach(src => { const im = document.createElement('img'); im.src = src; $('#plabs').appendChild(im); }); document.title = 'Jar labels'; return; } ps.textContent = '@page{size:' + JOB.mm + 'mm auto;margin:0}'; if (String(JOB.mm) !== $('#mm').value) { $('#mm').value = String(JOB.mm); ls.set('mm', String(JOB.mm)); } }
 lw(); show();
 window.addEventListener('message', e => { if (e.data && e.data.nvjob) { JOB = e.data.nvjob; show(); st('New bill ' + JOB.no + ' ready.' + (chr ? ' Printing…' : '')); if (chr) printBt(); } });
 const enc = s => new TextEncoder().encode(s);
 function bits(invert) { const b = atob(JOB.b64), a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = invert ? (~b.charCodeAt(i)) & 255 : b.charCodeAt(i); return a; }
 function cat(parts) { let n = 0; parts.forEach(p => n += p.length); const o = new Uint8Array(n); let i = 0; parts.forEach(p => { o.set(p, i); i += p.length; }); return o; }
 function build() {
-  const inv = $('#inv').checked, mm = JOB.mm, wb = JOB.wb, H = JOB.h;
+  const inv = $('#inv').checked, mm = JOB.lab ? JOB.lab.w : JOB.mm, wb = JOB.wb, H = JOB.h;
   if ($('#lang').value === 'esc') {
     const data = bits(inv), parts = [new Uint8Array([0x1b, 0x40])];
     for (let y = 0; y < H; y += 200) { const h = Math.min(200, H - y); parts.push(new Uint8Array([0x1d, 0x76, 0x30, 0, wb & 255, wb >> 8, h & 255, h >> 8]), data.subarray(y * wb, (y + h) * wb)); }
     parts.push(new Uint8Array([0x1b, 0x64, 5, 0x1d, 0x56, 0x42, 0])); return cat(parts);
   }
   const data = bits(!inv);  // TSPL: 0 bit = black dot
-  const label = $('#pp').value === 'label', lenMm = label ? Math.max(20, Number($('#ll').value) || 150) : Math.ceil(H / 8) + 4;
-  const page = label ? lenMm * 8 - 24 : H, parts = [enc('SIZE ' + mm + ' mm,' + lenMm + ' mm\\r\\nGAP ' + (label ? '2 mm,0 mm' : '0 mm,0 mm') + '\\r\\nDIRECTION 1,0\\r\\nREFERENCE 0,0\\r\\nDENSITY 10\\r\\nSPEED 4\\r\\n')];
-  for (let y = 0; y < H; y += page) { const h = Math.min(page, H - y); parts.push(enc('CLS\\r\\nBITMAP 0,' + (label ? 12 : 0) + ',' + wb + ',' + h + ',0,'), data.subarray(y * wb, (y + h) * wb), enc('\\r\\nPRINT 1,1\\r\\n')); }
+  const label = !!JOB.lab || $('#pp').value === 'label', lenMm = JOB.lab ? JOB.lab.h : label ? Math.max(20, Number($('#ll').value) || 150) : Math.ceil(H / 8) + 4;
+  const page = JOB.lab ? JOB.lab.px : label ? lenMm * 8 - 24 : H, parts = [enc('SIZE ' + mm + ' mm,' + lenMm + ' mm\\r\\nGAP ' + (label ? '2 mm,0 mm' : '0 mm,0 mm') + '\\r\\nDIRECTION 1,0\\r\\nREFERENCE 0,0\\r\\nDENSITY 10\\r\\nSPEED 4\\r\\n')];
+  for (let y = 0; y < H; y += page) { const h = Math.min(page, H - y); parts.push(enc('CLS\\r\\nBITMAP 0,' + (label && !JOB.lab ? 12 : 0) + ',' + wb + ',' + h + ',0,'), data.subarray(y * wb, (y + h) * wb), enc('\\r\\nPRINT 1,1\\r\\n')); }
   return cat(parts);
 }
 const SVC = ['000018f0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '49535343-fe7d-4ae5-8fa9-9fafd205e455', '0000ff00-0000-1000-8000-00805f9b34fb',
@@ -3770,7 +3858,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '7d59ad4ea4';
+<script>window.NV_BUILD = 'b93aa17e90';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
