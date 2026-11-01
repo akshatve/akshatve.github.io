@@ -539,22 +539,22 @@ function labelCanvas(p, ub) {
   const nm = String(p.name || '').replace(/^Nutvique\s+/i, '');
   let fs = 50; font(fs, true); while (fs > 22 && x.measureText(nm).width > W - 2 * M) { fs--; font(fs, true); }
   x.textAlign = 'center'; x.fillText(nm, W / 2, M + Math.round(fs * 0.86)); x.textAlign = 'left';
-  let y = M + fs + 42;
+  let y = M + fs + 52;
   font(32, false); x.fillText('MRP ' + rs(pr.mrp) + per, M, y);
   if (ub) { font(24, false); x.textAlign = 'right'; x.fillText('Use by: ' + ub, W - M, y); x.textAlign = 'left'; }
-  y += 28; font(19, false); x.fillText('(incl. of all taxes)', M, y);
+  y += 32; font(19, false); x.fillText('(incl. of all taxes)', M, y);
   if (!kg && p.net) { font(22, false); x.textAlign = 'right'; x.fillText('Net qty: ' + p.net + ' g', W - M, y); x.textAlign = 'left'; }
-  y += 60; font(30, false); x.fillText('Our Price', M, y); const lw = x.measureText('Our Price  ').width; font(52, true); x.fillText(rs(pr.sell) + per, M + lw, y);
-  y += 18; x.fillRect(M, y, W - 2 * M, 2);
-  const top = y + 18, g = String(p.gtin || '');
-  let bw = 0; if (ean13Ok(g)) bw = ean13Draw(x, g, M - 6, top, 3, 150);
+  y += 72; font(30, false); x.fillText('Our Price', M, y); const lw = x.measureText('Our Price  ').width; font(52, true); x.fillText(rs(pr.sell) + per, M + lw, y);
+  y += 22; x.fillRect(M, y, W - 2 * M, 2);
+  const top = y + 26, g = String(p.gtin || '');
+  let bw = 0; if (ean13Ok(g)) bw = ean13Draw(x, g, M - 6, top, 3, 175);
   let qx = W - M; const hasQr = NV_INFO.has(g) && typeof qrcode === 'function';
-  if (hasQr) { const q = qrcode(0, 'M'); q.addData('https://vermakshat.com/nv/' + g + '/'); q.make(); const n = q.getModuleCount(), s = Math.max(2, Math.floor(150 / n)), qs = s * n; qx = W - M - qs;
+  if (hasQr) { const q = qrcode(0, 'M'); q.addData('https://vermakshat.com/nv/' + g + '/'); q.make(); const n = q.getModuleCount(), s = Math.max(2, Math.floor(175 / n)), qs = s * n; qx = W - M - qs;
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) x.fillRect(qx + c * s, top + r * s, s, s);
     font(16, false); x.textAlign = 'center'; x.fillText('Scan for details', qx + qs / 2, top + qs + 22); x.textAlign = 'left'; }
-  const sx = M - 6 + (bw ? bw + 12 : 6), sw = (hasQr ? qx - 14 : W - M) - sx; font(19, false);
+  const sx = M - 6 + (bw ? bw + 12 : 6), sw = (hasQr ? qx - 14 : W - M) - sx; font(20, false);
   const words = 'Store in a cool, dry & hygienic place, away from direct sunlight. Once opened, keep in an airtight container.'.split(' ');
-  let line = '', yy = top + 18; words.forEach(w => { const t = line ? line + ' ' + w : w; if (x.measureText(t).width > sw && line) { x.fillText(line, sx, yy); yy += 23; line = w; } else line = t; }); if (line) x.fillText(line, sx, yy);
+  let line = '', yy = top + 22; words.forEach(w => { const t = line ? line + ' ' + w : w; if (x.measureText(t).width > sw && line) { x.fillText(line, sx, yy); yy += 25; line = w; } else line = t; }); if (line) x.fillText(line, sx, yy);
   return cv;
 }
 function printLabels(ps, ub) {
@@ -3858,7 +3858,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = 'b93aa17e90';
+<script>window.NV_BUILD = '69412c7162';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
