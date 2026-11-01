@@ -683,14 +683,17 @@ function drawPlan() {
         return '<td class="c' + (who.length ? ' CUST' : '') + '" data-ev="' + i + '|' + d + '" style="' + (on ? '' : 'opacity:.35') + '">' + DAYS[pd(d).getDay()].slice(0, 2) + '<small>' + (who.length ? who.map(s => esc(initials(s.name))).join(' ') : (on ? '+ staff' : '')) + '</small></td>';
       }).join('') + '</tr></table></div>').join('') : '<p class="small mute">No event this week. Tap “+ Event” to add one, then put staff on the stall day by day.</p>') + '</div>';
   $('#pb').innerHTML = '<div class="card" style="padding:8px"><table class="grid">' + head + body + '</table>' +
-    '<p class="tiny mute" style="margin:8px 4px 0"><span class="chip M">M</span> Morning ' + esc(r.shifts.M.start + '–' + r.shifts.M.end) + ' &nbsp; <span class="chip E">E</span> Evening ' + esc(r.shifts.E.start + '–' + r.shifts.E.end) + ' &nbsp; Off = weekly off (' + esc(offDaysTxt(P.week)) + ') · tap a box to change</p></div>' +
+    '<p class="tiny mute" style="margin:8px 4px 0"><span class="chip M">M</span> Morning ' + esc(r.shifts.M.start + '–' + r.shifts.M.end) + ' &nbsp; <span class="chip E">E</span> Evening ' + esc(r.shifts.E.start + '–' + r.shifts.E.end) + ' &nbsp; Off = weekly off (' + esc(offDaysTxt(P.week)) + ')' + (r.canOffDays ? ' · <a href="#" id="offd">Off days</a>' : '') + ' · tap a box to change</p></div>' +
     evHtml +
     (gaps().length ? '<div class="card"><h2>Shifts with nobody at the shop</h2>' + gaps().map(g => '<div class="row" style="padding:6px 0;border-top:1px solid var(--line)"><div class="grow small"><b>' + esc(g.loc) + '</b><br>' + esc(dLabel(g.date)) + ' · ' + SHIFT[g.shift] + '</div><button class="btn gold sm" data-cov="' + esc(g.loc + '|' + g.date + '|' + g.shift) + '">Who covers?</button></div>').join('') + '</div>' : '') +
     (warn.filter(w => !/nobody on/.test(w)).length ? '<div class="warnbox">' + warn.filter(w => !/nobody on/.test(w)).map(esc).join('<br>') + '</div>' : (Object.keys(cells).length && !gaps().length ? '<div class="warnbox ok">✓ Every store covered on both shifts, one weekly off each on Tue–Thu.</div>' : '')) +
+    (r.canOffDays ? '<button class="btn ghost full sm" id="offd2" style="margin-bottom:8px">🗓 Weekly off days this week: ' + esc(offDaysTxt(P.week)) + ' – change</button>' : '') +
     '<div class="row wrap" style="gap:8px"><button class="btn gold grow" id="pauto">✨ Auto-plan this week</button><button class="btn ghost grow" id="pcopy">Copy last week</button></div><div style="height:8px"></div>' +
     '<div class="row" style="gap:8px"><button class="btn ghost grow" id="psave">Save draft</button><button class="btn ok grow" id="ppub">✓ Publish to staff</button></div>' +
     '<p class="tiny mute">Auto-plan keeps the boxes you already changed by hand this week (clear them first for a fresh plan). Staff only see the rota after you publish.</p>';
   $('#pb').querySelectorAll('td.c').forEach(td => td.onclick = () => editCell(td.dataset.k));
+  const od = $('#offd'); if (od) od.onclick = e => { e.preventDefault(); offDaysSheet(); };
+  const od2 = $('#offd2'); if (od2) od2.onclick = offDaysSheet;
   $('#pb').querySelectorAll('[data-cov]').forEach(el => el.onclick = () => { const [loc, d, sh] = el.dataset.cov.split('|'); coverSheet(loc, d, sh); });
   $('#pb').querySelectorAll('[data-ev]').forEach(el => el.onclick = () => { const [i, d] = el.dataset.ev.split('|'); eventDay(evs[+i], d); });
   $('#pb').querySelectorAll('[data-eved]').forEach(el => el.onclick = () => editLoc(evs[+el.dataset.eved], planReloadLocs, true));
@@ -776,10 +779,22 @@ function coverSheet(loc, d, shift) {
     P.manual = P.manual || {}; P.manual[k] = 1; P.dirty = true; sh.close(); drawPlan(); toast(x.s.name + ' covers ' + loc + ' – remember to Publish');
   });
 }
-// Weekly offs are Tue–Thu. Owner-approved extra off days for single weeks (week = Monday's date, days: 1 = Mon … 0 = Sun).
-const EXTRA_OFF_DAYS = { '2026-11-02': [1, 5] };          // 2–8 Nov 2026: Monday and Friday allowed too (owner, 1 Nov)
-function offDaysFor(week) { return [2, 3, 4].concat(EXTRA_OFF_DAYS[week] || []); }
-function offDaysTxt(week) { const x = EXTRA_OFF_DAYS[week] || []; return 'Tue–Thu' + (x.length ? ' + ' + x.map(d => DAYS[d]).join(', ') + ' this week' : ' only'); }
+// Weekly offs are Tue–Thu. The owner can allow extra days for one week (Rota plan → Off days); the server sends them with the plan.
+function offDaysFor(week) { const r = S.plan && S.plan.week === week && S.plan.r; return r && r.offDays ? r.offDays : [2, 3, 4]; }
+function offDaysTxt(week) { const x = offDaysFor(week).filter(d => [2, 3, 4].indexOf(d) < 0); return 'Tue–Thu' + (x.length ? ' + ' + x.map(d => DAYS[d]).join(', ') + ' this week' : ' only'); }
+/** Owner: tick the extra days that may be weekly offs in this week only. */
+function offDaysSheet() {
+  const P = S.plan, cur = offDaysFor(P.week), order = [1, 2, 3, 4, 5, 6, 0];
+  const sh = sheet('Weekly off days – week of ' + dLabel(P.week), '<p class="small" style="margin-top:0">Tuesday, Wednesday and Thursday are always allowed. Tick any other day that staff may also take as their weekly off <b>in this week only</b>. Next week goes back to Tue–Thu unless you change it there too.</p>' +
+    '<div class="card">' + order.map(d => { const base = [2, 3, 4].indexOf(d) >= 0;
+      return '<label style="display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)"><input type="checkbox" data-d="' + d + '"' + (cur.indexOf(d) >= 0 ? ' checked' : '') + (base ? ' disabled' : '') + '> <b>' + DAYS[d] + '</b> ' + dLabel(addD(P.week, (d + 6) % 7)).replace(/^\w+ /, '') + (base ? ' <span class="tiny mute">always</span>' : '') + '</label>'; }).join('') + '</div>' +
+    '<button class="btn full" id="odgo">Save</button>');
+  sh.el.querySelector('#odgo').onclick = async () => {
+    const days = [...sh.el.querySelectorAll('input[data-d]:checked:not([disabled])')].map(c => +c.dataset.d);
+    const r = await run('Saving…', () => call('offDaysSave', { week: P.week, days: days }));
+    P.r.offDays = r.offDays; sh.close(); drawPlan(); toast('Weekly offs this week: ' + offDaysTxt(P.week));
+  };
+}
 function rotaWarnLocal() {
   const P = S.plan, r = P.r, w = [];
   r.staff.forEach(s => {
@@ -824,9 +839,7 @@ async function savePlan(publish) {
   const P = S.plan;
   const warn = rotaWarnLocal();
   if (publish && warn.length && !confirm('There are ' + warn.length + ' warning(s):\n\n' + warn.slice(0, 8).join('\n') + '\n\nPublish anyway?')) return;
-  const extra = EXTRA_OFF_DAYS[P.week] || [], send = {};
-  Object.keys(P.cells).forEach(k => { const c = P.cells[k]; send[k] = c.shift === 'OFF' && extra.indexOf(pd(k.split('|')[1]).getDay()) >= 0 ? Object.assign({}, c, { allowOtherDay: true }) : c; });
-  const r = await run(publish ? 'Publishing…' : 'Saving…', () => call('rotaSave', { week: P.week, cells: send, publish: publish }));
+  const r = await run(publish ? 'Publishing…' : 'Saving…', () => call('rotaSave', { week: P.week, cells: P.cells, publish: publish }));
   S.plan = { week: P.week, r: r, cells: JSON.parse(JSON.stringify(r.cells)), dirty: false };
   toast(publish ? '✓ Published – staff can see it now' : 'Draft saved'); drawPlan();
   if (S.b.day) refreshBoot().catch(() => { });

@@ -24,7 +24,33 @@ const HO = 'Head Office';
 const STORES = ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120'];
 const SHIFT_CODES = ['M', 'E', 'OFF', 'LP', 'LU', 'HOL', 'CUST'];
 const SHIFT_LABEL = { M: 'Morning', E: 'Evening', OFF: 'Weekly off', LP: 'Leave (paid)', LU: 'Leave (unpaid)', HOL: 'Holiday', CUST: 'Custom' };
-const OFF_DAYS = [2, 3, 4];                          // Tue, Wed, Thu (JS getDay)
+const OFF_DAYS = [2, 3, 4];                          // Tue, Wed, Thu (JS getDay) – the normal weekly-off days
+/** Extra weekly-off days the owner allowed for single weeks: {'2026-11-02': [1, 5]} (from the "Extra off days by week" setting). */
+function extraOffMap_() {
+  const out = {};
+  String(setv_('Extra off days by week') || '').split(';').forEach(part => {
+    const m = /(\d{4}-\d{2}-\d{2})\s*:\s*(.*)/.exec(part.trim()); if (!m) return;
+    const days = m[2].split(/[,\s]+/).map(x => DAY_NAMES.findIndex(d => d.toLowerCase() === x.slice(0, 3).toLowerCase())).filter(x => x >= 0 && OFF_DAYS.indexOf(x) < 0);
+    if (days.length) out[m[1]] = days.filter((x, i, a) => a.indexOf(x) === i).sort();
+  });
+  return out;
+}
+function offDaysFor_(week) { return OFF_DAYS.concat(extraOffMap_()[week] || []); }
+function offDaysTxt_(week) { const x = extraOffMap_()[week] || []; return 'Tuesday, Wednesday or Thursday' + (x.length ? ' (this week also ' + x.map(d => DAY_NAMES[d]).join(', ') + ')' : ''); }
+/** Owner (Settings right): which extra days may be weekly offs in one week. d = {week, days:[1,5]} */
+function offDaysSave_(d, me) {
+  const week = monday_(d.week);
+  const days = (d.days || []).map(Number).filter(x => x >= 0 && x <= 6 && OFF_DAYS.indexOf(x) < 0).filter((x, i, a) => a.indexOf(x) === i).sort();
+  const map = extraOffMap_();
+  if (days.length) map[week] = days; else delete map[week];
+  const keepFrom = addDays_(monday_(today_()), -56);                          // forget weeks more than 8 weeks old
+  const val = Object.keys(map).filter(w => w >= keepFrom).sort().map(w => w + ': ' + map[w].map(x => DAY_NAMES[x]).join(', ')).join('; ');
+  const sh = tab_('set'), keys = rows_('set').map(r => s_(r[0])), i = keys.indexOf('Extra off days by week');
+  if (i >= 0) sh.getRange(i + 2, 2).setValue(val); else sh.appendRow(['Extra off days by week', val, DEFAULT_SETTINGS.find(x => x[0] === 'Extra off days by week')[2]]);
+  dirty_('set');
+  log_('Off days for week ' + week + ': Tue–Thu' + (days.length ? ' + ' + days.map(x => DAY_NAMES[x]).join(', ') : ' only'), me.name);
+  return rotaGet_({ week: week }, me);
+}
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const TRIP_MODES = [
   // [key, label, kind]   kind: km = paid per km from GPS, fare = actual fare entered (+ receipt), free = no cost
@@ -74,7 +100,8 @@ const DEFAULT_SETTINGS = [
   ['Car rate ₹/km', 10, 'Own car.'],
   ['Road factor', 1.3, 'Straight-line GPS distance × this ≈ road distance (used when the phone could not record the route).'],
   ['Summary email', 'nutzyfoods@gmail.com', 'Nightly summary (late, absent, missed clock-out, flags, trips to approve). Blank = off.'],
-  ['Photo folder ID', '', 'Drive folder for selfies and receipts (created automatically).']
+  ['Photo folder ID', '', 'Drive folder for selfies and receipts (created automatically).'],
+  ['Extra off days by week', '', 'Set in the app: Rota plan → "Off days". Week (Monday) and extra days, e.g. 2026-11-02: Mon, Fri; 2026-11-16: Sat']
 ];
 
 // Approximate map positions (Google Maps). Stand inside the store and tap "Use my position" in Settings → Locations to make them exact.
@@ -115,7 +142,7 @@ const DEFAULT_RIGHTS = { Manager: ['rota'], Staff: [] };
 const ACTION_NEED = { board: ['team', 'approve', 'times', 'payAdj'], attendance: ['team', 'approve', 'times', 'payAdj'], fixDay: ['times', 'payAdj'], approvePunch: 'approve',
   photo: ['team', 'approve', 'times', 'trips'], trips: 'trips', tripDecide: 'trips', staffList: ['staff', 'pay', 'rota'], staffSave: ['staff', 'pay'], resetPhone: 'staff',
   syncStaff: 'staff', rotaGet: 'rota', rotaAuto: 'rota', rotaSave: 'rota', payroll: 'pay', locSave: ['settings', 'rota'], settingsGet: 'settings', settingsSave: 'settings',
-  rightsList: 'owner', rightsSave: 'owner' };
+  rightsList: 'owner', rightsSave: 'owner', offDaysSave: 'settings' };
 function can_(me, need) {
   if (me.owner) return true;
   if (need === 'owner') return false;
@@ -160,6 +187,7 @@ function api_(req) {
     case 'settingsGet': return settingsGet_();
     case 'settingsSave': return settingsSave_(d, me);
     case 'rightsList': return rightsList_();
+    case 'offDaysSave': return offDaysSave_(d, me);
     case 'rightsSave': return rightsSave_(d, me);
   }
   throw new Error('Unknown action: ' + action);
@@ -289,6 +317,14 @@ function ensureSetup_() {
     dirty_();
     log_('v5: event stalls, after-midnight clock-outs, clock-out approval', 'system');
   }
+  if (!p.getProperty('V6_OFFDAYS')) {                // 1 Nov 2026: extra off days per week, set by the owner in the app
+    p.setProperty('V6_OFFDAYS', '1');
+    const sh = tab_('set'), keys = rows_('set').map(r => s_(r[0])), i = keys.indexOf('Extra off days by week');
+    const note = DEFAULT_SETTINGS.find(x => x[0] === 'Extra off days by week')[2];
+    if (i < 0) sh.appendRow(['Extra off days by week', '2026-11-02: Mon, Fri', note]);
+    else if (!s_(rows_('set')[i][1])) sh.getRange(i + 2, 2).setValue('2026-11-02: Mon, Fri');
+    dirty_('set');
+  }
   if (!p.getProperty('GOLIVE_V1')) {                 // the day the app is first used = "Attendance starts on" (earlier days count as paid)
     p.setProperty('GOLIVE_V1', '1');
     if (!setv_('Attendance starts on')) { const sh = tab_('set'), keys = rows_('set').map(r => s_(r[0])), i = keys.indexOf('Attendance starts on');
@@ -313,11 +349,11 @@ function shiftTimes_(code) {
   return m ? { start: pad_(m[1]) + ':' + m[2], end: pad_(m[3]) + ':' + m[4] } : (code === 'E' ? { start: '13:00', end: '22:00' } : { start: '10:00', end: '19:00' });
 }
 function settingsGet_() {
-  return { settings: DEFAULT_SETTINGS.filter(x => x[0] !== 'Photo folder ID').map(x => ({ k: x[0], v: settings_()[x[0]], note: x[2] })),
+  return { settings: DEFAULT_SETTINGS.filter(x => x[0] !== 'Photo folder ID' && x[0] !== 'Extra off days by week').map(x => ({ k: x[0], v: settings_()[x[0]], note: x[2] })),
     locations: locs_(true), sheetUrl: book_().getUrl() };
 }
 function settingsSave_(d, me) {
-  const keys = DEFAULT_SETTINGS.map(x => x[0]).filter(k => k !== 'Photo folder ID');
+  const keys = DEFAULT_SETTINGS.map(x => x[0]).filter(k => k !== 'Photo folder ID' && k !== 'Extra off days by week');
   const sh = tab_('set'), cur = rows_('set').map(r => s_(r[0]));
   Object.keys(d.values || {}).forEach(k => {
     if (keys.indexOf(k) < 0) return;
@@ -478,7 +514,7 @@ function rotaGet_(d, me) {
   return Object.assign({ week: week, days: [0, 1, 2, 3, 4, 5, 6].map(i => addDays_(week, i)), staff: staff.map(s => ({ name: s.name, loc: s.loc, pref: s.pref, offPref: s.offPref })),
     cells: cells, status: status, shifts: { M: shiftTimes_('M'), E: shiftTimes_('E') },
     locations: locs_(false).filter(l => l.type !== 'Event' || ((!l.to || l.to >= week) && (!l.from || l.from <= end))).map(l => ({ name: l.name, type: l.type, from: l.from, to: l.to, dstart: l.dstart, dend: l.dend, notes: l.notes, hasPos: l.lat != null })),
-    canEditStores: can_(me, 'settings') },
+    canEditStores: can_(me, 'settings'), offDays: offDaysFor_(week), canOffDays: can_(me, 'settings') },
     { warnings: rotaWarnings_(week, staff, cells) });
 }
 /** Auto plan for one week: one weekly off per person on Tue/Wed/Thu (spread out per store), Morning / Evening alternating week to week,
@@ -535,7 +571,7 @@ function rotaWarnings_(week, staff, cells) {
     const offs = days.filter(dt => (cells[s.name + '|' + dt] || {}).shift === 'OFF');
     if (offs.length === 0 && mine.length === 7 && !mine.some(c => ['LP', 'LU', 'HOL'].indexOf(c.shift) >= 0)) w.push(s.name + ': no weekly off this week.');
     if (offs.length > 1) w.push(s.name + ': ' + offs.length + ' weekly offs (only one allowed).');
-    offs.forEach(dt => { if (OFF_DAYS.indexOf(parse_(dt).getDay()) < 0) w.push(s.name + ': weekly off on ' + DAY_NAMES[parse_(dt).getDay()] + ' – offs are only Tue, Wed or Thu.'); });
+    offs.forEach(dt => { if (offDaysFor_(week).indexOf(parse_(dt).getDay()) < 0) w.push(s.name + ': weekly off on ' + DAY_NAMES[parse_(dt).getDay()] + ' – offs are only Tue, Wed or Thu.'); });
   });
   STORES.concat(locs_(false).filter(l => l.type === 'Store' && STORES.indexOf(l.name) < 0).map(l => l.name)).forEach(loc => {
     const here = staff.filter(s => s.loc === loc);
@@ -565,8 +601,8 @@ function rotaSave_(d, me) {
       start = hm_(c.start); fin = hm_(c.end);
       if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(fin) || fin === start) throw new Error(name + ' ' + date + ': custom shift needs start and end times.');
     }
-    if (c.shift === 'OFF' && OFF_DAYS.indexOf(parse_(date).getDay()) < 0 && !c.allowOtherDay)
-      throw new Error(name + ': weekly off can only be on Tuesday, Wednesday or Thursday (' + date + ' is a ' + DAY_NAMES[parse_(date).getDay()] + ').');
+    if (c.shift === 'OFF' && offDaysFor_(week).indexOf(parse_(date).getDay()) < 0)
+      throw new Error(name + ': weekly off can only be on ' + offDaysTxt_(week) + ' (' + date + ' is a ' + DAY_NAMES[parse_(date).getDay()] + '). The owner can allow other days for one week: Rota plan → Off days.');
     names[norm_(name)] = 1;
     out.push([week, date, DAY_NAMES[parse_(date).getDay()], s.name, txt_(c.loc, 60) || s.loc, c.shift, start, fin, status, txt_(c.note, 120), me.name, now]);
   });
