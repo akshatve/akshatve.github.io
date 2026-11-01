@@ -2350,7 +2350,7 @@ function drawBill() {
   const prev = document.activeElement && document.activeElement.id;
   $('#view').innerHTML =
     '<div class="row" style="margin-bottom:8px"><h2 class="grow" style="margin:0">New bill</h2><button class="btn sm ghost" id="b_loc">' + esc(LOC_SHORT[B.loc] || locLabel(B.loc)) + ' ▾</button>' +
-    '<button class="btn sm ghost" id="b_cam" title="Scan barcodes with the camera">📷</button><button class="btn sm ghost" id="b_scale" title="Bluetooth weighing scale">' + scaleLabel() + '</button>' +
+    '<button class="btn sm ghost" id="b_lbl" title="Print jar labels">🏷 Labels</button><button class="btn sm ghost" id="b_cam" title="Scan barcodes with the camera">📷</button><button class="btn sm ghost" id="b_scale" title="Bluetooth weighing scale">' + scaleLabel() + '</button>' +
     (can('billSetup') || can('events') ? '<button class="btn sm ghost" id="b_setup">Bill setup</button>' : '') + '</div>' +
     (B.loc === 'Event' ? '<div class="card" style="padding:10px"><label class="f">Event (printed on the bill)</label>' +
       ((B.boot.events || []).length ? '<select class="i" id="b_ev"><option value="">– Pick the event –</option>' + B.boot.events.map(e => '<option value="' + esc(e.name) + '"' + (e.name === B.event ? ' selected' : '') + '>' + esc(e.name) + '</option>').join('') + '</select>' +
@@ -2542,6 +2542,7 @@ function bindBill() {
   if ($('#b_bd')) $('#b_bd').oninput = e => { B.billPct = ''; B.billDisc = Math.min(num(e.target.value), billBase()); bdSync('b_bd'); refreshTotals(); };
   if ($('#b_bdf')) $('#b_bdf').oninput = e => { B.billPct = ''; const f = num(e.target.value), base = billBase(); B.billDisc = e.target.value.trim() && f > 0 && f < base ? Math.round((base - f) * 100) / 100 : 0; bdSync('b_bdf'); refreshTotals(); };
   $('#b_cam').onclick = scanBill;
+  if ($('#b_lbl')) $('#b_lbl').onclick = () => labelSheet();
   $('#b_scale').onclick = scaleSheet;
   $$('[data-w]').forEach(b => b.onclick = () => useScale(+b.dataset.w));
   $('#b_save').onclick = saveBill;
@@ -3858,7 +3859,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '69412c7162';
+<script>window.NV_BUILD = '222c680344';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
