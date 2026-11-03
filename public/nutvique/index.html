@@ -2900,7 +2900,7 @@ async function hamperRecipesSheet() {
 }
 async function corpScreen() {
   const m = modal('🏢 Corporate orders (Tally)', '<label class="btn gold block" style="text-align:center;cursor:pointer">📄 Upload a Tally invoice (PDF)<input type="file" id="co_f" accept="application/pdf,image/*" style="display:none"></label>' +
-    '<button class="btn ghost block" id="co_m" style="margin-top:6px">Type an invoice without the PDF</button><div id="co_l" style="margin-top:12px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
+    '<button class="btn ghost block" id="co_m" style="margin-top:6px">Type an invoice without the PDF</button><button class="btn ghost block" id="co_p" style="margin-top:6px">📈 Profit statement</button><div id="co_l" style="margin-top:12px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
   const rs = x => '₹' + money(x || 0).replace(/\.00$/, '');
   const drawList = r => {
     $('#co_l', m).innerHTML = '<h3>Entered</h3>' + (r.list.length ? r.list.map(o => '<div class="card" style="padding:12px' + (o.status === 'Cancelled' ? ';opacity:.55' : '') + '"><div class="row"><b class="grow">' + esc(o.customer) + '</b><b>' + rs(o.total) + '</b></div>' +
@@ -2919,7 +2919,47 @@ async function corpScreen() {
     e.target.value = ''; if (d) corpForm(d, m._locs, load);
   };
   $('#co_m', m).onclick = () => corpForm({ lines: [], readError: '' }, m._locs, load);
+  $('#co_p', m).onclick = () => corpProfitScreen();
   load();
+}
+/* ───── corporate profit statement (v18.32, owner / "corporate" right only) ───── */
+async function corpProfitScreen() {
+  const m = modal('📈 Corporate orders – profit', '<div id="cp_b"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
+  let R;
+  const rs = x => (x < 0 ? '−₹' : '₹') + Math.round(Math.abs(x || 0)).toLocaleString('en-IN');
+  const draw = () => {
+    const T = R.totals, tile = (l, v, sub, col) => '<div class="card" style="margin:0;padding:10px 12px"><div class="tiny mute">' + l + '</div><div style="font-size:19px;font-weight:700;' + (col ? 'color:' + col : '') + '">' + v + '</div><div class="tiny mute">' + (sub || '') + '</div></div>';
+    $('#cp_b', m).innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px">' +
+      tile('Sales (excl. GST)', rs(T.sales), R.orders.filter(o => !o.packing).length + ' invoices') + tile('Goods cost', rs(T.goods), 'excl. GST, at cost price') + tile('Boxes, porter & other', rs(T.other)) +
+      tile('Profit', rs(T.profit), T.margin == null ? '' : T.margin + '% of sales', T.profit >= 0 ? 'var(--ok)' : 'var(--bad)') + '</div>' +
+      '<div class="row" style="margin-bottom:8px"><button class="btn ghost sm" id="cp_csv">Download</button><span class="tiny mute">Tap an order to add box, pouch, porter or other costs.</span></div>' +
+      '<div class="tscroll"><table class="t"><tr><th>Order</th><th class="n">Sales</th><th class="n">Goods</th><th class="n">Other</th><th class="n">Profit</th><th class="n">%</th></tr>' +
+      R.orders.map((o, i) => '<tr data-i="' + i + '" style="cursor:pointer"><td><b>' + esc(o.customer) + '</b><div class="tiny mute">' + esc(o.inv) + ' · ' + esc((o.date || '').split('-').reverse().join('-')) + (o.missing ? ' · <span style="color:var(--bad)">' + o.missing + ' item(s) without cost</span>' : '') + (o.costs.length ? ' · ' + o.costs.length + ' cost(s)' : '') + '</div></td>' +
+        '<td class="n">' + (o.packing ? '<span class="pill p-new">invoice to come</span>' : rs(o.sales)) + '</td><td class="n">' + rs(o.goods) + '</td><td class="n">' + rs(o.other) + '</td>' +
+        '<td class="n"><b style="color:' + (o.packing ? 'inherit' : o.profit >= 0 ? 'var(--ok)' : 'var(--bad)') + '">' + (o.packing ? '–' : rs(o.profit)) + '</b></td><td class="n">' + (o.margin == null ? '–' : o.margin + '%') + '</td></tr>').join('') +
+      '<tr><td><b>Total (invoiced)</b></td><td class="n"><b>' + rs(T.sales) + '</b></td><td class="n">' + rs(T.goods) + '</td><td class="n">' + rs(T.other) + '</td><td class="n"><b>' + rs(T.profit) + '</b></td><td class="n">' + (T.margin == null ? '–' : T.margin + '%') + '</td></tr></table></div>' +
+      '<div class="tiny mute" style="margin-top:6px">Sales = Tally invoice value before GST. Goods cost = the app\'s cost price of every item (and hamper contents) taken out of stock for the order, without the GST paid to suppliers (claimed back). Orders packed before the Tally invoice show "invoice to come".</div>';
+    $$('#cp_b [data-i]', m).forEach(tr => tr.onclick = () => costSheet(R.orders[+tr.dataset.i]));
+    $('#cp_csv', m).onclick = () => csvDownload([['Date', 'Invoice', 'Customer', 'Sales excl GST', 'GST', 'Invoice total', 'Goods cost excl GST', 'Goods cost incl GST', 'Other costs', 'Profit', 'Margin %', 'Other cost details']]
+      .concat(R.orders.map(o => [o.date, o.inv, o.customer, o.sales, o.gst, o.total, o.goods, o.goodsInc, o.other, o.packing ? '' : o.profit, o.margin == null ? '' : o.margin, o.costs.map(c => c.type + ' ' + c.amount + (c.note ? ' (' + c.note + ')' : '')).join('; ')])), 'Nutvique_corporate_profit_' + today() + '.csv');
+  };
+  const costSheet = o => {
+    const s = modal(o.customer + ' · ' + o.inv, '<div class="kv"><div>Sales (excl. GST)</div><div>' + rs(o.sales) + '</div><div>Goods cost</div><div>' + rs(o.goods) + ' <span class="tiny mute">(' + rs(o.goodsInc) + ' incl. GST)</span></div><div>Other costs</div><div>' + rs(o.other) + '</div><div>Profit</div><div><b>' + (o.packing ? '–' : rs(o.profit)) + '</b></div></div>' +
+      '<h3 style="margin-top:12px">Other costs</h3>' + (o.costs.length ? o.costs.map(c => '<div class="li"><div class="grow"><b>' + esc(c.type) + '</b>' + (c.qty ? ' · ' + c.qty + ' × ₹' + c.rate : '') + '<div class="tiny mute">' + esc(c.note || '') + '</div></div><div class="right"><b>' + rs(c.amount) + '</b><div><button class="btn sm ghost" data-rm="' + esc(c.id) + '">Remove</button></div></div></div>').join('') : '<div class="mute small">None yet.</div>') +
+      '<div class="card" style="margin-top:10px"><h3>Add a cost</h3><div class="grid3">' + fld('Type', '<select class="i" id="cc_t">' + R.types.map(t => '<option>' + esc(t) + '</option>').join('') + '</select>') +
+      fld('Qty', '<input class="i num" id="cc_q" inputmode="decimal" placeholder="e.g. 35">') + fld('Rate ₹', '<input class="i num" id="cc_r" inputmode="decimal" placeholder="e.g. 155">') +
+      fld('Amount ₹', '<input class="i num" id="cc_a" inputmode="decimal" placeholder="or total">') + fld('Note', '<input class="i" id="cc_n" placeholder="optional">', 2) + '</div>' +
+      '<button class="btn gold block" id="cc_go" style="margin-top:10px">Add cost</button></div>', { wide: true });
+    const upd = () => { const q = num($('#cc_q', s).value), r = num($('#cc_r', s).value); if (q && r) $('#cc_a', s).value = Math.round(q * r * 100) / 100; };
+    $('#cc_q', s).oninput = upd; $('#cc_r', s).oninput = upd;
+    $('#cc_go', s).onclick = async () => {
+      const d = { order: o.key, inv: o.inv, type: $('#cc_t', s).value, qty: $('#cc_q', s).value, rate: $('#cc_r', s).value, amount: $('#cc_a', s).value, note: $('#cc_n', s).value };
+      if (!(num(d.amount) > 0)) return toast('Type the amount (or qty × rate).', true);
+      R = await run('Saving…', () => call('corpCostAdd', d)); s.close(); draw(); costSheet(R.orders.find(x => x.key === o.key));
+    };
+    $$('[data-rm]', s).forEach(b => b.onclick = async () => { if (!confirmTwice(b)) return; R = await run('Removing…', () => call('corpCostRemove', { id: b.dataset.rm })); s.close(); draw(); costSheet(R.orders.find(x => x.key === o.key)); });
+  };
+  try { R = await call('corpProfit'); draw(); } catch (e) { $('#cp_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; }
 }
 function corpForm(d, locs, done) {
   const lines = (d.lines || []).map(l => Object.assign({ name: (S.bySku[l.sku] || {}).name || '' }, l));
@@ -3859,7 +3899,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '222c680344';
+<script>window.NV_BUILD = '91fb6d2111';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
