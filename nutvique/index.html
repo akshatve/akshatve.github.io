@@ -2900,7 +2900,7 @@ async function hamperRecipesSheet() {
 }
 async function corpScreen() {
   const m = modal('🏢 Corporate orders (Tally)', '<label class="btn gold block" style="text-align:center;cursor:pointer">📄 Upload a Tally invoice (PDF)<input type="file" id="co_f" accept="application/pdf,image/*" style="display:none"></label>' +
-    '<button class="btn ghost block" id="co_m" style="margin-top:6px">Type an invoice without the PDF</button><button class="btn ghost block" id="co_p" style="margin-top:6px">📈 Profit statement</button><div id="co_l" style="margin-top:12px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
+    '<button class="btn ghost block" id="co_m" style="margin-top:6px">Type an invoice without the PDF</button><button class="btn ghost block" id="co_p" style="margin-top:6px">📈 Profit statement</button><button class="btn ghost block" id="co_d" style="margin-top:6px">💰 Payments – received / pending</button><div id="co_l" style="margin-top:12px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
   const rs = x => '₹' + money(x || 0).replace(/\.00$/, '');
   const drawList = r => {
     $('#co_l', m).innerHTML = '<h3>Entered</h3>' + (r.list.length ? r.list.map(o => '<div class="card" style="padding:12px' + (o.status === 'Cancelled' ? ';opacity:.55' : '') + '"><div class="row"><b class="grow">' + esc(o.customer) + '</b><b>' + rs(o.total) + '</b></div>' +
@@ -2920,7 +2920,60 @@ async function corpScreen() {
   };
   $('#co_m', m).onclick = () => corpForm({ lines: [], readError: '' }, m._locs, load);
   $('#co_p', m).onclick = () => corpProfitScreen();
+  $('#co_d', m).onclick = () => corpDuesScreen();
   load();
+}
+/* ───── corporate payments: received / pending + follow-up (v18.35, owner / "corporate" right only) ───── */
+async function corpDuesScreen() {
+  const m = modal('💰 Corporate payments', '<div id="cd_b"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
+  let R, F = 'open';
+  const rs = x => '₹' + Math.round(x || 0).toLocaleString('en-IN'), dm = s => s ? s.split('-').reverse().join('-') : '–';
+  const PILL = { Received: 'p-ok', 'Part received': 'p-new', Pending: 'p-warn', Overdue: 'p-bad' };
+  const draw = () => {
+    const T = R.totals, tile = (l, v, sub, col) => '<div class="card" style="margin:0;padding:10px 12px"><div class="tiny mute">' + l + '</div><div style="font-size:19px;font-weight:700;' + (col ? 'color:' + col : '') + '">' + v + '</div><div class="tiny mute">' + (sub || '') + '</div></div>';
+    const list = R.list.filter(o => F === 'all' || (F === 'open' ? o.status !== 'Received' : F === 'over' ? o.status === 'Overdue' : F === 'follow' ? o.followToday : o.status === 'Received'));
+    $('#cd_b', m).innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px">' +
+      tile('Billed', rs(T.billed), R.list.length + ' orders') + tile('Received', rs(T.received), '', 'var(--ok)') + tile('Pending', rs(T.pending), R.list.filter(o => o.status !== 'Received').length + ' orders', 'var(--warn)') +
+      tile('Overdue', rs(T.overdue), 'past due date', 'var(--bad)') + tile('Follow up today', String(T.follow), 'next follow-up due') + '</div>' +
+      '<div class="chips" id="cd_f" style="margin-bottom:8px">' + [['open', 'To receive'], ['over', 'Overdue'], ['follow', 'Follow up today'], ['paid', 'Received'], ['all', 'All']].map(c => '<button data-f="' + c[0] + '" class="' + (F === c[0] ? 'on' : '') + '">' + c[1] + '</button>').join('') + '</div>' +
+      '<div class="row" style="margin-bottom:8px"><button class="btn ghost sm" id="cd_csv">Download</button><span class="tiny mute">Due date = invoice date + ' + R.days + ' days unless you set one. Tap an order to record money received or a follow-up.</span></div>' +
+      (list.length ? '<div class="card" style="padding:4px 10px">' + list.map(o => '<div class="li" data-id="' + esc(o.id) + '"><div class="grow"><b>' + esc(o.customer) + '</b> <span class="tiny mute">' + esc(o.inv) + '</span>' +
+        '<div class="tiny mute">Invoice ' + dm(o.date) + ' · due ' + dm(o.due) + (o.daysLate ? ' · <span style="color:var(--bad)">' + o.daysLate + ' days late</span>' : '') + (o.contact ? ' · ' + esc(o.contact) : '') + '</div>' +
+        (o.next || o.notes ? '<div class="tiny" style="margin-top:2px' + (o.followToday ? ';color:var(--bad);font-weight:600' : '') + '">' + (o.next ? '📞 Follow up ' + dm(o.next) + (o.notes ? ' – ' : '') : '') + esc((o.notes || '').split('\n').pop().slice(0, 90)) + '</div>' : '') + '</div>' +
+        '<div class="right"><b>' + rs(o.balance) + '</b><div class="tiny mute">of ' + rs(o.total) + '</div><span class="pill ' + PILL[o.status] + '">' + o.status + '</span></div></div>').join('') + '</div>' : '<div class="empty">Nothing here.</div>');
+    $$('#cd_f button', m).forEach(b => b.onclick = () => { F = b.dataset.f; draw(); });
+    $$('#cd_b [data-id]', m).forEach(el => el.onclick = () => sheet(el.dataset.id));
+    $('#cd_csv', m).onclick = () => csvDownload([['Invoice', 'Date', 'Customer', 'Invoice total', 'Received', 'Balance', 'Status', 'Due date', 'Days late', 'Contact', 'Phone', 'Next follow-up', 'Notes', 'Receipts']]
+      .concat(R.list.map(o => [o.inv, o.date, o.customer, o.total, o.received, o.balance, o.status, o.due, o.daysLate || '', o.contact, o.phone, o.next, o.notes, o.receipts.map(x => x.date + ' ₹' + x.amount + ' ' + x.mode + (x.ref ? ' ' + x.ref : '')).join('; ') || o.legacy])), 'Nutvique_corporate_payments_' + today() + '.csv');
+  };
+  const sheet = id => {
+    const o = R.list.find(x => x.id === id); if (!o) return;
+    const tel = (o.phone || '').replace(/[^\d+]/g, ''), wa = tel.replace(/^\+?91/, '').replace(/\D/g, '');
+    const s = modal(o.customer + ' · ' + o.inv, '<div class="kv"><div>Invoice</div><div>' + dm(o.date) + ' · <b>' + rs(o.total) + '</b></div><div>Received</div><div>' + rs(o.received) + (o.legacy ? ' <span class="tiny mute">(' + esc(o.legacy) + ')</span>' : '') + '</div>' +
+      '<div>Balance</div><div><b>' + rs(o.balance) + '</b> <span class="pill ' + PILL[o.status] + '">' + o.status + '</span></div><div>Due</div><div>' + dm(o.due) + (o.daysLate ? ' · ' + o.daysLate + ' days late' : '') + '</div></div>' +
+      '<h3 style="margin-top:12px">Money received</h3>' + (o.receipts.length ? o.receipts.map(x => '<div class="li"><div class="grow"><b>' + rs(x.amount) + '</b> · ' + dm(x.date) + '<div class="tiny mute">' + esc(x.mode) + (x.ref ? ' · ' + esc(x.ref) : '') + (x.note ? ' · ' + esc(x.note) : '') + '</div></div><div><button class="btn sm ghost" data-rm="' + esc(x.id) + '">Remove</button></div></div>').join('') : '<div class="mute small">' + (o.legacy ? esc(o.legacy) : 'Nothing received yet.') + '</div>') +
+      (o.balance > 1 || o.legacy ? '<div class="card" style="margin-top:10px"><h3>Record money received</h3><div class="grid3">' + fld('Date', '<input class="i" type="date" id="cr_d" max="' + today() + '" value="' + today() + '">') +
+        fld('Amount ₹', '<input class="i num" id="cr_a" inputmode="decimal" value="' + (o.balance > 1 ? Math.round(o.balance * 100) / 100 : '') + '">') + fld('Mode', '<select class="i" id="cr_m">' + R.modes.map(x => '<option>' + esc(x) + '</option>').join('') + '</select>') +
+        fld('UTR / cheque no.', '<input class="i" id="cr_r" placeholder="optional">') + fld('Note', '<input class="i" id="cr_n" placeholder="optional">', 2) + '</div><button class="btn gold block" id="cr_go" style="margin-top:10px">Save receipt</button></div>' : '') +
+      '<div class="card" style="margin-top:10px"><h3>Follow-up</h3><div class="grid3">' + fld('Payment due on', '<input class="i" type="date" id="cf_d" value="' + esc(o.due) + '">') +
+      fld('Contact person', '<input class="i" id="cf_c" value="' + esc(o.contact) + '">') + fld('Phone', '<input class="i" id="cf_p" inputmode="tel" value="' + esc(o.phone) + '">') +
+      fld('Next follow-up', '<input class="i" type="date" id="cf_x" value="' + esc(o.next) + '">') + fld('Add a note', '<input class="i" id="cf_n" placeholder="e.g. spoke to accounts, will pay Friday">', 2) + '</div>' +
+      (o.notes ? '<div class="tiny mute" style="white-space:pre-wrap;margin:6px 0">' + esc(o.notes) + '</div>' : '') +
+      '<div class="row" style="margin-top:8px"><button class="btn ghost" id="cf_go">Save follow-up</button>' + (tel ? '<a class="btn ghost" href="tel:' + esc(tel) + '">📞 Call</a>' + (wa.length === 10 ? '<a class="btn ghost" target="_blank" rel="noopener" href="https://wa.me/91' + wa + '?text=' + encodeURIComponent('Dear ' + (o.contact || 'Sir/Madam') + ', a gentle reminder for the payment of ₹' + Math.round(o.balance).toLocaleString('en-IN') + ' against our invoice ' + o.inv + ' dated ' + dm(o.date) + '. Thank you – Nutzy Foods (Nutvique)') + '">WhatsApp reminder</a>' : '') : '') + '</div></div>', { wide: true });
+    const again = () => { s.close(); draw(); sheet(id); };
+    if ($('#cr_go', s)) $('#cr_go', s).onclick = async () => {
+      const d = { order: id, date: $('#cr_d', s).value, amount: $('#cr_a', s).value, mode: $('#cr_m', s).value, ref: $('#cr_r', s).value, note: $('#cr_n', s).value };
+      if (!(num(d.amount) > 0)) return toast('Type the amount received.', true);
+      R = await run('Saving…', () => call('corpReceiptAdd', d)); toast('Receipt saved'); again();
+    };
+    $('#cf_go', s).onclick = async () => {
+      const n = $('#cf_n', s).value.trim(), notes = (o.notes ? o.notes + '\n' : '') + (n ? dm(today()) + ': ' + n : '');
+      R = await run('Saving…', () => call('corpFollowSave', { order: id, due: $('#cf_d', s).value, contact: $('#cf_c', s).value, phone: $('#cf_p', s).value, next: $('#cf_x', s).value, notes: n ? notes : o.notes }));
+      toast('Follow-up saved'); again();
+    };
+    $$('[data-rm]', s).forEach(b => b.onclick = async () => { if (!confirmTwice(b)) return; R = await run('Removing…', () => call('corpReceiptRemove', { id: b.dataset.rm })); again(); });
+  };
+  try { R = await call('corpDues'); draw(); } catch (e) { $('#cd_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; }
 }
 /* ───── corporate profit statement (v18.32, owner / "corporate" right only) ───── */
 async function corpProfitScreen() {
@@ -3899,7 +3952,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '91fb6d2111';
+<script>window.NV_BUILD = 'a6e8f4f4e4';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
