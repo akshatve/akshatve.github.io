@@ -622,17 +622,41 @@ async function viewRange(m, pendingFirst) {
   $('#dy').onclick = () => viewTeam(m);
   const load = async () => {
     S.rFrom = $('#rf').value; S.rTo = $('#rt').value;
-    $('#rb').innerHTML = '<div class="spin" style="margin:30px auto"></div>';
-    let r; try { r = await call('attendance', { from: S.rFrom, to: S.rTo, name: $('#rp').value }); } catch (e) { $('#rb').innerHTML = '<p class="warnbox bad">' + esc(e.message) + '</p>'; return; }
-    const sel = $('#rp'); if (sel.options.length === 1) r.names.forEach(n => sel.add(new Option(n, n)));
-    const by = {}; r.days.forEach(x => (by[x.name] = by[x.name] || []).push(x));
-    $('#rb').innerHTML = (r.pending.length && can('approve') ? '<div class="card"><h2>⚠ Waiting for your approval</h2><div class="list">' + r.pending.map(pendingRow).join('') + '</div></div>' : '') +
-      Object.keys(by).map(n => { const ds = by[n], w = ds.reduce((a, x) => a + (x.worked || 0), 0), late = ds.filter(x => x.late).length, ab = ds.filter(x => x.status === 'Absent').length;
+    $('#rb').innerHTML = '<div id="rpend"></div><div id="rdays"><div class="spin" style="margin:30px auto"></div></div>';
+    // the approval list comes first from a quick call, the attendance (slower) fills in below
+    const pendBox = $('#rpend');
+    const drawPending = list => {
+      if (!pendBox) return;
+      pendBox.innerHTML = list.length && can('approve') ? '<div class="card"><h2>⚠ Waiting for your approval <span class="small mute" id="pcount">' + list.length + '</span></h2><div class="list" id="plist">' + list.map(p => '<div data-pid="' + esc(p.id) + '">' + pendingRow(p) + '</div>').join('') + '</div></div>' : '';
+      pendBox.querySelectorAll('[data-ap],[data-rj]').forEach(b => b.onclick = () => decide(b));
+      pendBox.querySelectorAll('[data-ph]').forEach(b => b.onclick = () => showPhoto({ punch: b.dataset.ph }));
+    };
+    let refreshT = null;
+    const decide = async b => {
+      const id = b.dataset.ap || b.dataset.rj, ok = !!b.dataset.ap, row = pendBox.querySelector('[data-pid="' + id + '"]');
+      if (row) { row.querySelectorAll('button').forEach(x => x.disabled = true); row.style.opacity = .5; }
+      try { await call('approvePunch', { id: id, approve: ok }); }
+      catch (e) { if (row) { row.style.opacity = 1; row.querySelectorAll('button').forEach(x => x.disabled = false); } toast(e.message); return; }
+      toast(ok ? 'Approved' : 'Saved – counted to the rota end');
+      if (row) row.remove();
+      const left = pendBox.querySelectorAll('[data-pid]').length, pc = $('#pcount');
+      if (!left) pendBox.innerHTML = ''; else if (pc) pc.textContent = left;
+      clearTimeout(refreshT); refreshT = setTimeout(() => days(true), 2500);   // hours shown below are refreshed once, after the last decision
+    };
+    const days = async quiet => {
+      const box = $('#rdays'); if (!box) return;
+      if (!quiet) box.innerHTML = '<div class="spin" style="margin:30px auto"></div>';
+      let r; try { r = await call('attendance', { from: S.rFrom, to: S.rTo, name: $('#rp').value }); } catch (e) { box.innerHTML = '<p class="warnbox bad">' + esc(e.message) + '</p>'; return; }
+      const sel = $('#rp'); if (sel && sel.options.length === 1) r.names.forEach(n => sel.add(new Option(n, n)));
+      if (!quiet && pendBox && !pendBox.innerHTML) drawPending(r.pending);
+      const by = {}; r.days.forEach(x => (by[x.name] = by[x.name] || []).push(x));
+      box.innerHTML = Object.keys(by).map(n => { const ds = by[n], w = ds.reduce((a, x) => a + (x.worked || 0), 0), late = ds.filter(x => x.late).length, ab = ds.filter(x => x.status === 'Absent').length;
         return '<div class="card"><h2>' + esc(n) + ' <span class="small mute">' + hmin(w) + ' worked · ' + late + ' late · ' + ab + ' absent</span></h2><div class="list">' + ds.slice().reverse().map(x => '<div class="pd" data-k="' + esc(n + '|' + x.date) + '" style="cursor:pointer">' + dayLine(x).slice(5, -6) + '</div>').join('') + '</div></div>'; }).join('');
-    $('#rb').querySelectorAll('[data-ap],[data-rj]').forEach(b => b.onclick = async () => { await run('Saving…', () => call('approvePunch', { id: b.dataset.ap || b.dataset.rj, approve: !!b.dataset.ap })); toast(b.dataset.ap ? 'Approved' : 'Saved – counted to the rota end'); load(); });
-    $('#rb').querySelectorAll('[data-ph]').forEach(b => b.onclick = () => showPhoto({ punch: b.dataset.ph }));
-    $('#rb').querySelectorAll('.pd').forEach(el => el.onclick = () => { const [n, dt] = el.dataset.k.split('|'); personDay(r.days.find(x => x.name === n && x.date === dt), load); });
+      box.querySelectorAll('.pd').forEach(el => el.onclick = () => { const [n, dt] = el.dataset.k.split('|'); personDay(r.days.find(x => x.name === n && x.date === dt), load); });
+    };
+    if (can('approve')) call('pending', {}).then(r => drawPending(r.pending)).catch(() => { });
     if (pendingFirst) window.scrollTo(0, 0);
+    days(false);
   };
   $('#rgo').onclick = load; load();
 }

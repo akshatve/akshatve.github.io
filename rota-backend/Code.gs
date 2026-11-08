@@ -139,7 +139,7 @@ const RRIGHTS = [
   ['settings', 'Settings, store locations and geofence']];
 const RRIGHT_LABEL = {}; RRIGHTS.forEach(r => RRIGHT_LABEL[r[0]] = r[1]);
 const DEFAULT_RIGHTS = { Manager: ['rota'], Staff: [] };
-const ACTION_NEED = { board: ['team', 'approve', 'times', 'payAdj'], attendance: ['team', 'approve', 'times', 'payAdj'], fixDay: ['times', 'payAdj'], approvePunch: 'approve',
+const ACTION_NEED = { board: ['team', 'approve', 'times', 'payAdj'], attendance: ['team', 'approve', 'times', 'payAdj'], fixDay: ['times', 'payAdj'], approvePunch: 'approve', pending: 'approve',
   photo: ['team', 'approve', 'times', 'trips'], trips: 'trips', tripDecide: 'trips', staffList: ['staff', 'pay', 'rota'], staffSave: ['staff', 'pay'], resetPhone: 'staff',
   syncStaff: 'staff', rotaGet: 'rota', rotaAuto: 'rota', rotaSave: 'rota', payroll: 'pay', locSave: ['settings', 'rota'], settingsGet: 'settings', settingsSave: 'settings',
   rightsList: 'owner', rightsSave: 'owner', offDaysSave: 'settings' };
@@ -175,6 +175,7 @@ function api_(req) {
     case 'attendance': return attendance_(d, me);
     case 'fixDay': return fixDay_(d, me);
     case 'approvePunch': return approvePunch_(d, me);
+    case 'pending': return pending_(d, me);
     case 'trips': return tripsAdmin_(d, me);
     case 'tripDecide': return tripDecide_(d, me);
     case 'photo': return photo_(d, me);
@@ -895,11 +896,19 @@ function attendance_(d, me) {
   if (parse_(to) - parse_(from) > 62 * 864e5) throw new Error('Pick at most 2 months.');
   const staff = staffAll_().filter(s => s.onRota && (inScope_(me, s.loc) || !s.loc) && (!d.name || norm_(s.name) === norm_(d.name)) && (s.active || d.name));
   const days = daysFor_(staff.map(s => s.name), from, to, true);
-  const pending = punchesOn_(null, null).filter(p => p.approved === 'Pending' && staff.some(s => norm_(s.name) === norm_(p.name)))
+  return { from: from, to: to, days: days, pending: pendingList_(staff), names: staff.map(s => s.name) };
+}
+/** Entries waiting for approval for these people (cheap: no attendance maths). */
+function pendingList_(staff) {
+  return punchesOn_(null, null).filter(p => p.approved === 'Pending' && staff.some(s => norm_(s.name) === norm_(p.name)))
     .map(p => { const ro = rotaFor_(p.name, p.date), over = ro && ro.start && p.type === 'OUT' ? minsOn_(p.date, p.time) - endMin_(ro.start, ro.end) : 0;
       return { id: p.id, date: p.date, name: p.name, type: p.type, label: P_TYPES[p.type], time: hmOf_(p.time) + (p.date !== ymd_(p.time) ? ' (+1)' : ''), loc: p.loc, dist: p.dist,
         reason: p.reason, flags: p.flags, lat: p.lat, lng: p.lng, selfie: p.selfie ? 1 : 0, lateOut: p.type === 'OUT', shiftEnd: ro && ro.start ? ro.end : '', over: over }; });
-  return { from: from, to: to, days: days, pending: pending, names: staff.map(s => s.name) };
+}
+/** Just the approval list – shown at once, before the slower attendance. */
+function pending_(d, me) {
+  const staff = staffAll_().filter(s => s.onRota && (inScope_(me, s.loc) || !s.loc));
+  return { pending: pendingList_(staff) };
 }
 /** Corrects a day: d = {date, name, status ('' = as per rota), in, out, brk, ot, lateOk, brkPaid, note}.
  *  status / in / out / break need the "times" right; overtime, excused late and paid extra break need "payAdj". The rest of the row is kept. */
@@ -953,7 +962,8 @@ function approvePunch_(d, me) {
     dirty_('fix');
   });
   log_((d.approve ? 'Approved ' : 'Not approved ') + P_TYPES[p.type] + ' ' + p.date + ' ' + hmOf_(p.time) + ' ' + p.name, me.name);
-  return attendance_({ from: d.from, to: d.to }, me);
+  // only the decision is returned (fast); the app updates the list itself. Old app versions that sent from/to still get the full range.
+  return d.from ? attendance_({ from: d.from, to: d.to }, me) : { ok: true, id: d.id, approved: d.approve ? 'Yes' : 'No' };
 }
 /** A selfie or receipt (base64) for managers. */
 function photo_(d, me) {
