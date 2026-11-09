@@ -628,8 +628,10 @@ async function viewInvoices() {
     '<input type="file" id="file" accept="application/pdf,image/*" class="hide">' +
     '<div class="row" style="margin:10px 0 16px"><button class="btn ghost sm" id="manual">Enter an invoice by hand</button>' + (S.settings.hasKey ? '' : '<span class="pill p-warn">Invoice reading is off – add the Gemini key in More → Settings</span>') + '</div>' +
     '<div class="row" style="margin:-6px 0 16px"><button class="btn ghost sm" id="noinv">Stock came in without an invoice</button></div>' +
+    '<div class="row" style="margin:-6px 0 16px;gap:6px;align-items:center"><span class="small mute">All invoices of</span><input type="month" id="iz_m" value="' + today().slice(0, 7) + '" style="width:auto"><button class="btn ghost sm" id="iz_go">⬇ Download (ZIP) for printing</button></div>' +
     '<div id="ilist"><div class="empty"><span class="spin dk"></span></div></div>';
   bindPuTabs();
+  $('#iz_go').onclick = async () => { const mo = $('#iz_m').value; if (!mo) return; const last = new Date(+mo.slice(0, 4), +mo.slice(5, 7), 0).getDate(); const r = await run('Collecting the invoices…', () => call('invZip', { from: mo + '-01', to: mo + '-' + String(last).padStart(2, '0') })).catch(() => null); if (r) { nvOpenFile(r); toast(r.count + ' invoices downloaded'); } };
   $('#noinv').onclick = () => { S.inv = { supplier: '', gstin: '', invoiceNo: '', invoiceDate: today(), taxable: 0, gst: 0, charges: [], roundOff: 0, total: 0, receivedAt: 'City Galleria – Gaur City-2', lines: [], notes: '', awaiting: true }; S.invWarn = []; addLine(); drawReview(); };
   $('#file').onchange = e => { const f = e.target.files[0]; if (f) uploadInvoice(f); };
   $('#manual').onclick = () => { S.inv = { supplier: '', gstin: '', invoiceNo: '', invoiceDate: today(), taxable: 0, gst: 0, charges: [], roundOff: 0, total: 0, receivedAt: 'City Galleria – Gaur City-2', lines: [], notes: '' }; S.invWarn = []; addLine(); drawReview(); };
@@ -643,21 +645,34 @@ async function viewInvoices() {
     $$('#ilist .li').forEach(li => li.onclick = () => openInvoice(li.dataset.id));
   } catch (e) { $('#ilist').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; }
 }
+function nvOpenFile(r) {
+  const bin = atob(r.b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([u], { type: r.mime || 'application/pdf' }));
+  const a = document.createElement('a'); a.href = url; a.download = r.name; a.rel = 'noopener';
+  const touch = window.matchMedia && matchMedia('(pointer:coarse)').matches;
+  if (/zip/.test(r.mime || '') || touch || !window.open(url, '_blank')) { document.body.appendChild(a); a.click(); a.remove(); }
+  setTimeout(() => URL.revokeObjectURL(url), 120000);
+}
+async function invDownload(id) { const r = await run('Getting the invoice…', () => call('invFile', { id: id })).catch(() => null); if (r) nvOpenFile(r); }
 function invRow(x) {
-  return '<div class="li" data-id="' + esc(x.id) + '"><div class="grow"><b>' + esc(x.supplier || '(no supplier)') + '</b> <span class="mute small">' + esc(x.no || '') + '</span><div class="tiny mute">' + esc(x.date) + ' · ' + x.lines + ' lines · ' + qfmt(x.qty) + ' qty' + (x.newProducts ? ' · new: ' + esc(x.newProducts) : '') + '</div></div><div class="right"><b>' + inr(x.total, 0) + '</b><div><span class="pill ' + (x.status === 'Draft' ? 'p-warn' : x.status === 'Posted' ? 'p-ok' : 'p-new') + '">' + x.status + '</span></div></div></div>';
+  return '<div class="li" data-id="' + esc(x.id) + '"><div class="grow"><b>' + esc(x.supplier || '(no supplier)') + '</b> <span class="mute small">' + esc(x.no || '') + '</span>' + (x.file ? ' <span title="Invoice file attached">📎</span>' : '') + '<div class="tiny mute">' + esc(x.date) + ' · ' + x.lines + ' lines · ' + qfmt(x.qty) + ' qty' + (x.newProducts ? ' · new: ' + esc(x.newProducts) : '') + '</div></div><div class="right"><b>' + inr(x.total, 0) + '</b><div><span class="pill ' + (x.status === 'Draft' ? 'p-warn' : x.status === 'Posted' ? 'p-ok' : 'p-new') + '">' + x.status + '</span></div></div></div>';
 }
 async function openInvoice(id) {
   const r = await run('Opening…', () => call('getInvoice', { id: id }));
   if (r.draft) { S.inv = r.draft; S.invWarn = r.warnings || []; S.inv.lines.forEach(primeLine); drawReview(); return; }
   const p = r.posted;
   const m = modal('Invoice ' + p.no + ' · ' + p.supplier, '<div class="kv"><div>Date</div><div>' + esc(p.date) + '</div><div>Received at</div><div>' + esc(p.at) + '</div><div>Taxable</div><div>' + inr(p.taxable) + '</div><div>GST</div><div>' + inr(p.gst) + '</div><div>Charges</div><div>' + inr(p.charges) + '</div><div>Total</div><div><b>' + inr(p.total) + '</b></div><div>Stock added</div><div>' + esc(p.stockAdded) + '</div><div>Posted</div><div>' + esc((p.postedAt || '').slice(0, 16).replace('T', ' ')) + '</div>' +
-    (p.file ? '<div>File</div><div><a href="' + esc(p.file) + '" target="_blank">Open invoice</a></div>' : '') + '</div>' +
+    '<div>Invoice file</div><div>' + (p.file ? '📎 Supplier original attached' : '<span class="mute">Not attached – download gives a copy made from this entry</span>') + '</div></div>' +
+    '<div class="row" style="margin-top:12px"><button class="btn gold" id="ie_pdf">⬇ Download / Print invoice</button><label class="btn ghost" style="cursor:pointer">📎 ' + (p.file ? 'Replace' : 'Attach') + ' supplier PDF / photo<input type="file" id="ie_att" accept="application/pdf,image/*" style="display:none"></label></div>' +
     '<div class="tscroll" style="margin-top:12px"><table class="t"><tr><th>#</th><th>Seller name</th><th>Nutvique product</th><th class="n">Qty</th><th class="n">Landed</th><th class="n">Selling</th><th class="n">MRP</th><th class="n">Margin</th></tr>' +
     p.lines.map(l => '<tr><td>' + l.line + '</td><td>' + esc(l.seller) + '<div class="tiny mute">' + esc(l.hsn) + ' · ' + qfmt(l.qty) + ' ' + esc(l.unit) + ' × ' + inr(l.rate) + '</div></td><td>' + esc(l.name) + (l.isNew ? ' <span class="pill p-new">new</span>' : '') + '<div class="tiny mute">' + esc(l.sku) + '</div></td><td class="n">' + qfmt(l.booked) + ' ' + esc(l.punit) + '</td><td class="n">' + inr(l.cost) + '</td><td class="n">' + inr(l.sell, 0) + '</td><td class="n">' + inr(l.mrp, 0) + '</td><td class="n">' + (l.margin === '' ? '–' : l.margin + '%') + '</td></tr>').join('') + '</table></div>' +
     '<div class="row" style="margin-top:14px">' + (p.status === 'Awaiting invoice' ? '<button class="btn gold" id="ie_go">Invoice received – enter it</button>' : '<button class="btn ghost" id="ie_go">Edit / correct this invoice</button>') +
     '<button class="btn ghost" id="ie_dc">+ Porter / packing charge</button></div><div class="tiny mute" style="margin-top:6px">Editing changes the lines, rates and charges. Only the difference in quantity is moved in stock; cost prices are recalculated.</div>', { wide: true });
   $('#ie_go', m).onclick = async () => { const e = await run('Opening…', () => call('invoiceForEdit', { id: id })); m.close(); S.inv = e.draft; S.invWarn = []; S.inv.lines.forEach(primeLine); drawReview(); };
   $('#ie_dc', m).onclick = () => { m.close(); PU.tab = 'dc'; PU.pre = id; viewInvoices(); };
+  $('#ie_pdf', m).onclick = () => invDownload(id);
+  $('#ie_att', m).onchange = async e => { const f = e.target.files[0]; if (!f) return; const b = await fileToBase64(f).catch(err => { toast(err.message); return null; }); if (!b) return;
+    const r = await run('Saving the invoice file…', () => call('invAttach', { id: id, name: f.name, mime: b.mime, b64: b.base64 })).catch(() => null); if (!r) return; m.close(); toast('Invoice file saved'); openInvoice(id); };
 }
 function fileToBase64(f) {
   return new Promise((res, rej) => {
@@ -3970,7 +3985,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '572bc5e013';
+<script>window.NV_BUILD = '804c41e07b';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
