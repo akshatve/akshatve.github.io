@@ -2898,6 +2898,16 @@ async function hamperRecipesSheet() {
   };
   try { draw((await call('hamperRecipes')).recipes); } catch (e) { $('#hr_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; }
 }
+/** Open the Tally invoice PDF of a corporate order (owner, 9 Nov 2026). Phones download it to the PDF viewer, laptops open a new tab. */
+async function corpPdfOpen(id) {
+  const r = await run('Opening the Tally invoice…', () => call('corpPdf', { id: id })).catch(() => null); if (!r) return;
+  const bin = atob(r.b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([u], { type: r.mime || 'application/pdf' }));
+  const a = document.createElement('a'); a.href = url; a.download = /\.pdf$/i.test(r.name) ? r.name : r.name + '.pdf'; a.rel = 'noopener';
+  const touch = window.matchMedia && matchMedia('(pointer:coarse)').matches;
+  if (touch || !window.open(url, '_blank')) { document.body.appendChild(a); a.click(); a.remove(); }
+  setTimeout(() => URL.revokeObjectURL(url), 120000);
+}
 async function corpScreen() {
   const m = modal('🏢 Corporate orders (Tally)', '<label class="btn gold block" style="text-align:center;cursor:pointer">📄 Upload a Tally invoice (PDF)<input type="file" id="co_f" accept="application/pdf,image/*" style="display:none"></label>' +
     '<button class="btn ghost block" id="co_m" style="margin-top:6px">Type an invoice without the PDF</button><button class="btn ghost block" id="co_p" style="margin-top:6px">📈 Profit statement</button><button class="btn ghost block" id="co_d" style="margin-top:6px">💰 Payments – received / pending</button><div id="co_l" style="margin-top:12px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
@@ -2906,9 +2916,17 @@ async function corpScreen() {
     $('#co_l', m).innerHTML = '<h3>Entered</h3>' + (r.list.length ? r.list.map(o => '<div class="card" style="padding:12px' + (o.status === 'Cancelled' ? ';opacity:.55' : '') + '"><div class="row"><b class="grow">' + esc(o.customer) + '</b><b>' + rs(o.total) + '</b></div>' +
       '<div class="tiny mute">Tally ' + esc(o.inv) + ' · ' + esc(o.date.split('-').reverse().join('-')) + ' · ' + esc(o.status) + '</div><div class="small" style="margin-top:4px">' + o.lines.map(l => esc(l.qty + (l.unit === 'kg' ? ' kg ' : ' × ') + l.name.replace(/^Nutvique /, ''))).join(' · ') + '</div>' +
       (o.fills.length ? '<div class="tiny" style="margin-top:4px">🎁 Filled: ' + esc(Object.values(o.fills.reduce((a, f) => { const k = f.item; a[k] = a[k] || { item: f.item, unit: f.unit, total: 0 }; a[k].total += f.total; return a; }, {})).map(f => (f.unit === 'kg' ? Math.round(f.total * 1000) / 1000 + ' kg ' : f.total + ' × ') + f.item.replace(/^Nutvique /, '')).join(' · ')) + '</div>' : '') +
-      '<div class="tiny mute" style="margin-top:4px">' + esc(o.note.replace(/ · PDF https\S+/, '')) + (/PDF (https\S+)/.test(o.note) ? ' · <a target="_blank" rel="noopener" href="' + esc(o.note.match(/PDF (https\S+)/)[1]) + '">PDF</a>' : '') + '</div>' +
+      '<div class="tiny mute" style="margin-top:4px">' + esc(o.note.replace(/ · PDF https\S+/, '')) + '</div>' +
+      '<div class="row" style="margin-top:6px;gap:6px;flex-wrap:wrap">' + (o.pdf ? '<button class="btn sm" data-vp="' + esc(o.id) + '">📄 View Tally invoice</button>' : '') + '<label class="btn ghost sm" style="cursor:pointer">' + (o.pdf ? '📎 Replace PDF' : '📎 Attach Tally invoice PDF') + '<input type="file" data-ap="' + esc(o.id) + '" accept="application/pdf,image/*" style="display:none"></label></div>' +
       (r.canCancel && o.status !== 'Cancelled' ? '<button class="btn ghost sm" data-cc="' + esc(o.id) + '" style="margin-top:6px;color:var(--bad)">Cancel…</button>' : '') + '</div>').join('') : '<div class="empty small">No corporate orders yet.</div>');
     $$('[data-cc]', m).forEach(b => b.onclick = async () => { const reason = prompt('Why cancel this corporate order? (stock goes back)'); if (!reason) return; const x = await run('Cancelling…', () => call('corpCancel', { id: b.dataset.cc, reason: reason })).catch(() => null); if (x) drawList(x); });
+    $$('[data-vp]', m).forEach(b => b.onclick = () => corpPdfOpen(b.dataset.vp));
+    $$('[data-ap]', m).forEach(inp => inp.onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      const b64 = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.readAsDataURL(f); });
+      const x = await run('Saving the Tally invoice…', () => call('corpAttach', { id: inp.dataset.ap, name: f.name, mime: f.type || 'application/pdf', b64: b64 })).catch(() => null);
+      e.target.value = ''; if (x) { drawList(x); toast('Tally invoice attached – tap “View Tally invoice” to open it'); }
+    });
     m._locs = r.locations;
   };
   const load = async () => { try { drawList(await call('corpList')); } catch (e) { $('#co_l', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
@@ -3952,7 +3970,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = 'a6e8f4f4e4';
+<script>window.NV_BUILD = '572bc5e013';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
