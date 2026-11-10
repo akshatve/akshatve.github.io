@@ -2400,7 +2400,7 @@ function drawBill() {
     '<div class="grow"><label class="f">Billed by</label><div class="i" style="background:#f4f2ec">' + esc(S.user ? S.user.name : '') + '</div></div></div>' +
     (B.coupon ? '<div class="tiny" style="margin-top:6px">Coupon ' + esc(B.coupon.code) + ' applied – ' + B.coupon.pct + '% off (no other discount with a coupon).</div>' : discNeedsOk() ? '<div class="tiny mute" style="margin-top:6px">Discount: up to ₹' + (discLimits().round || 0) + ' (round-off) needs no approval. More than that goes to the owner / managers for approval when you save.</div>' : '<div class="tiny mute" style="margin-top:6px" id="b_dh"></div>') +
     '</div>' +
-    (B.lines.length && (isOwner() || can('approve')) ? compBox() : '') +
+    (B.lines.length ? compBox() : '') +
     (B.lines.length && !noDisc() && !B.coupon && !(B.comp && B.comp.on) ? '<div class="card bdisc"><div class="small"><b>Discount on the whole bill</b> <span class="tiny mute">– fill any one</span></div><div class="grid3" style="margin-top:6px">' +
       '<div><label class="f">%</label><input class="i num" id="b_bdp" inputmode="decimal" placeholder="e.g. 10" value="' + esc(B.billPct || (B.billDisc && billBase() ? r2c(B.billDisc / billBase() * 100) : '')) + '"></div>' +
       '<div><label class="f">₹ off</label><input class="i num" id="b_bd" inputmode="decimal" value="' + (B.billDisc || '') + '"></div>' +
@@ -2469,7 +2469,7 @@ function refreshTotals() {
   const c = calcNow();
   $$('#blines .bl').forEach(el => { const i = +el.dataset.i, a = $('.amt', el); if (a && c.lines[i]) a.textContent = '₹' + money(c.lines[i].amount); });
   $('#b_tot').innerHTML = totHtml(c.totals);
-  const di = B.comp && B.comp.on ? { need: '', pct: 100 } : discInfo(c.totals), L = discLimits(), dh = $('#b_dh');
+  const di = B.comp && B.comp.on ? { need: isOwner() || can('approve') ? '' : 'approval', pct: 100 } : discInfo(c.totals), L = discLimits(), dh = $('#b_dh');
   if (dh) dh.innerHTML = di.need === 'max' ? '<span class="neg">' + di.pct + '% – the maximum discount is ' + L.max + '%.</span>' : di.need === 'approval' ? '<span class="neg">' + di.pct + '% – above ' + L.self + '% needs approval from the owner or a manager (asked when you save).</span>'
     : (isOwner() || can('approve') ? 'Discount: no limit for you' + (isOwner() ? '' : ' up to ' + L.max + '%') + '.' : 'Discount: up to ' + L.self + '% yourself, up to ' + L.max + '% with the owner\'s approval.');
   const sv = $('#b_save'); if (sv) { sv.textContent = (di.need === 'approval' && !B.approval ? 'Ask for approval · ' : 'Save bill · ') + '₹' + money(c.totals.total); sv.disabled = !B.lines.length; }
@@ -2639,7 +2639,7 @@ function compBox() {   // v18.40 complimentary (free) bill – owner / managers
   const c = B.comp || (B.comp = { on: false, reason: '' });
   return '<div class="card"><label class="row"><input type="checkbox" id="b_cmp" onchange="compSet(this.checked)"' + (c.on ? ' checked' : '') + ' style="width:20px;height:20px"> <span><b>🎁 Complimentary – give free (₹0 bill)</b></span></label>' +
     (c.on ? '<div style="margin-top:6px"><label class="f">For whom / why (prints on the bill)</label><input class="i" id="b_cmr" maxlength="120" placeholder="e.g. Sample for corporate client" oninput="B.comp.reason=this.value" value="' + esc(c.reason) + '"></div>' +
-      '<div class="tiny mute" style="margin-top:6px">The bill is saved at ₹0 (100% discount, marked Complimentary). Stock goes out of this store as normal.</div>' : '') + '</div>';
+      '<div class="tiny mute" style="margin-top:6px">The bill is saved at ₹0 (100% discount, marked Complimentary). Stock goes out of this store as normal.' + (isOwner() || can('approve') ? '' : ' <b>Needs approval from the owner or a manager</b> – asked when you save.') + '</div>' : '') + '</div>';
 }
 function compSet(on) { B.comp = B.comp || { on: false, reason: '' }; B.comp.on = !!on; if (on) { B.coupon = null; B.billDisc = 0; B.billPct = ''; B.approval = null; if (B.short) B.short.on = false; B.pay.mode = 'Cash'; } drawBill(); }
 function shortBox() {
@@ -2663,7 +2663,7 @@ async function saveBill() {
   if (comp && !String(B.comp.reason || '').trim()) return toast('Complimentary: type for whom / why', true);
   if (B.coupon && !c.totals.disc) return toast('The coupon needs a bill of ₹' + B.coupon.min + ' or more', true);
   if (noDisc() && (B.billDisc || B.lines.some(l => num(l.discPct)))) return toast('Only managers can give discounts', true);
-  const di = comp ? { need: '' } : discInfo(c.totals);
+  const di = comp ? (isOwner() || can('approve') ? { need: '' } : { need: 'approval', pct: 100 }) : discInfo(c.totals);
   if (di.need === 'max') return toast('The maximum discount is ' + discLimits().max + '%', true);
   if (di.need === 'approval') {
     const a = B.approval;
@@ -3210,7 +3210,8 @@ function drawToday() {
 function askApproval(t, pct) {
   let timer = null, closed = false;
   const items = B.lines.map(l => (l.name || 'Item') + ' ' + (l.unit === 'kg' ? (l.inUnit === 'g' ? l.inQty + ' g' : l.inQty + ' kg') : l.inQty + ' pcs')).join(', ').slice(0, 380);
-  const m = modal('Discount approval needed', '<div class="bigp"><div><span>Discount</span><b>' + pct + '%</b><span>₹' + money(t.disc) + ' off ₹' + money(t.gross) + '</span></div></div>' +
+  const cmp = !!(B.comp && B.comp.on);
+  const m = modal(cmp ? 'Complimentary – approval needed' : 'Discount approval needed', '<div class="bigp"><div><span>' + (cmp ? 'Free (complimentary) – ' + esc(B.comp.reason || '') : 'Discount') + '</span><b>' + pct + '%</b><span>₹' + money(t.disc) + ' off ₹' + money(t.gross) + '</span></div></div>' +
     '<div id="ap_st"><button class="btn gold block" id="ap_ask">Ask for approval now</button><div class="tiny mute" style="margin-top:6px">Goes at once to the owner and every manager who can approve – a red banner in their app and an email with an Approve button. This screen unlocks by itself when one of them approves.</div></div>' +
     '<h3 style="margin-top:16px">Or: one-time code (ask on the phone)</h3><div class="row"><input class="i grow" id="ap_code" inputmode="numeric" maxlength="7" placeholder="6-digit code"><button class="btn" id="ap_use">Use code</button></div><div id="ap_cer"></div>' +
     '<div class="tiny mute" style="margin-top:6px">Each code works once, for up to ' + discLimits().max + '% on this bill.</div>', { onClose: () => { closed = true; clearTimeout(timer); } });
@@ -3226,7 +3227,7 @@ function askApproval(t, pct) {
   $('#ap_code', m).onkeydown = e => { if (e.key === 'Enter') $('#ap_use', m).onclick(); };
   $('#ap_ask', m).onclick = async () => {
     let rerr = '';
-    const r = await run('Sending the request…', () => call('requestApproval', { loc: B.loc, event: B.event, gross: t.gross, disc: t.disc, items: items })).catch(e => { rerr = e.message; return null; });
+    const r = await run('Sending the request…', () => call('requestApproval', { loc: B.loc, event: B.event, gross: t.gross, disc: t.disc, items: items, comp: cmp ? String(B.comp.reason || '').trim() : '' })).catch(e => { rerr = e.message; return null; });
     if (!r) { $('#ap_st', m).insertAdjacentHTML('beforeend', '<div class="warnbox bad" style="margin-top:8px">The request was not sent: ' + esc(rerr) + ' – call the owner for a one-time code.</div>'); return; }
     $('#ap_st', m).innerHTML = '<div class="empty small"><span class="spin dk"></span><div>Waiting for approval… (request ' + esc(r.id) + ')</div><div class="tiny mute">Sent in the app' + (/^OK: [1-9]/.test(r.emailed || '') ? ' and by email' : '') + '. Keep this screen open – the bill saves by itself once approved. You can also call them for a one-time code.</div></div>';
     const poll = async () => {
@@ -3996,7 +3997,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '9a1ad01338';
+<script>window.NV_BUILD = '5af21f73c6';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
