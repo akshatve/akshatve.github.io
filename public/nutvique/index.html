@@ -628,8 +628,10 @@ async function viewInvoices() {
     '<input type="file" id="file" accept="application/pdf,image/*" class="hide">' +
     '<div class="row" style="margin:10px 0 16px"><button class="btn ghost sm" id="manual">Enter an invoice by hand</button>' + (S.settings.hasKey ? '' : '<span class="pill p-warn">Invoice reading is off – add the Gemini key in More → Settings</span>') + '</div>' +
     '<div class="row" style="margin:-6px 0 16px"><button class="btn ghost sm" id="noinv">Stock came in without an invoice</button></div>' +
+    '<div class="row" style="margin:-6px 0 16px;gap:6px;align-items:center"><span class="small mute">All invoices of</span><input type="month" id="iz_m" value="' + today().slice(0, 7) + '" style="width:auto"><button class="btn ghost sm" id="iz_go">⬇ Download (ZIP) for printing</button></div>' +
     '<div id="ilist"><div class="empty"><span class="spin dk"></span></div></div>';
   bindPuTabs();
+  $('#iz_go').onclick = async () => { const mo = $('#iz_m').value; if (!mo) return; const last = new Date(+mo.slice(0, 4), +mo.slice(5, 7), 0).getDate(); const r = await run('Collecting the invoices…', () => call('invZip', { from: mo + '-01', to: mo + '-' + String(last).padStart(2, '0') })).catch(() => null); if (r) { nvOpenFile(r); toast(r.count + ' invoices downloaded'); } };
   $('#noinv').onclick = () => { S.inv = { supplier: '', gstin: '', invoiceNo: '', invoiceDate: today(), taxable: 0, gst: 0, charges: [], roundOff: 0, total: 0, receivedAt: 'City Galleria – Gaur City-2', lines: [], notes: '', awaiting: true }; S.invWarn = []; addLine(); drawReview(); };
   $('#file').onchange = e => { const f = e.target.files[0]; if (f) uploadInvoice(f); };
   $('#manual').onclick = () => { S.inv = { supplier: '', gstin: '', invoiceNo: '', invoiceDate: today(), taxable: 0, gst: 0, charges: [], roundOff: 0, total: 0, receivedAt: 'City Galleria – Gaur City-2', lines: [], notes: '' }; S.invWarn = []; addLine(); drawReview(); };
@@ -643,21 +645,34 @@ async function viewInvoices() {
     $$('#ilist .li').forEach(li => li.onclick = () => openInvoice(li.dataset.id));
   } catch (e) { $('#ilist').innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; }
 }
+function nvOpenFile(r) {
+  const bin = atob(r.b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([u], { type: r.mime || 'application/pdf' }));
+  const a = document.createElement('a'); a.href = url; a.download = r.name; a.rel = 'noopener';
+  const touch = window.matchMedia && matchMedia('(pointer:coarse)').matches;
+  if (/zip/.test(r.mime || '') || touch || !window.open(url, '_blank')) { document.body.appendChild(a); a.click(); a.remove(); }
+  setTimeout(() => URL.revokeObjectURL(url), 120000);
+}
+async function invDownload(id) { const r = await run('Getting the invoice…', () => call('invFile', { id: id })).catch(() => null); if (r) nvOpenFile(r); }
 function invRow(x) {
-  return '<div class="li" data-id="' + esc(x.id) + '"><div class="grow"><b>' + esc(x.supplier || '(no supplier)') + '</b> <span class="mute small">' + esc(x.no || '') + '</span><div class="tiny mute">' + esc(x.date) + ' · ' + x.lines + ' lines · ' + qfmt(x.qty) + ' qty' + (x.newProducts ? ' · new: ' + esc(x.newProducts) : '') + '</div></div><div class="right"><b>' + inr(x.total, 0) + '</b><div><span class="pill ' + (x.status === 'Draft' ? 'p-warn' : x.status === 'Posted' ? 'p-ok' : 'p-new') + '">' + x.status + '</span></div></div></div>';
+  return '<div class="li" data-id="' + esc(x.id) + '"><div class="grow"><b>' + esc(x.supplier || '(no supplier)') + '</b> <span class="mute small">' + esc(x.no || '') + '</span>' + (x.file ? ' <span title="Invoice file attached">📎</span>' : '') + '<div class="tiny mute">' + esc(x.date) + ' · ' + x.lines + ' lines · ' + qfmt(x.qty) + ' qty' + (x.newProducts ? ' · new: ' + esc(x.newProducts) : '') + '</div></div><div class="right"><b>' + inr(x.total, 0) + '</b><div><span class="pill ' + (x.status === 'Draft' ? 'p-warn' : x.status === 'Posted' ? 'p-ok' : 'p-new') + '">' + x.status + '</span></div></div></div>';
 }
 async function openInvoice(id) {
   const r = await run('Opening…', () => call('getInvoice', { id: id }));
   if (r.draft) { S.inv = r.draft; S.invWarn = r.warnings || []; S.inv.lines.forEach(primeLine); drawReview(); return; }
   const p = r.posted;
   const m = modal('Invoice ' + p.no + ' · ' + p.supplier, '<div class="kv"><div>Date</div><div>' + esc(p.date) + '</div><div>Received at</div><div>' + esc(p.at) + '</div><div>Taxable</div><div>' + inr(p.taxable) + '</div><div>GST</div><div>' + inr(p.gst) + '</div><div>Charges</div><div>' + inr(p.charges) + '</div><div>Total</div><div><b>' + inr(p.total) + '</b></div><div>Stock added</div><div>' + esc(p.stockAdded) + '</div><div>Posted</div><div>' + esc((p.postedAt || '').slice(0, 16).replace('T', ' ')) + '</div>' +
-    (p.file ? '<div>File</div><div><a href="' + esc(p.file) + '" target="_blank">Open invoice</a></div>' : '') + '</div>' +
+    '<div>Invoice file</div><div>' + (p.file ? '📎 Supplier original attached' : '<span class="mute">Not attached – download gives a copy made from this entry</span>') + '</div></div>' +
+    '<div class="row" style="margin-top:12px"><button class="btn gold" id="ie_pdf">⬇ Download / Print invoice</button><label class="btn ghost" style="cursor:pointer">📎 ' + (p.file ? 'Replace' : 'Attach') + ' supplier PDF / photo<input type="file" id="ie_att" accept="application/pdf,image/*" style="display:none"></label></div>' +
     '<div class="tscroll" style="margin-top:12px"><table class="t"><tr><th>#</th><th>Seller name</th><th>Nutvique product</th><th class="n">Qty</th><th class="n">Landed</th><th class="n">Selling</th><th class="n">MRP</th><th class="n">Margin</th></tr>' +
     p.lines.map(l => '<tr><td>' + l.line + '</td><td>' + esc(l.seller) + '<div class="tiny mute">' + esc(l.hsn) + ' · ' + qfmt(l.qty) + ' ' + esc(l.unit) + ' × ' + inr(l.rate) + '</div></td><td>' + esc(l.name) + (l.isNew ? ' <span class="pill p-new">new</span>' : '') + '<div class="tiny mute">' + esc(l.sku) + '</div></td><td class="n">' + qfmt(l.booked) + ' ' + esc(l.punit) + '</td><td class="n">' + inr(l.cost) + '</td><td class="n">' + inr(l.sell, 0) + '</td><td class="n">' + inr(l.mrp, 0) + '</td><td class="n">' + (l.margin === '' ? '–' : l.margin + '%') + '</td></tr>').join('') + '</table></div>' +
     '<div class="row" style="margin-top:14px">' + (p.status === 'Awaiting invoice' ? '<button class="btn gold" id="ie_go">Invoice received – enter it</button>' : '<button class="btn ghost" id="ie_go">Edit / correct this invoice</button>') +
     '<button class="btn ghost" id="ie_dc">+ Porter / packing charge</button></div><div class="tiny mute" style="margin-top:6px">Editing changes the lines, rates and charges. Only the difference in quantity is moved in stock; cost prices are recalculated.</div>', { wide: true });
   $('#ie_go', m).onclick = async () => { const e = await run('Opening…', () => call('invoiceForEdit', { id: id })); m.close(); S.inv = e.draft; S.invWarn = []; S.inv.lines.forEach(primeLine); drawReview(); };
   $('#ie_dc', m).onclick = () => { m.close(); PU.tab = 'dc'; PU.pre = id; viewInvoices(); };
+  $('#ie_pdf', m).onclick = () => invDownload(id);
+  $('#ie_att', m).onchange = async e => { const f = e.target.files[0]; if (!f) return; const b = await fileToBase64(f).catch(err => { toast(err.message); return null; }); if (!b) return;
+    const r = await run('Saving the invoice file…', () => call('invAttach', { id: id, name: f.name, mime: b.mime, b64: b.base64 })).catch(() => null); if (!r) return; m.close(); toast('Invoice file saved'); openInvoice(id); };
 }
 function fileToBase64(f) {
   return new Promise((res, rej) => {
@@ -2247,9 +2262,12 @@ function lineQty(l) { return l.unit === 'kg' ? (l.inUnit === 'g' ? num(l.inQty) 
 function interState() { const g = (B.cust.gstin || '').trim().toUpperCase(); return B.biz && g.length >= 2 && g.slice(0, 2) !== ((B.boot && B.boot.setup['State code']) || '09'); }
 /** Items total after item discounts – the base for a whole-bill discount. */
 function billBase() { return Math.round(B.lines.reduce((a, l) => { const g = Math.round(lineQty(l) * num(l.rate) * 100) / 100; return a + g - Math.round(g * Math.min(Math.max(num(l.discPct), 0), 100)) / 100; }, 0) * 100) / 100; }
+// v18.42: a gift box on a bill with food is a filled box → 5% GST (empty box alone stays 18%)
+function gstOf(l) { if (/^NV-GFT-/.test(l.sku || '') && B.lines.some(x => x !== l && !/^NV-(GFT|JAR)-/.test(x.sku || '') && (Number(x.gst) || dfltGst()) <= 5)) return 5; return l.gst; }
 function calcNow() {
+  if (B.comp && B.comp.on) return billCalc(B.lines.map(l => ({ qty: lineQty(l), rate: l.rate, discPct: 100, gst: gstOf(l) })), 0, interState());
   if (B.billPct && !B.coupon) B.billDisc = Math.round(billBase() * num(B.billPct)) / 100;
-  const ls = B.lines.map(l => ({ qty: lineQty(l), rate: l.rate, discPct: B.coupon ? 0 : l.discPct, gst: l.gst }));
+  const ls = B.lines.map(l => ({ qty: lineQty(l), rate: l.rate, discPct: B.coupon ? 0 : l.discPct, gst: gstOf(l) }));
   if (B.coupon) { const g = billCalc(ls, 0, interState()).totals.gross; return billCalc(ls, g >= B.coupon.min ? Math.round(g * B.coupon.pct) / 100 : 0, interState()); }
   return billCalc(ls, B.billDisc, interState());
 }
@@ -2384,7 +2402,8 @@ function drawBill() {
     '<div class="grow"><label class="f">Billed by</label><div class="i" style="background:#f4f2ec">' + esc(S.user ? S.user.name : '') + '</div></div></div>' +
     (B.coupon ? '<div class="tiny" style="margin-top:6px">Coupon ' + esc(B.coupon.code) + ' applied – ' + B.coupon.pct + '% off (no other discount with a coupon).</div>' : discNeedsOk() ? '<div class="tiny mute" style="margin-top:6px">Discount: up to ₹' + (discLimits().round || 0) + ' (round-off) needs no approval. More than that goes to the owner / managers for approval when you save.</div>' : '<div class="tiny mute" style="margin-top:6px" id="b_dh"></div>') +
     '</div>' +
-    (B.lines.length && !noDisc() && !B.coupon ? '<div class="card bdisc"><div class="small"><b>Discount on the whole bill</b> <span class="tiny mute">– fill any one</span></div><div class="grid3" style="margin-top:6px">' +
+    (B.lines.length ? compBox() : '') +
+    (B.lines.length && !noDisc() && !B.coupon && !(B.comp && B.comp.on) ? '<div class="card bdisc"><div class="small"><b>Discount on the whole bill</b> <span class="tiny mute">– fill any one</span></div><div class="grid3" style="margin-top:6px">' +
       '<div><label class="f">%</label><input class="i num" id="b_bdp" inputmode="decimal" placeholder="e.g. 10" value="' + esc(B.billPct || (B.billDisc && billBase() ? r2c(B.billDisc / billBase() * 100) : '')) + '"></div>' +
       '<div><label class="f">₹ off</label><input class="i num" id="b_bd" inputmode="decimal" value="' + (B.billDisc || '') + '"></div>' +
       '<div><label class="f">Final total ₹</label><input class="i num" id="b_bdf" inputmode="decimal" placeholder="agreed total" value="' + (B.billDisc ? Math.round(billBase() - B.billDisc) : '') + '"></div></div></div>' : '') +
@@ -2444,7 +2463,7 @@ function lineCard(l, i, c) {
   if (!noDisc() && !B.coupon && num(l.rate) > 0) h += '<div class="agr"><label>Agreed price ₹</label><input class="i" data-f="agreed" inputmode="decimal" placeholder="agreed price" value="' + esc(l.agreed || '') + '"><span class="agp">' + (num(l.discPct) ? r2c(num(l.discPct)) + '% off' : '') + '</span></div>';
   if (l.sku && /^NV-HMP-/.test(l.sku)) h += '<div class="tiny" style="margin-top:6px;background:var(--warnbg);padding:6px 8px;border-radius:8px">🎁 <b>In each hamper:</b> ' + esc(partsTxt(l.parts || hamperRecipe(l.sku))) + (B.loc === 'Event' ? ' <span class="mute">(event stock is not moved)</span>' : '') + ' <a href="#" data-hp="' + i + '">change</a></div>';
   if (l.unit === 'kg') h += '<div class="qk">' + (IN_APP ? '<button data-w="' + i + '" class="sw">⚖ Scale</button>' : '') + [100, 200, 250, 500, 1000].map(g => '<button data-g="' + g + '">' + (g >= 1000 ? g / 1000 + ' kg' : g + ' g') + '</button>').join('') + '</div>';
-  h += '<div class="tiny mute" style="margin-top:4px">' + (l.sku ? esc(l.sku) + ' · ' : '') + 'HSN ' + esc(l.hsn || '–') + ' · GST ' + (l.gst || dfltGst()) + '%' +
+  h += '<div class="tiny mute" style="margin-top:4px">' + (l.sku ? esc(l.sku) + ' · ' : '') + 'HSN ' + esc(l.hsn || '–') + ' · GST ' + (gstOf(l) || dfltGst()) + '%' + (gstOf(l) != l.gst ? ' (filled box)' : '') +
     (have != null ? ' · <span class="' + (have - lineQty(l) < 0 ? 'neg' : '') + '">stock here ' + qfmt(have) + ' ' + esc(l.unit) + '</span>' : '') + (p && p.mrp ? ' · MRP ₹' + money(p.mrp) : '') + '</div></div>';
   return h;
 }
@@ -2452,7 +2471,7 @@ function refreshTotals() {
   const c = calcNow();
   $$('#blines .bl').forEach(el => { const i = +el.dataset.i, a = $('.amt', el); if (a && c.lines[i]) a.textContent = '₹' + money(c.lines[i].amount); });
   $('#b_tot').innerHTML = totHtml(c.totals);
-  const di = discInfo(c.totals), L = discLimits(), dh = $('#b_dh');
+  const di = B.comp && B.comp.on ? { need: isOwner() || can('approve') ? '' : 'approval', pct: 100 } : discInfo(c.totals), L = discLimits(), dh = $('#b_dh');
   if (dh) dh.innerHTML = di.need === 'max' ? '<span class="neg">' + di.pct + '% – the maximum discount is ' + L.max + '%.</span>' : di.need === 'approval' ? '<span class="neg">' + di.pct + '% – above ' + L.self + '% needs approval from the owner or a manager (asked when you save).</span>'
     : (isOwner() || can('approve') ? 'Discount: no limit for you' + (isOwner() ? '' : ' up to ' + L.max + '%') + '.' : 'Discount: up to ' + L.self + '% yourself, up to ' + L.max + '% with the owner\'s approval.');
   const sv = $('#b_save'); if (sv) { sv.textContent = (di.need === 'approval' && !B.approval ? 'Ask for approval · ' : 'Save bill · ') + '₹' + money(c.totals.total); sv.disabled = !B.lines.length; }
@@ -2614,10 +2633,17 @@ function heldBar() {
 }
 function resetBill() {
   B.lines = []; B.cust = { name: '', phone: '', gstin: '', address: '' }; B.noDetails = false; B.biz = false; B.billDisc = 0;
-  B.pay = { mode: 'Cash', cash: '', upi: '', card: '', other: '', got: '' }; B.short = null; B.upiMsg = ''; B.billPct = ''; B.cid = newCid(); B.search = ''; B.approval = null; B.coupon = null; B.refBy = ''; B.ci = null;
+  B.pay = { mode: 'Cash', cash: '', upi: '', card: '', other: '', got: '' }; B.short = null; B.upiMsg = ''; B.billPct = ''; B.cid = newCid(); B.search = ''; B.approval = null; B.coupon = null; B.refBy = ''; B.ci = null; B.comp = null;
 }
 
 const SHORT_REASONS = ['Customer bargained / paid less', 'Change not available (rounded down)', 'Customer short of money – will pay later', 'Staff mistake', 'Other'];
+function compBox() {   // v18.40 complimentary (free) bill – owner / managers
+  const c = B.comp || (B.comp = { on: false, reason: '' });
+  return '<div class="card"><label class="row"><input type="checkbox" id="b_cmp" onchange="compSet(this.checked)"' + (c.on ? ' checked' : '') + ' style="width:20px;height:20px"> <span><b>🎁 Complimentary – give free (₹0 bill)</b></span></label>' +
+    (c.on ? '<div style="margin-top:6px"><label class="f">For whom / why (prints on the bill)</label><input class="i" id="b_cmr" maxlength="120" placeholder="e.g. Sample for corporate client" oninput="B.comp.reason=this.value" value="' + esc(c.reason) + '"></div>' +
+      '<div class="tiny mute" style="margin-top:6px">The bill is saved at ₹0 (100% discount, marked Complimentary). Stock goes out of this store as normal.' + (isOwner() || can('approve') ? '' : ' <b>Needs approval from the owner or a manager</b> – asked when you save.') + '</div>' : '') + '</div>';
+}
+function compSet(on) { B.comp = B.comp || { on: false, reason: '' }; B.comp.on = !!on; if (on) { B.coupon = null; B.billDisc = 0; B.billPct = ''; B.approval = null; if (B.short) B.short.on = false; B.pay.mode = 'Cash'; } drawBill(); }
 function shortBox() {
   const sh = B.short || (B.short = { on: false, received: '', reason: '', note: '' });
   if (B.pay.mode === 'Split') return '<div class="tiny mute" style="margin-top:8px">Customer paid less on a split payment? Save the bill, then open it and tap “Record short payment”.</div>';
@@ -2635,23 +2661,25 @@ async function saveBill() {
   const frac = B.lines.find(l => l.unit !== 'kg' && lineQty(l) % 1); if (frac) return toast('"' + (frac.name || 'Item') + '" is sold by the piece – use a whole number', true);
   if (!B.noDetails && !/^[6-9]\d{9}$/.test(ph)) return toast('Enter the customer\'s 10-digit mobile, or tick “does not want to share”', true);
   if (B.loc === 'Event' && !B.event) return toast('Pick the event first', true);
+  const comp = !!(B.comp && B.comp.on);
+  if (comp && !String(B.comp.reason || '').trim()) return toast('Complimentary: type for whom / why', true);
   if (B.coupon && !c.totals.disc) return toast('The coupon needs a bill of ₹' + B.coupon.min + ' or more', true);
   if (noDisc() && (B.billDisc || B.lines.some(l => num(l.discPct)))) return toast('Only managers can give discounts', true);
-  const di = discInfo(c.totals);
+  const di = comp ? (isOwner() || can('approve') ? { need: '' } : { need: 'approval', pct: 100 }) : discInfo(c.totals);
   if (di.need === 'max') return toast('The maximum discount is ' + discLimits().max + '%', true);
   if (di.need === 'approval') {
     const a = B.approval;
     if (!a || (a.id && (di.pct > a.pct + 0.05 || c.totals.gross > a.gross + 1))) return askApproval(c.totals, di.pct);
   }
   let short = null;
-  if (B.short && B.short.on && B.pay.mode !== 'Split') {
+  if (B.short && B.short.on && B.pay.mode !== 'Split' && !comp) {
     const rec = num(B.short.received), tot = c.totals.total;
     if (B.short.received === '' || !(rec >= 0) || rec >= tot) return toast('Short payment: type the amount actually received (less than ₹' + money(tot) + ')', true);
     if (!B.short.reason) return toast('Short payment: pick the reason', true);
     if (B.short.reason === 'Other' && !String(B.short.note || '').trim()) return toast('Short payment: type a note for "Other"', true);
     short = { received: rec, mode: B.pay.mode, reason: B.short.reason, note: B.short.note || '' };
   }
-  const req = { clientId: B.cid, loc: B.loc, short: short, event: B.event, noDetails: B.noDetails, billDisc: B.billDisc,
+  const req = { clientId: B.cid, comp: comp ? { reason: B.comp.reason.trim() } : null, loc: B.loc, short: short, event: B.event, noDetails: B.noDetails, billDisc: B.billDisc,
     approvalId: B.approval && B.approval.id || '', approvalCode: B.approval && B.approval.code || '', upiMsg: (B.pay.mode === 'UPI' || B.pay.mode === 'Split') && B.upiMsg || '',
     coupon: B.coupon ? B.coupon.code : '', refBy: B.ci && B.ci.isNew && B.refBy ? B.refBy : '',
     customer: { name: B.cust.name, phone: B.noDetails ? '' : ph, gstin: B.biz ? B.cust.gstin : '', address: B.biz ? B.cust.address : '' },
@@ -3184,7 +3212,8 @@ function drawToday() {
 function askApproval(t, pct) {
   let timer = null, closed = false;
   const items = B.lines.map(l => (l.name || 'Item') + ' ' + (l.unit === 'kg' ? (l.inUnit === 'g' ? l.inQty + ' g' : l.inQty + ' kg') : l.inQty + ' pcs')).join(', ').slice(0, 380);
-  const m = modal('Discount approval needed', '<div class="bigp"><div><span>Discount</span><b>' + pct + '%</b><span>₹' + money(t.disc) + ' off ₹' + money(t.gross) + '</span></div></div>' +
+  const cmp = !!(B.comp && B.comp.on);
+  const m = modal(cmp ? 'Complimentary – approval needed' : 'Discount approval needed', '<div class="bigp"><div><span>' + (cmp ? 'Free (complimentary) – ' + esc(B.comp.reason || '') : 'Discount') + '</span><b>' + pct + '%</b><span>₹' + money(t.disc) + ' off ₹' + money(t.gross) + '</span></div></div>' +
     '<div id="ap_st"><button class="btn gold block" id="ap_ask">Ask for approval now</button><div class="tiny mute" style="margin-top:6px">Goes at once to the owner and every manager who can approve – a red banner in their app and an email with an Approve button. This screen unlocks by itself when one of them approves.</div></div>' +
     '<h3 style="margin-top:16px">Or: one-time code (ask on the phone)</h3><div class="row"><input class="i grow" id="ap_code" inputmode="numeric" maxlength="7" placeholder="6-digit code"><button class="btn" id="ap_use">Use code</button></div><div id="ap_cer"></div>' +
     '<div class="tiny mute" style="margin-top:6px">Each code works once, for up to ' + discLimits().max + '% on this bill.</div>', { onClose: () => { closed = true; clearTimeout(timer); } });
@@ -3200,7 +3229,7 @@ function askApproval(t, pct) {
   $('#ap_code', m).onkeydown = e => { if (e.key === 'Enter') $('#ap_use', m).onclick(); };
   $('#ap_ask', m).onclick = async () => {
     let rerr = '';
-    const r = await run('Sending the request…', () => call('requestApproval', { loc: B.loc, event: B.event, gross: t.gross, disc: t.disc, items: items })).catch(e => { rerr = e.message; return null; });
+    const r = await run('Sending the request…', () => call('requestApproval', { loc: B.loc, event: B.event, gross: t.gross, disc: t.disc, items: items, comp: cmp ? String(B.comp.reason || '').trim() : '' })).catch(e => { rerr = e.message; return null; });
     if (!r) { $('#ap_st', m).insertAdjacentHTML('beforeend', '<div class="warnbox bad" style="margin-top:8px">The request was not sent: ' + esc(rerr) + ' – call the owner for a one-time code.</div>'); return; }
     $('#ap_st', m).innerHTML = '<div class="empty small"><span class="spin dk"></span><div>Waiting for approval… (request ' + esc(r.id) + ')</div><div class="tiny mute">Sent in the app' + (/^OK: [1-9]/.test(r.emailed || '') ? ' and by email' : '') + '. Keep this screen open – the bill saves by itself once approved. You can also call them for a one-time code.</div></div>';
     const poll = async () => {
@@ -3970,7 +3999,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '572bc5e013';
+<script>window.NV_BUILD = '5aa76decc2';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
