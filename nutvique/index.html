@@ -2262,10 +2262,12 @@ function lineQty(l) { return l.unit === 'kg' ? (l.inUnit === 'g' ? num(l.inQty) 
 function interState() { const g = (B.cust.gstin || '').trim().toUpperCase(); return B.biz && g.length >= 2 && g.slice(0, 2) !== ((B.boot && B.boot.setup['State code']) || '09'); }
 /** Items total after item discounts – the base for a whole-bill discount. */
 function billBase() { return Math.round(B.lines.reduce((a, l) => { const g = Math.round(lineQty(l) * num(l.rate) * 100) / 100; return a + g - Math.round(g * Math.min(Math.max(num(l.discPct), 0), 100)) / 100; }, 0) * 100) / 100; }
+// v18.42: a gift box on a bill with food is a filled box → 5% GST (empty box alone stays 18%)
+function gstOf(l) { if (/^NV-GFT-/.test(l.sku || '') && B.lines.some(x => x !== l && !/^NV-(GFT|JAR)-/.test(x.sku || '') && (Number(x.gst) || dfltGst()) <= 5)) return 5; return l.gst; }
 function calcNow() {
-  if (B.comp && B.comp.on) return billCalc(B.lines.map(l => ({ qty: lineQty(l), rate: l.rate, discPct: 100, gst: l.gst })), 0, interState());
+  if (B.comp && B.comp.on) return billCalc(B.lines.map(l => ({ qty: lineQty(l), rate: l.rate, discPct: 100, gst: gstOf(l) })), 0, interState());
   if (B.billPct && !B.coupon) B.billDisc = Math.round(billBase() * num(B.billPct)) / 100;
-  const ls = B.lines.map(l => ({ qty: lineQty(l), rate: l.rate, discPct: B.coupon ? 0 : l.discPct, gst: l.gst }));
+  const ls = B.lines.map(l => ({ qty: lineQty(l), rate: l.rate, discPct: B.coupon ? 0 : l.discPct, gst: gstOf(l) }));
   if (B.coupon) { const g = billCalc(ls, 0, interState()).totals.gross; return billCalc(ls, g >= B.coupon.min ? Math.round(g * B.coupon.pct) / 100 : 0, interState()); }
   return billCalc(ls, B.billDisc, interState());
 }
@@ -2461,7 +2463,7 @@ function lineCard(l, i, c) {
   if (!noDisc() && !B.coupon && num(l.rate) > 0) h += '<div class="agr"><label>Agreed price ₹</label><input class="i" data-f="agreed" inputmode="decimal" placeholder="agreed price" value="' + esc(l.agreed || '') + '"><span class="agp">' + (num(l.discPct) ? r2c(num(l.discPct)) + '% off' : '') + '</span></div>';
   if (l.sku && /^NV-HMP-/.test(l.sku)) h += '<div class="tiny" style="margin-top:6px;background:var(--warnbg);padding:6px 8px;border-radius:8px">🎁 <b>In each hamper:</b> ' + esc(partsTxt(l.parts || hamperRecipe(l.sku))) + (B.loc === 'Event' ? ' <span class="mute">(event stock is not moved)</span>' : '') + ' <a href="#" data-hp="' + i + '">change</a></div>';
   if (l.unit === 'kg') h += '<div class="qk">' + (IN_APP ? '<button data-w="' + i + '" class="sw">⚖ Scale</button>' : '') + [100, 200, 250, 500, 1000].map(g => '<button data-g="' + g + '">' + (g >= 1000 ? g / 1000 + ' kg' : g + ' g') + '</button>').join('') + '</div>';
-  h += '<div class="tiny mute" style="margin-top:4px">' + (l.sku ? esc(l.sku) + ' · ' : '') + 'HSN ' + esc(l.hsn || '–') + ' · GST ' + (l.gst || dfltGst()) + '%' +
+  h += '<div class="tiny mute" style="margin-top:4px">' + (l.sku ? esc(l.sku) + ' · ' : '') + 'HSN ' + esc(l.hsn || '–') + ' · GST ' + (gstOf(l) || dfltGst()) + '%' + (gstOf(l) != l.gst ? ' (filled box)' : '') +
     (have != null ? ' · <span class="' + (have - lineQty(l) < 0 ? 'neg' : '') + '">stock here ' + qfmt(have) + ' ' + esc(l.unit) + '</span>' : '') + (p && p.mrp ? ' · MRP ₹' + money(p.mrp) : '') + '</div></div>';
   return h;
 }
@@ -3997,7 +3999,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '5af21f73c6';
+<script>window.NV_BUILD = '5aa76decc2';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
