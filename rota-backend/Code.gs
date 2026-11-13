@@ -132,7 +132,8 @@ function doPost(e) {
 const RRIGHTS = [
   ['rota', 'Plan, change and publish the rota (incl. who covers a shift)'],
   ['team', 'See the team board and attendance (who is in, late, on break)'],
-  ['times', 'Change anyone\'s in / out times, breaks and day status (leave, off…)'],
+  ['times', 'Change anyone\'s in / out times, breaks and day status (leave, off…) for today'],
+  ['pastTimes', 'Change EARLIER days\' in / out times and day status of staff (not managers), with a genuine reason'],
   ['payAdj', 'Pay adjustments: excuse a late day, pay extra break, approve overtime'],
   ['approve', 'Approve clock entries made away from a store'],
   ['trips', 'Approve trip claims (travel money)'],
@@ -141,7 +142,7 @@ const RRIGHTS = [
   ['settings', 'Settings, store locations and geofence']];
 const RRIGHT_LABEL = {}; RRIGHTS.forEach(r => RRIGHT_LABEL[r[0]] = r[1]);
 const DEFAULT_RIGHTS = { Manager: ['rota'], Staff: [] };
-const ACTION_NEED = { board: ['team', 'approve', 'times', 'payAdj'], attendance: ['team', 'approve', 'times', 'payAdj'], fixDay: ['times', 'payAdj'], approvePunch: 'approve', pending: 'approve',
+const ACTION_NEED = { board: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], attendance: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], fixDay: ['times', 'payAdj', 'pastTimes'], approvePunch: 'approve', pending: 'approve',
   photo: ['team', 'approve', 'times', 'trips'], trips: 'trips', tripDecide: 'trips', staffList: ['staff', 'pay', 'rota'], staffSave: ['staff', 'pay'], resetPhone: 'staff',
   syncStaff: 'staff', rotaGet: 'rota', rotaAuto: 'rota', rotaSave: 'rota', payroll: 'pay', locSave: ['settings', 'rota'], settingsGet: 'settings', settingsSave: 'settings',
   rightsList: 'owner', rightsSave: 'owner', offDaysSave: 'settings' };
@@ -954,7 +955,19 @@ function fixDay_(d, me) {
   if (d.status && SHIFT_CODES.indexOf(d.status) < 0) throw new Error('Unknown status.');
   ['in', 'out'].forEach(k => { if (d[k] && !/^\d{1,2}:\d{2}$/.test(d[k])) throw new Error('Time like 10:05'); });
   if (!txt_(d.note, 200)) throw new Error('Write why you are correcting this day.');
-  const canT = can_(me, 'times'), canP = can_(me, 'payAdj');
+  // v9 (13 Nov 2026, owner): an EARLIER day's times can be changed only by the owner, or by someone with the "pastTimes" right for staff;
+  // a manager's earlier days only by the owner; always with a genuine reason.
+  const past = d.date < today_();
+  if (past && !d.clear) {
+    const why = txt_(d.note, 200);
+    if (why.length < 15 || why.split(/\s+/).filter(Boolean).length < 3 || /^(ok|okay|correct(ion)?|changed?|update[d]?|edit(ed)?|fix(ed)?|test|as per (owner|manager)|na|n\/a|-)\.?$/i.test(why))
+      throw new Error('Earlier day: write the genuine reason in full (at least 15 letters), e.g. "Forgot to clock out – left at 7 pm, confirmed by the store manager".');
+  }
+  if (past && !me.owner) {
+    if (norm_(s.name) === norm_(me.name)) throw new Error('You cannot change your own earlier days – ask the owner.');
+    if (s.role === 'Manager') throw new Error('Only the owner can change a manager\'s earlier days.');
+  }
+  const canT = past ? (can_(me, 'pastTimes') && (me.owner || s.role !== 'Manager')) : can_(me, 'times'), canP = can_(me, 'payAdj');
   lock_(() => {
     const sh = tab_('fix'), all = rows_('fix'), i = all.findIndex(r => ymd_(r[0]) === d.date && norm_(r[1]) === norm_(s.name));
     const old = i >= 0 ? all[i] : [d.date, s.name, '', '', '', '', 0, '', '', '', '', ''];
@@ -975,7 +988,7 @@ function fixDay_(d, me) {
     else if (i >= 0) sh.getRange(i + 2, 1, 1, row.length).setValues([row]); else append_('fix', [row]);
     dirty_('fix');
   });
-  log_('Day corrected ' + d.date + ' ' + s.name + (d.clear ? ' (cleared)' : ''), me.name);
+  log_('Day corrected ' + d.date + ' ' + s.name + (d.clear ? ' (cleared)' : '') + (d.in || d.out || d.status ? ' – ' + [d.status, d.in && 'in ' + d.in, d.out && 'out ' + d.out].filter(Boolean).join(', ') : '') + ' – reason: ' + txt_(d.note, 200), me.name);
   return { day: daysFor_([s.name], d.date, d.date, true)[0] };
 }
 function approvePunch_(d, me) {
