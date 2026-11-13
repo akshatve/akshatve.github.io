@@ -100,6 +100,8 @@ const DEFAULT_SETTINGS = [
   ['Car rate ₹/km', 10, 'Own car.'],
   ['Road factor', 1.3, 'Straight-line GPS distance × this ≈ road distance (used when the phone could not record the route).'],
   ['Summary email', 'nutzyfoods@gmail.com', 'Nightly summary (late, absent, missed clock-out, flags, trips to approve). Blank = off.'],
+  ['Approval email', '', 'Who is emailed at once when a clock-in / clock-out needs approval (comma separated). Blank = the Summary email.'],
+  ['Approval needed after (min)', 30, 'Clock-in this many minutes or more before the rota start, or clock-out this many minutes or more after the rota end, waits for a manager. Not approved = paid only the rota shift.'],
   ['Photo folder ID', '', 'Drive folder for selfies and receipts (created automatically).'],
   ['Extra off days by week', '', 'Set in the app: Rota plan → "Off days". Week (Monday) and extra days, e.g. 2026-11-02: Mon, Fri; 2026-11-16: Sat']
 ];
@@ -317,6 +319,15 @@ function ensureSetup_() {
       append_('locs', [['Event stall', 'Event', '', '', 300, 'Yes', 'General event stall – rename it for each event or add events with their own dates', '', '', '11:00', '22:00']]);
     dirty_();
     log_('v5: event stalls, after-midnight clock-outs, clock-out approval', 'system');
+  }
+  if (!p.getProperty('V8_EARLYLATE')) {              // 13 Nov 2026: early clock-in / late clock-out need a manager's approval
+    p.setProperty('V8_EARLYLATE', '1');
+    const sh = tab_('set'), have = rows_('set').map(r => s_(r[0]));
+    [['Approval email', 'nutzyfoods@gmail.com, veer@nutzyfoods.com, vrupal01@gmail.com, pankajkumarsurir94@gmail.com, vikas.casadecor@gmail.com'], ['Approval needed after (min)', '30']].forEach(x => {
+      if (have.indexOf(x[0]) < 0) sh.appendRow([x[0], x[1], DEFAULT_SETTINGS.find(d => d[0] === x[0])[2]]);
+    });
+    dirty_('set');
+    log_('v8: early clock-in / late clock-out (30 min+) need approval; approval emails to managers', 'system');
   }
   if (!p.getProperty('V6_OFFDAYS')) {                // 1 Nov 2026: extra off days per week, set by the owner in the app
     p.setProperty('V6_OFFDAYS', '1');
@@ -649,16 +660,27 @@ function curDate_(name) {
   const y = addDays_(today, -1), py = punchesOn_(y, name), last = py[py.length - 1];
   return openState_(py) || (last && ymd_(last.time) === today) ? y : today;   // keep showing last night's shift until 8 am
 }
-/** Email the owner when a clock-out needs approval (event stalls, after midnight). */
+/** Email the managers when a clock-in is early (rota start − N min or earlier). Approve = paid from that time. */
+function mailEarly_(name, date, now, where, ro, early) {
+  try {
+    const to = String(setv_('Approval email') || setv_('Summary email') || '').trim(); if (!to) return;
+    MailApp.sendEmail(to, 'Approve early start: ' + name + ' ' + hmOf_(now) + (where ? ' – ' + where : ''),
+      name + ' clocked in at ' + hmOf_(now) + (where ? ' at ' + where : '') + ' on ' + date + '.\n' +
+      'Rota shift starts ' + ro.start + ' – ' + early + ' min early.\n\n' +
+      'Approve only if a manager called them in early. Approve = paid from ' + hmOf_(now) + '. Not approved = paid only from ' + ro.start + ' (normal shift).\n' +
+      'Any manager with the approve right can decide: open the app → Team → Date range (or the red badge): https://vermakshat.com/rota/');
+  } catch (e) { log_('Early approval email failed: ' + e, name); }
+}
+/** Email the managers when a clock-out needs approval (late by N min+, event stalls, after midnight). */
 function mailApproval_(name, date, now, where, ro, why) {
   try {
-    const to = String(setv_('Summary email') || '').trim(); if (!to) return;
+    const to = String(setv_('Approval email') || setv_('Summary email') || '').trim(); if (!to) return;
     const end = ro && ro.start ? ro.end : '';
     const over = ro && ro.start ? minsOn_(date, now) - endMin_(ro.start, ro.end) : 0;
     MailApp.sendEmail(to, 'Approve clock-out: ' + name + ' ' + hmOf_(now) + (where ? ' – ' + where : ''),
       name + ' clocked out at ' + hmOf_(now) + (date !== today_() ? ' (after midnight, shift of ' + date + ')' : '') + (where ? ' at ' + where : '') + '.\n' +
       (end ? 'Rota shift ends ' + end + (over > 0 ? ' – ' + over + ' min later than the rota.' : '.') + '\n' : '') + why + '\n\n' +
-      'Approve = paid until ' + hmOf_(now) + '. Not approved = paid only until the rota end time.\n' +
+      'Approve only if a manager asked them to stay late. Approve = paid until ' + hmOf_(now) + '. Not approved = paid only until the rota end time (normal shift).\n' +
       'Open the app → Team → Date range (or the red badge): https://vermakshat.com/rota/');
   } catch (e) { log_('Approval email failed: ' + e, name); }
 }
@@ -714,8 +736,14 @@ function punch_(d, me) {
       if (!onTrip) approved = 'Pending';
     } else if (s.loc && near.name !== s.loc && type === 'IN' && !evt) flags.push('At ' + near.name + ' (home: ' + s.loc + ')');
     // a clock-out at an event stall, or after midnight, waits for the owner's approval
-    const late = type === 'OUT' && (evt || date !== today_());
-    if (late) { approved = 'Pending'; flags.push(evt ? 'Event clock-out – needs approval' : 'Clock-out after midnight – needs approval'); }
+    const thr = setn_('Approval needed after (min)', 30);
+    const overEnd = type === 'OUT' && ro && ro.start && ['OFF', 'LP', 'LU', 'HOL'].indexOf(ro.shift) < 0 ? minsOn_(date, now) - endMin_(ro.start, ro.end) : 0;
+    const late = type === 'OUT' && (evt || date !== today_() || (thr > 0 && overEnd >= thr));
+    if (late) { approved = 'Pending'; flags.push(evt ? 'Event clock-out – needs approval' : date !== today_() ? 'Clock-out after midnight – needs approval' : 'Late clock-out ' + overEnd + ' min after rota end – needs approval'); }
+    // a clock-in N min or more before the rota start waits for a manager (not approved = paid from the rota start)
+    const earlyBy = type === 'IN' && ro && ro.start && ['OFF', 'LP', 'LU', 'HOL'].indexOf(ro.shift) < 0 && st !== 'OUT' ? toMin_(ro.start) - minsOn_(date, now) : 0;
+    const early = thr > 0 && earlyBy >= thr;
+    if (early) { if (approved === 'Yes') approved = 'Pending'; flags.push('Early clock-in ' + earlyBy + ' min – needs approval'); }
     // phone
     const phone = txt_(d.phone, 64), rule = setv_('One phone per person');
     if (rule !== 'Off' && phone) {
@@ -736,7 +764,8 @@ function punch_(d, me) {
     const id = 'P' + Utilities.formatDate(now, tz_(), 'yyMMddHHmmss') + Math.floor(Math.random() * 90 + 10);
     append_('punch', [[id, date, s.name, type, now, near ? near.name : '', near && near.dist != null ? Math.round(near.dist) : '', inside ? 'Yes' : 'No', lat, lng, Math.round(acc),
       selfie, phone, flags.join('; '), reason, approved, '', now]]);
-    if (late) mailApproval_(s.name, date, now, evt ? evt.name : (near ? near.name : ''), ro, evt ? 'Event clock-out.' : 'Clock-out after midnight.');
+    if (late) mailApproval_(s.name, date, now, evt ? evt.name : (near ? near.name : ''), ro, evt ? 'Event clock-out.' : date !== today_() ? 'Clock-out after midnight.' : 'Stayed ' + overEnd + ' min after the rota end.');
+    if (early) mailEarly_(s.name, date, now, near ? near.name : '', ro, earlyBy);
     return Object.assign(myDay_(me), { saved: { type: type, label: P_TYPES[type], time: hmOf_(now), loc: near ? near.name : '', inside: inside, flags: flags } });
   });
 }
@@ -771,10 +800,14 @@ function dayCalc_(date, s, ro, ps, fx, live) {
   const startOn = setv_('Attendance starts on');
   if (startOn && date < startOn) { out.status = 'Before app'; out.credit = 1; return out; }
   if (s && s.joined && date < s.joined) { out.status = 'Not joined'; return out; }
-  const valid = ps.filter(p => p.approved !== 'Pending' && p.approved !== 'No');
+  const isEarly = p => p.type === 'IN' && /Early clock-in/.test(p.flags || '');
+  const earlyIn = ps.find(isEarly) || null;
+  // an early clock-in still counts as present; until approved the day is paid only from the rota start
+  const valid = ps.filter(p => (p.approved !== 'Pending' && p.approved !== 'No') || (isEarly(p) && p.inside === 'Yes'));
+  if (earlyIn && earlyIn.approved !== 'Yes') out.flags.push('Early clock-in ' + hmOf_(earlyIn.time) + (earlyIn.approved === 'Pending' ? ' waiting for approval' : ' not approved') + ' – paid from rota start');
   // a clock-out waiting for approval (or not approved) counts only up to the rota end time
   const heldOut = ps.filter(p => p.type === 'OUT' && (p.approved === 'Pending' || p.approved === 'No')).pop() || null;
-  if (ps.some(p => p.approved === 'Pending' && p !== heldOut)) out.flags.push('Entry away from the store waiting for approval');
+  if (ps.some(p => p.approved === 'Pending' && p !== heldOut && !(isEarly(p) && p.inside === 'Yes'))) out.flags.push('Entry away from the store waiting for approval');
   if (heldOut) out.flags.push('Clock-out ' + hmOf_(heldOut.time) + (heldOut.approved === 'Pending' ? ' waiting for approval' : ' not approved') + ' – counted to rota end');
   ps.forEach(p => { if (p.flags && /Different phone/.test(p.flags)) out.flags.push('Different phone'); });
   const sS = toMin_(t.start), sE = endMin_(t.start, t.end);
@@ -827,7 +860,7 @@ function dayCalc_(date, s, ro, ps, fx, live) {
   const effIn = late <= grace || excused ? Math.min(inMin, sS) : inMin;
   const inside = Math.max(0, Math.min(outMin, sE) - Math.max(effIn, sS));
   out.credited = Math.max(0, inside - out.extraBreak);
-  const before = setv_('Count early arrival as overtime') === 'Yes' ? Math.max(0, sS - inMin) : 0;
+  const before = setv_('Count early arrival as overtime') === 'Yes' || (earlyIn && earlyIn.approved === 'Yes') ? Math.max(0, sS - inMin) : 0;
   out.ot = Math.max(0, outMin - sE) + before;
   if (nonWork) {
     out.status = 'Worked on ' + SHIFT_LABEL[shift].toLowerCase();
@@ -839,6 +872,7 @@ function dayCalc_(date, s, ro, ps, fx, live) {
   out.credit = round2_(Math.min(1, out.credited / shiftLen));
   if (!shift) out.flags.push('Not on the rota');
   if (heldOut && heldOut.approved === 'Pending') out.status = 'Clock-out to approve';
+  else if (earlyIn && earlyIn.approved === 'Pending' && !(liveNow && open)) out.status = 'Early start to approve';
   else if (liveNow && open) out.status = openBreak ? 'On break' : 'Working';
   else if (liveNow && !open && outMin < sE && valid.length && valid[valid.length - 1].type === 'OUT') out.status = 'Left';
   else out.status = out.credit >= 0.99 ? 'Present' : out.late && out.credit >= 0.5 ? 'Late' : out.credit >= 0.5 ? 'Short hours' : 'Half day or less';
@@ -903,7 +937,8 @@ function pendingList_(staff) {
   return punchesOn_(null, null).filter(p => p.approved === 'Pending' && staff.some(s => norm_(s.name) === norm_(p.name)))
     .map(p => { const ro = rotaFor_(p.name, p.date), over = ro && ro.start && p.type === 'OUT' ? minsOn_(p.date, p.time) - endMin_(ro.start, ro.end) : 0;
       return { id: p.id, date: p.date, name: p.name, type: p.type, label: P_TYPES[p.type], time: hmOf_(p.time) + (p.date !== ymd_(p.time) ? ' (+1)' : ''), loc: p.loc, dist: p.dist,
-        reason: p.reason, flags: p.flags, lat: p.lat, lng: p.lng, selfie: p.selfie ? 1 : 0, lateOut: p.type === 'OUT', shiftEnd: ro && ro.start ? ro.end : '', over: over }; });
+        reason: p.reason, flags: p.flags, lat: p.lat, lng: p.lng, selfie: p.selfie ? 1 : 0, lateOut: p.type === 'OUT', shiftEnd: ro && ro.start ? ro.end : '', over: over,
+        earlyIn: p.type === 'IN' && /Early clock-in/.test(p.flags || ''), shiftStart: ro && ro.start ? ro.start : '', early: ro && ro.start && p.type === 'IN' ? toMin_(ro.start) - minsOn_(p.date, p.time) : 0 }; });
 }
 /** Just the approval list – shown at once, before the slower attendance. */
 function pending_(d, me) {
@@ -958,6 +993,17 @@ function approvePunch_(d, me) {
     const row = i >= 0 ? all[i].slice() : [p.date, p.name, '', '', '', '', 0, '', '', '', '', ''];
     row[0] = p.date; row[6] = Math.max(n_(row[6]), day.ot);
     row[7] = [s_(row[7]), 'Clock-out ' + hmOf_(p.time) + ' approved – paid till then'].filter(Boolean).join(' · ').slice(0, 200); row[8] = me.name; row[9] = new Date();
+    if (i >= 0) fs.getRange(i + 2, 1, 1, row.length).setValues([row]); else append_('fix', [row]);
+    dirty_('fix');
+  });
+  // approving an early clock-in = paying from that time: the minutes before the rota start are added as approved overtime
+  if (d.approve && p.type === 'IN' && /Early clock-in/.test(p.flags || '') && p.approved !== 'Yes') lock_(() => {
+    const ro = rotaFor_(p.name, p.date); if (!ro || !ro.start) return;
+    const before = Math.max(0, toMin_(ro.start) - minsOn_(p.date, p.time)); if (!before) return;
+    const fs = tab_('fix'), all = rows_('fix'), i = all.findIndex(r => ymd_(r[0]) === p.date && norm_(r[1]) === norm_(p.name));
+    const row = i >= 0 ? all[i].slice() : [p.date, p.name, '', '', '', '', 0, '', '', '', '', ''];
+    row[0] = p.date; row[6] = n_(row[6]) + before;
+    row[7] = [s_(row[7]), 'Early clock-in ' + hmOf_(p.time) + ' approved – paid from then (' + before + ' min)'].filter(Boolean).join(' · ').slice(0, 200); row[8] = me.name; row[9] = new Date();
     if (i >= 0) fs.getRange(i + 2, 1, 1, row.length).setValues([row]); else append_('fix', [row]);
     dirty_('fix');
   });
