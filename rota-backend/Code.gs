@@ -321,6 +321,7 @@ function ensureSetup_() {
     dirty_();
     log_('v5: event stalls, after-midnight clock-outs, clock-out approval', 'system');
   }
+  if (!p.getProperty('V10_MGR_NOEXTRA')) { p.setProperty('V10_MGR_NOEXTRA', '1'); log_('v10: managers are never paid extra time or extra days; their early / late times need no approval', 'system'); }
   if (!p.getProperty('V8_EARLYLATE')) {              // 13 Nov 2026: early clock-in / late clock-out need a manager's approval
     p.setProperty('V8_EARLYLATE', '1');
     const sh = tab_('set'), have = rows_('set').map(r => s_(r[0]));
@@ -739,11 +740,12 @@ function punch_(d, me) {
     // a clock-out at an event stall, or after midnight, waits for the owner's approval
     const thr = setn_('Approval needed after (min)', 30);
     const overEnd = type === 'OUT' && ro && ro.start && ['OFF', 'LP', 'LU', 'HOL'].indexOf(ro.shift) < 0 ? minsOn_(date, now) - endMin_(ro.start, ro.end) : 0;
-    const late = type === 'OUT' && (evt || date !== today_() || (thr > 0 && overEnd >= thr));
+    const mgr = s.role === 'Manager';                   // managers are never paid extra time (owner, 13 Nov 2026) – their timings need no approval
+    const late = !mgr && type === 'OUT' && (evt || date !== today_() || (thr > 0 && overEnd >= thr));
     if (late) { approved = 'Pending'; flags.push(evt ? 'Event clock-out – needs approval' : date !== today_() ? 'Clock-out after midnight – needs approval' : 'Late clock-out ' + overEnd + ' min after rota end – needs approval'); }
     // a clock-in N min or more before the rota start waits for a manager (not approved = paid from the rota start)
     const earlyBy = type === 'IN' && ro && ro.start && ['OFF', 'LP', 'LU', 'HOL'].indexOf(ro.shift) < 0 && st !== 'OUT' ? toMin_(ro.start) - minsOn_(date, now) : 0;
-    const early = thr > 0 && earlyBy >= thr;
+    const early = !mgr && thr > 0 && earlyBy >= thr;
     if (early) { if (approved === 'Yes') approved = 'Pending'; flags.push('Early clock-in ' + earlyBy + ' min – needs approval'); }
     // phone
     const phone = txt_(d.phone, 64), rule = setv_('One phone per person');
@@ -1153,20 +1155,22 @@ function tripDecide_(d, me) {
 function payFor_(s, month, days, trips) {
   const dim = new Date(Number(month.slice(0, 4)), Number(month.slice(5)), 0).getDate();
   const o = { month: month, name: s.name, id: s.id, loc: s.loc, salary: s.salary, dim: dim, offs: 0, hol: 0, lp: 0, lu: 0, absent: 0, workCredit: 0, extra: 0,
-    paidDays: 0, noRota: 0, lateDays: 0, late: 0, extraBreak: 0, short: 0, otMin: 0, rate: 0, earned: 0, otPay: 0, travel: 0, total: 0, flags: 0, counted: days.length };
+    paidDays: 0, noRota: 0, lateDays: 0, late: 0, extraBreak: 0, short: 0, otMin: 0, rate: 0, earned: 0, otPay: 0, travel: 0, total: 0, flags: 0, counted: days.length,
+    manager: s.role === 'Manager', otNotPaid: 0 };
+  const mgr = o.manager;   // managers: no extra time and no extra days paid, whatever hours they work (owner, 13 Nov 2026)
   days.forEach(x => {
     if (x.status === 'Not joined') return;
     if (x.status === 'Before app') { o.paidDays += 1; return; }
     const sh = x.shift;
     if (sh === 'OFF') o.offs++; if (sh === 'HOL') o.hol++; if (sh === 'LP') o.lp++; if (sh === 'LU') o.lu++;
-    if (['OFF', 'HOL', 'LP', 'LU'].indexOf(sh) >= 0) { o.paidDays += x.credit; o.extra += x.extraDay || 0; o.paidDays += x.extraDay || 0; return; }
+    if (['OFF', 'HOL', 'LP', 'LU'].indexOf(sh) >= 0) { o.paidDays += x.credit; if (!mgr) { o.extra += x.extraDay || 0; o.paidDays += x.extraDay || 0; } return; }
     if (x.status === 'Absent' || x.status === 'No shift') { if (sh) o.absent++; else o.noRota++; return; }
     if (x.status === 'Not started' || x.status === 'Not in yet') return;
     o.workCredit += x.credit; o.paidDays += x.credit;
     if (x.late) { o.lateDays++; o.late += x.late; }
     o.extraBreak += x.extraBreak;
     o.short += Math.max(0, Math.round((1 - x.credit) * (endMin_(x.start, x.end) - toMin_(x.start))));
-    o.otMin += Math.min(x.ot, x.otApproved || 0);
+    if (mgr) o.otNotPaid += x.ot || 0; else o.otMin += Math.min(x.ot, x.otApproved || 0);
     if (x.flags.length) o.flags++;
   });
   o.workCredit = round2_(o.workCredit); o.paidDays = round2_(o.paidDays); o.extra = round2_(o.extra);
