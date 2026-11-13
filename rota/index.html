@@ -328,7 +328,7 @@ const ICON = {
 function tabList() {
   const b = S.b, t = [];
   if (b.day) t.push({ k: 'today', l: 'Today' }, { k: 'rota', l: 'My rota' }, { k: 'trips', l: 'Trips' });
-  if (can('team') || can('approve') || can('times') || can('payAdj')) t.push({ k: 'team', l: 'Team', dot: (b.pendingPunch || 0) });
+  if (can('team') || can('approve') || can('times') || can('payAdj') || can('pastTimes')) t.push({ k: 'team', l: 'Team', dot: (b.pendingPunch || 0) });
   if (can('rota')) t.push({ k: 'plan', l: 'Rota plan' });
   t.push({ k: 'more', l: 'More', dot: b.pendingTrips || 0 });
   return t;
@@ -569,6 +569,7 @@ async function viewTeam(m, date) {
   m.querySelectorAll('.person').forEach(p => p.onclick = () => personDay(ppl.find(x => x.name === p.dataset.n), () => viewTeam(m, date)));
 }
 function personDay(x, after) {
+  const past = x.date < today(), canT = past ? (can('pastTimes') || (S.b.me && S.b.me.owner)) : can('times');
   const opts = ['', 'M', 'E', 'CUST', 'OFF', 'LP', 'LU', 'HOL'];
   const sh = sheet(x.name + ' · ' + dLabel(x.date), statusChip(x) + ' <span class="small mute">' + esc(x.label) + ' ' + esc(x.start) + '–' + esc(x.end) + '</span>' +
     '<div class="kpis" style="margin:10px 0"><div class="kpi"><b>' + esc(x.in || '–') + '</b><span>in</span></div><div class="kpi"><b>' + esc(x.out || '–') + '</b><span>out</span></div><div class="kpi"><b>' + hmin(x.worked) + '</b><span>worked</span></div>' +
@@ -579,8 +580,9 @@ function personDay(x, after) {
       (p.flags ? '<div class="tiny" style="color:var(--warn)">' + esc(p.flags) + '</div>' : '') + (p.reason ? '<div class="tiny">Reason: ' + esc(p.reason) + '</div>' : '') +
       (p.approved === 'Pending' ? '<div class="row wrap" style="margin-top:4px;gap:6px"><span class="chip warn">Waiting</span>' + (can('approve') ? '<button class="btn ok sm" data-ap="' + p.id + '">' + (p.type === 'OUT' ? '✓ Pay till ' + esc(p.time) : /Early clock-in/.test(p.flags || '') ? '✓ Pay from ' + esc(p.time) : 'Approve') + '</button><button class="btn ghost sm" data-rj="' + p.id + '">' + (p.type === 'OUT' ? 'Only till rota end' : /Early clock-in/.test(p.flags || '') ? 'Only from rota start' : 'Reject') + '</button>' : '') + '</div>' : p.approved === 'No' ? '<span class="chip bad">Rejected</span>' : '') + '</div>' +
       (p.selfie ? '<button class="btn ghost sm" data-ph="' + p.id + '">📷</button>' : '') + '</div>').join('') : '<p class="small mute">No entries.</p>') + '</div></div>' +
-    ((can('times') || can('payAdj')) ? '<h3 style="font-size:12px;color:var(--mute)">CORRECT THIS DAY</h3><div class="card">' +
-    (can('times') ? '<p class="tiny mute" style="margin-top:0">Times – for a forgotten clock-out, leave etc. Leave a box empty to keep the app\'s figure.</p>' +
+    ((canT || can('payAdj')) ? '<h3 style="font-size:12px;color:var(--mute)">CORRECT THIS DAY</h3><div class="card">' +
+    (past ? '<div class="warnbox">Earlier day – only the owner can change a manager\'s day; for staff, the owner or a person given the "earlier days" right. Write the genuine reason in full.</div>' : '') +
+    (canT ? '<p class="tiny mute" style="margin-top:0">Times – for a forgotten clock-out, leave etc. Leave a box empty to keep the app\'s figure.</p>' +
       '<label class="f">Day is</label><select class="i" id="fs">' + opts.map(o => '<option value="' + o + '"' + ((x.fixStatus || '') === o ? ' selected' : '') + '>' + (o ? SHIFT[o] : 'As per rota') + '</option>').join('') + '</select>' +
       '<div class="row"><div class="grow"><label class="f">In</label><input class="i" type="time" id="fi" value="' + esc(x.fixIn || '') + '"></div><div class="grow"><label class="f">Out</label><input class="i" type="time" id="fo" value="' + esc(x.fixOut || '') + '"></div></div>' +
       '<label class="f">Break (min)</label><input class="i" type="number" id="fb" inputmode="numeric" value="' + esc(x.fixBrk === '' || x.fixBrk == null ? '' : x.fixBrk) + '">' : '') +
@@ -588,7 +590,7 @@ function personDay(x, after) {
       '<label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="flate"' + (x.lateOk ? ' checked' : '') + '> Excuse late arrival (pay as on time)</label>' +
       '<div class="row"><div class="grow"><label class="f">Pay extra break (min)</label><input class="i" type="number" id="fbp" inputmode="numeric" value="' + (x.brkPaid || '') + '" placeholder="' + ((x.extraBreak || 0) ? x.extraBreak + ' min over' : '0') + '"></div>' +
       '<div class="grow"><label class="f">Pay overtime (min)</label><input class="i" type="number" id="fot" inputmode="numeric" value="' + (x.otApproved || '') + '" placeholder="' + (x.ot ? 'stayed ' + x.ot + 'm extra' : '0') + '"></div></div>' : '') +
-    '<label class="f">Reason (required)</label><input class="i" id="fn" placeholder="e.g. Forgot to clock out – left at 7 pm"><br><br>' +
+    '<label class="f">Reason (required' + (past ? ' – at least 15 letters' : '') + ')</label><input class="i" id="fn" placeholder="e.g. Forgot to clock out – left at 7 pm, confirmed by manager"><br><br>' +
     '<div class="row"><button class="btn grow" id="fgo">Save</button>' + (x.fixed && can('times') && can('payAdj') ? '<button class="btn ghost" id="fclr">Remove</button>' : '') + '</div></div>'
     : '<p class="tiny mute">Only the owner (or someone given the right) can change times or pay.</p>'));
   const v = (id, dflt) => { const e = sh.el.querySelector(id); return e ? (e.type === 'checkbox' ? e.checked : e.value) : dflt; };
