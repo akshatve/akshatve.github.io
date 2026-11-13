@@ -2094,6 +2094,7 @@ async function viewMore() {
   if (S.user && can('corporate')) h += '<div class="card"><h3>🏢 Corporate orders (Tally)</h3><div class="small mute">Upload the Tally invoice PDF – the sale goes into the Sales report and the items (and hamper contents) come out of stock.</div><button class="btn sm" id="col" style="margin-top:10px">Open</button></div>';
   if (can('sales') || isOwnerUi()) h += '<div class="card"><h3>🏦 Bank tally – UPI &amp; card</h3><div class="small mute">Next day: UPI and card sold against what ICICI and Paytm paid into the bank (read from the ICICI emails).</div><button class="btn sm" id="btl" style="margin-top:10px">Open</button></div>';
   if (can('sales') || isOwnerUi()) h += '<div class="card"><h3>💰 Cash pickups</h3><div class="small mute">Every time cash is taken from a store drawer – who took it, how much, and whether the owner has confirmed receiving it.</div><button class="btn sm" id="kpl" style="margin-top:10px">Open</button></div>';
+  h += '<div class="card"><h3>🧾 Payout vouchers</h3><div class="small mute">Cash paid out of the store drawers – voucher no., who took it, what for, and the signed copy.</div><button class="btn sm" id="pvl" style="margin-top:10px">Open</button></div>';
   if (can('sales')) h += '<div class="card"><h3>UPI payments (bank emails)</h3><div class="small mute">Every payment ICICI emails about, and the bill it belongs to. Payments not linked to a bill are flagged.</div><button class="btn sm" id="upil" style="margin-top:10px">Open</button></div>';
   if (canApprove() && !can('approve')) h += '<div class="card"><h3>Store access requests</h3><div class="small mute">Staff covering a shift at another store ask here for one day.</div><button class="btn sm" id="apv" style="margin-top:10px">Requests</button></div>';
   if (can('approve')) h += '<div class="card"><h3>Discount approvals</h3><div class="small mute">Discount requests from staff and managers appear on your screen within seconds while the app is open. One-time codes are a back-up you can read out on the phone (each works once, up to 25%).</div>' +
@@ -2120,6 +2121,7 @@ async function viewMore() {
   if ($('#jlb')) $('#jlb').onclick = () => labelSheet();
   if ($('#col')) $('#col').onclick = () => corpScreen();
   if ($('#kpl')) $('#kpl').onclick = () => cashPickupsSheet(isOwnerUi() ? 'waiting' : 'all');
+  if ($('#pvl')) $('#pvl').onclick = () => pvListSheet();
   if ($('#apc')) $('#apc').onclick = codesSheet;
   if (!can('settings')) return;
   $('#sy').onclick = async () => { const r = await run('Syncing…', () => call('syncNc')); toast('Night Closing: ' + r.products); };
@@ -3188,7 +3190,7 @@ function drawToday() {
   const r = B.today, s = r.sum;
   box.innerHTML = '<div class="row"><h3 class="grow" style="margin:0">' + (r.q ? 'Search: ' + esc(r.q) : (r.date && r.date !== today() ? 'Bills of ' + esc(r.date.split('-').reverse().join('-')) : 'Today\'s bills') + ' · ' + esc(LOC_SHORT[B.loc] || locLabel(B.loc))) + '</h3>' +
     '<input class="i" type="date" id="b_day" style="max-width:150px" value="' + esc(r.q ? '' : (r.date || today())) + '" title="Show bills of another day">' +
-    (B.loc ? '<button class="btn sm ghost" id="b_dcl" title="Count cash, card and UPI at the end of the day">Close the day</button>' : '') +
+    (B.loc ? '<button class="btn sm ghost" id="b_pvo" title="Cash paid out of the drawer – issue a voucher the person signs">🧾 Pay out</button><button class="btn sm ghost" id="b_dcl" title="Count cash, card and UPI at the end of the day">Close the day</button>' : '') +
     '<input class="i" id="b_find" style="max-width:220px" placeholder="Find bill no. / mobile" value="' + esc(r.q || '') + '"></div>' +
     (s ? '<div class="bigp"><div><span>' + s.bills + ' bill' + (s.bills === 1 ? '' : 's') + '</span><b>₹' + money(s.total) + '</b></div><div><span>Cash</span><b>₹' + money(s.cash) + '</b></div><div><span>UPI</span><b>₹' + money(s.upi) + '</b></div><div><span>Card</span><b>₹' + money(s.card) + '</b></div></div>' +
       (s.short ? '<div class="tiny" style="color:var(--bad)">Short payments: ₹' + money(s.short) + ' on ' + s.shortBills + ' bill' + (s.shortBills === 1 ? '' : 's') + ' (Cash / UPI / Card show what was actually received)</div>' : '') +
@@ -3198,6 +3200,7 @@ function drawToday() {
       '<div class="nowrap"><b class="' + (x.status === 'Cancelled' ? 'cx' : '') + '">₹' + money(x.total) + '</b></div></div>').join('') : '<div class="empty small">No bills yet.</div>') + '</div>';
   $$('.li', box).forEach(li => li.onclick = () => openBill(li.dataset.no));
   if ($('#b_dcl')) $('#b_dcl').onclick = () => dayCloseSheet(B.loc, ($('#b_day') && $('#b_day').value) || today());
+  if ($('#b_pvo')) $('#b_pvo').onclick = () => pvForm(B.loc, today(), null, null);
   $('#b_day').onchange = async e => { const v = e.target.value || today(); const res = await run('Loading…', () => call('listBills', { date: v, loc: B.loc })).catch(() => null); if (res) { B.today = res; drawToday(); } };
   const f = $('#b_find');
   f.onkeydown = async e => {
@@ -3832,8 +3835,10 @@ async function dayCloseSheet(loc, date) {
       '<h3>2 · QueueBuster sales today</h3><div class="tiny mute" style="margin-bottom:6px">' + (q.bills ? 'Imported from QueueBuster (' + q.bills + ' bills).' : 'If anyone billed in QueueBuster today, type its day totals (QueueBuster → Reports → Daily payment breakup). Leave 0 if not.') + '</div>' +
       '<div class="grid3"><div><label class="f">Cash</label>' + inp('dc_qc', val('Cash sales (QueueBuster) ₹', q.bills ? q.cash : '')) + '</div><div><label class="f">UPI</label>' + inp('dc_qu', val('UPI sales (QueueBuster) ₹', q.bills ? q.upi : '')) + '</div><div><label class="f">Card</label>' + inp('dc_qk', val('Card sales (QueueBuster) ₹', q.bills ? q.card : '')) + '</div></div>' +
       '<h3>3 · Cash</h3><div class="grid2"><div><label class="f">Opening cash (float)</label>' + inp('dc_op', val('Opening cash ₹', R.opening)) + (R.opening != null && !R.saved ? '<div class="tiny mute">left in the drawer on ' + esc(R.openingFrom.split('-').reverse().join('-')) + '</div>' : '') + '</div>' +
+      (pvOn(R) ? '<div><label class="f">Cash paid out today</label><input class="i num" id="dc_po" readonly value="' + pvTot(R) + '"><div class="tiny mute">from payout vouchers</div><input type="hidden" id="dc_pn" value=""></div>' +
+        '<div class="span2">' + pvDayBox(R) + '</div>' :
       '<div><label class="f">Cash paid out today</label>' + inp('dc_po', val('Cash paid out ₹', '')) + '</div>' +
-      '<div class="span2"><input class="i" id="dc_pn" placeholder="Paid out for… (e.g. porter, tea, cleaning)" value="' + esc(val('Paid out note', '')) + '"></div>' +
+      '<div class="span2"><input class="i" id="dc_pn" placeholder="Paid out for… (e.g. porter, tea, cleaning)" value="' + esc(val('Paid out note', '')) + '"></div>') +
       '<div><label class="f">Cash handed over / deposited</label>' + inp('dc_dp', val('Cash deposited ₹', R.pickedSep || '')) + '</div>' +
       '<div><label class="f">Taken by</label><select class="i" id="dc_cb"><option value="">– who took it? –</option>' + (R.people || []).map(p => '<option' + (p === dcTaker(R) ? ' selected' : '') + '>' + esc(p) + '</option>').join('') + '</select></div></div>' +
       ((R.pickups || []).length ? '<div class="tiny" style="margin-top:6px">' + R.pickups.map(p => '💰 ' + rs(p.amount) + ' taken by <b>' + esc(p.by) + '</b> (' + esc(p.from === 'Day close' ? 'day close' : 'recorded ' + new Date(p.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })) + ') – <span class="' + (p.status === 'Confirmed' ? 'dcok' : 'dcbad') + '">' + esc(p.status === 'Confirmed' ? 'confirmed by owner ✓' : p.status) + '</span>').join('<br>') + '</div>' : '') +
@@ -3868,6 +3873,8 @@ async function dayCloseSheet(loc, date) {
       if (r) { draw(r); toast((r.saved && r.saved.Status === 'Tallied' ? 'Day closed – everything tallies ✓' : 'Day closed – difference recorded') + (/^sent to (\d+)/.test(r.mailed || '') ? ' · emailed ' + RegExp.$1 : '')); }
     };
     $('#dc_pk', m).onclick = () => cashPickupForm(R.loc, R.date, R.people, () => load());
+    if ($('#dc_pv', m)) $('#dc_pv', m).onclick = () => pvForm(R.loc, R.date, R.people, () => load());
+    $$('[data-pvno]', m).forEach(el => el.onclick = () => pvView((R.vouchers || []).find(x => x.no === el.dataset.pvno), { onChange: () => load(), canCancel: R.canCheck, canReplace: R.canCheck }));
     if ($('#dc_ck', m)) $('#dc_ck', m).onclick = async () => { const x = await run('Saving…', () => call('dayCloseCheck', { date: R.date, loc: R.loc, reopen: sv.Status === 'Checked' })).catch(() => null); if (x) load(); };
   };
   const load = async () => { $('#dc_b', m).innerHTML = '<div class="empty"><span class="spin dk"></span></div>'; try { draw(await call('dayCloseGet', { date: $('#dc_d', m).value, loc: $('#dc_l', m).value })); } catch (e) { $('#dc_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
@@ -3925,6 +3932,145 @@ async function cashPickupsSheet(startStatus) {
   };
   const load = async () => { try { draw(await call('cashPickupList', q())); } catch (e) { $('#kp_x', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
   ['kp_st', 'kp_f', 'kp_t', 'kp_l'].forEach(id => $('#' + id, m).onchange = load); load();
+}
+/* ───── cash payout vouchers: every cash payout gets a numbered voucher, signed by the person who takes the cash (v18.43) ───── */
+const PV_CATS0 = ['Porter / delivery', 'Tea / snacks / water', 'Cleaning / housekeeping', 'Staff advance', 'Staff travel / fuel', 'Repairs / maintenance', 'Stationery / printing', 'Packing material', 'Event expense', 'Other'];
+const pvRs = x => '₹' + money(x || 0).replace(/\.00$/, '');
+const pvLoc = l => l === 'Event' ? 'Event stall' : (LOC_SHORT[l] || l);
+const pvD = d => String(d || '').split('-').reverse().join('-');
+function pvOn(R) { return (R.vouchers || []).length > 0 || (R.pvFrom && R.date >= R.pvFrom); }
+function pvTot(R) { return Math.round((R.vouchers || []).reduce((a, v) => a + v.amount, 0) * 100) / 100; }
+function pvDayBox(R) {
+  const vs = R.vouchers || [], miss = vs.filter(v => !v.signed).length;
+  return '<div class="card" style="padding:10px 12px;margin:4px 0 0">' + (vs.length ? vs.map(v => '<div class="row" data-pvno="' + esc(v.no) + '" style="cursor:pointer;padding:5px 0;border-bottom:1px solid var(--line,#eee);flex-wrap:nowrap"><div class="grow small"><b>' + esc(v.no.split('/').pop()) + '</b> · ' + esc(v.to) + ' · ' + esc(v.cat) +
+      '<div class="tiny mute">' + esc(v.purpose) + '</div></div><b class="nowrap">' + pvRs(v.amount) + '</b><span class="pill ' + (v.signed ? 'p-ok' : 'p-warn') + '" style="margin-left:6px">' + (v.signed ? 'signed ✓' : 'sign!') + '</span></div>').join('')
+    : '<div class="tiny mute">No cash paid out today. Every payout needs a voucher – tap below when you pay someone.</div>') +
+    (miss ? '<div class="tiny" style="color:var(--bad);margin-top:6px">⚠ ' + miss + ' voucher' + (miss > 1 ? 's' : '') + ' without the signed copy – tap it and upload the photo or let the person sign on the screen.</div>' : '') +
+    '<button class="btn ghost sm" id="dc_pv" style="margin-top:8px">🧾 New payout voucher</button></div>';
+}
+function pvForm(loc, date, people, done) {
+  const cats = PV_CATS0;
+  const m = modal('🧾 Cash payout voucher', '<div class="small" style="margin-bottom:8px"><b>' + esc(pvLoc(loc)) + '</b> · ' + esc(pvD(date || today())) + '</div>' +
+    '<div class="grid2"><div><label class="f">Amount paid ₹</label><input class="i num" id="pv_a" inputmode="decimal" placeholder="0"></div>' +
+    '<div><label class="f">What for</label><select class="i" id="pv_c"><option value="">– pick –</option>' + cats.map(c => '<option>' + esc(c) + '</option>').join('') + '</select></div>' +
+    '<div><label class="f">Paid to (person taking the cash)</label><input class="i" id="pv_t" list="pv_tl" placeholder="Name" autocomplete="off"><datalist id="pv_tl">' + (people || []).map(p => '<option value="' + esc(p) + '">').join('') + '</datalist></div>' +
+    '<div><label class="f">Their mobile (optional)</label><input class="i" id="pv_p" inputmode="tel" placeholder="10 digits"></div></div>' +
+    '<label class="f">Details</label><input class="i" id="pv_u" placeholder="e.g. porter for Nutcraft delivery, 6 teas for staff, floor cleaning">' +
+    '<div class="tiny mute" style="margin-top:6px">After saving, the person signs the voucher – on paper (then upload a photo) or on this screen. It goes into tonight’s day close as “cash paid out”.</div>' +
+    '<button class="btn gold block" id="pv_s" style="margin-top:12px">Save voucher</button>');
+  $('#pv_s', m).onclick = async () => {
+    const r = await run('Saving the voucher…', () => call('pvCreate', { loc: loc, date: date || today(), amount: $('#pv_a', m).value.trim(), cat: $('#pv_c', m).value, to: $('#pv_t', m).value.trim(), phone: $('#pv_p', m).value.trim(), purpose: $('#pv_u', m).value.trim() })).catch(() => null);
+    if (!r) return;
+    m.close(); toast('Voucher ' + r.voucher.no + ' saved – now get it signed');
+    if (done) done(r.voucher);
+    pvView(r.voucher, { onChange: done });
+  };
+}
+function pvCard(v) {
+  return '<div class="pvc" style="border:1.5px solid #1F2A44;border-radius:10px;padding:14px 14px 10px;background:#fff;color:#1d2433">' +
+    '<div style="text-align:center;font-weight:800;letter-spacing:.14em;color:#1F2A44;font-size:18px">NUTVIQUE</div><div style="text-align:center;font-size:12px">NUTZY FOODS PRIVATE LIMITED</div>' +
+    '<div style="text-align:center;font-weight:700;letter-spacing:.18em;border:1px solid #1F2A44;margin:8px 0;padding:3px;font-size:13px">CASH PAYMENT VOUCHER</div>' +
+    '<table style="width:100%;font-size:13px;border-collapse:collapse">' +
+    [['Voucher no.', '<b>' + esc(v.no) + '</b>'], ['Date', esc(pvD(v.date)) + ' ' + esc(v.time)], ['Store', esc(v.loc === 'Event' ? 'Event stall' : v.loc)], ['Paid to', '<b>' + esc(v.to) + '</b>' + (v.phone ? ' · ' + esc(v.phone) : '')], ['For', esc(v.cat) + ' – ' + esc(v.purpose)], ['Amount', '<b style="font-size:18px">' + pvRs(v.amount) + '</b>'], ['In words', esc(v.words)], ['Paid by', esc(v.by)]]
+      .map(x => '<tr><td style="padding:3px 6px 3px 0;color:#666;white-space:nowrap;vertical-align:top">' + x[0] + '</td><td style="padding:3px 0">' + x[1] + '</td></tr>').join('') + '</table>' +
+    '<div style="margin-top:28px;display:flex;gap:16px;font-size:12px;color:#444"><div style="flex:1;border-top:1px solid #333;padding-top:4px">Received the above amount in cash<br><b>Signature of ' + esc(v.to) + '</b></div><div style="flex:1;border-top:1px solid #333;padding-top:4px">Paid by<br><b>' + esc(v.by) + '</b></div></div></div>';
+}
+function pvView(v, opts) {
+  opts = opts || {};
+  const m = modal('🧾 ' + v.no, '<div id="pv_b"></div>', { onClose: () => { if (opts.changed && opts.onChange) opts.onChange(v); } });
+  const draw = () => {
+    $('#pv_b', m).innerHTML = (v.status === 'Cancelled' ? '<div class="warnbox bad" style="margin-bottom:8px">Cancelled by ' + esc(v.cxBy) + ' – ' + esc(v.cxReason) + '</div>' : v.signed ? '<div class="okbox" style="margin-bottom:8px">✓ Signed copy saved by ' + esc(v.signedBy) + '</div>' : '<div class="warnbox" style="margin-bottom:8px">⚠ Not signed yet – the person who took the cash must sign it.</div>') +
+      pvCard(v) +
+      (v.status !== 'Cancelled' ? '<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">' +
+        (!v.signed || opts.canReplace ? '<button class="btn gold" id="pv_sg">✍️ Sign on this screen</button><label class="btn ghost" style="cursor:pointer">📷 Upload signed voucher<input type="file" id="pv_up" accept="image/*,application/pdf" style="display:none"></label>' : '') +
+        '<button class="btn ghost" id="pv_pr">🖨 Print voucher</button>' + (v.signed ? '<button class="btn ghost" id="pv_vw">👁 See signed copy</button>' : '') +
+        (opts.canCancel ? '<button class="btn ghost" id="pv_cx" style="color:var(--bad)">Cancel voucher</button>' : '') + '</div>' : '') +
+      '<div id="pv_img" style="margin-top:10px"></div>';
+    const got = r => { v = r.voucher; opts.changed = true; draw(); toast('Signed copy saved ✓'); };
+    if ($('#pv_sg', m)) $('#pv_sg', m).onclick = () => pvSignPad(v, got);
+    if ($('#pv_up', m)) $('#pv_up', m).onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      const b = await fileToBase64(f).catch(err => { toast(err.message, true); return null; }); if (!b) return;
+      const r = await run('Saving the signed voucher…', () => call('pvAttach', { no: v.no, b64: b.base64, mime: b.mime, kind: 'photo' })).catch(() => null); if (r) got(r);
+    };
+    $('#pv_pr', m) && ($('#pv_pr', m).onclick = () => pvPrint(v));
+    if ($('#pv_vw', m)) $('#pv_vw', m).onclick = async () => {
+      const r = await run('Loading…', () => call('pvSlip', { no: v.no })).catch(() => null); if (!r) return;
+      const url = 'data:' + r.mime + ';base64,' + r.b64;
+      $('#pv_img', m).innerHTML = /pdf/.test(r.mime) ? '<a class="btn ghost" download="' + esc(r.name) + '" href="' + url + '">⬇ Download signed copy (PDF)</a>' : '<img src="' + url + '" style="max-width:100%;border:1px solid #ddd;border-radius:8px">';
+    };
+    if ($('#pv_cx', m)) $('#pv_cx', m).onclick = async () => {
+      const why = prompt('Why is voucher ' + v.no + ' cancelled?') || ''; if (!why.trim()) return;
+      const r = await run('Cancelling…', () => call('pvCancel', { no: v.no, reason: why })).catch(() => null); if (r) { v = r.voucher; opts.changed = true; draw(); toast('Voucher cancelled'); }
+    };
+  };
+  draw();
+}
+function pvPrint(v) {
+  const w = window.open('', '_blank'); if (!w) { toast('Allow pop-ups to print', true); return; }
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(v.no) + '</title><style>body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:16px}@page{size:A5;margin:10mm}.c{max-width:520px;margin:0 auto}.cp{margin-top:18px;border-top:1px dashed #999;padding-top:18px}@media print{button{display:none}}</style></head><body><div class="c">' +
+    pvCard(v) + '<div class="cp">' + pvCard(Object.assign({}, v, { no: v.no + ' (store copy)' })) + '</div><button onclick="print()" style="display:block;margin:16px auto;padding:10px 18px">Print</button></div></body></html>');
+  w.document.close(); setTimeout(() => { try { w.focus(); w.print(); } catch (e) { } }, 400);
+}
+function pvSignPad(v, done) {
+  const m = modal('✍️ Signature – ' + v.to, '<div class="small" style="margin-bottom:6px">' + esc(v.to) + ' received <b>' + pvRs(v.amount) + '</b> in cash (' + esc(v.cat) + '). Ask them to sign in the box with a finger.</div>' +
+    '<canvas id="pv_cv" style="width:100%;height:220px;border:1.5px dashed #1F2A44;border-radius:10px;background:#fff;touch-action:none"></canvas>' +
+    '<div class="row" style="margin-top:10px"><button class="btn ghost" id="pv_cl">Clear</button><div class="grow"></div><button class="btn gold" id="pv_ok">Save signature</button></div>', { sticky: true });
+  const cv = $('#pv_cv', m), ctx = cv.getContext('2d'), dpr = window.devicePixelRatio || 1;
+  const size = () => { const r = cv.getBoundingClientRect(); cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); ctx.scale(dpr, dpr); ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111'; };
+  setTimeout(size, 50);
+  let down = false, ink = 0, last = null;
+  const pt = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  cv.onpointerdown = e => { down = true; last = pt(e); cv.setPointerCapture(e.pointerId); };
+  cv.onpointermove = e => { if (!down) return; const p = pt(e); ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); ink += Math.abs(p[0] - last[0]) + Math.abs(p[1] - last[1]); last = p; };
+  cv.onpointerup = cv.onpointercancel = () => { down = false; };
+  $('#pv_cl', m).onclick = () => { ctx.clearRect(0, 0, cv.width, cv.height); ink = 0; };
+  $('#pv_ok', m).onclick = async () => {
+    if (ink < 60) { toast('Please sign in the box first', true); return; }
+    // the saved copy is the whole voucher with the signature on it
+    const W = 900, H = 760, o = document.createElement('canvas'); o.width = W; o.height = H; const g = o.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.fillStyle = '#1F2A44'; g.textAlign = 'center';
+    g.font = 'bold 40px Arial'; g.fillText('NUTVIQUE', W / 2, 60); g.font = '22px Arial'; g.fillText('NUTZY FOODS PRIVATE LIMITED', W / 2, 92); g.font = 'bold 26px Arial'; g.fillText('CASH PAYMENT VOUCHER', W / 2, 136);
+    g.textAlign = 'left'; g.fillStyle = '#111';
+    const rows = [['Voucher no.', v.no], ['Date', pvD(v.date) + ' ' + v.time], ['Store', v.loc], ['Paid to', v.to + (v.phone ? '  ·  ' + v.phone : '')], ['For', v.cat + ' – ' + v.purpose], ['Amount', pvRs(v.amount)], ['In words', v.words], ['Paid by', v.by]];
+    let y = 186; rows.forEach(r => { g.font = '22px Arial'; g.fillStyle = '#666'; g.fillText(r[0], 40, y); g.fillStyle = '#111'; g.font = (r[0] === 'Amount' ? 'bold 30px' : '24px') + ' Arial'; const t = String(r[1]); g.fillText(t.length > 52 ? t.slice(0, 52) + '…' : t, 210, y); y += 40; });
+    g.drawImage(cv, 40, y, 520, 520 * cv.height / cv.width);
+    y += 520 * cv.height / cv.width + 10; g.strokeStyle = '#333'; g.beginPath(); g.moveTo(40, y); g.lineTo(560, y); g.stroke();
+    g.font = '20px Arial'; g.fillStyle = '#444'; g.fillText('Received the above amount in cash – signature of ' + v.to, 40, y + 28);
+    g.fillText('Signed on screen ' + new Date().toLocaleString('en-IN'), 40, y + 56);
+    const b64 = o.toDataURL('image/png').split(',')[1];
+    const r = await run('Saving the signature…', () => call('pvAttach', { no: v.no, b64: b64, mime: 'image/png', kind: 'screen' })).catch(() => null);
+    if (r) { m.close(); done(r); }
+  };
+}
+async function pvListSheet() {
+  const L = ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120', 'Event'];
+  const m = modal('🧾 Payout vouchers', '<div class="row" style="gap:6px;flex-wrap:wrap"><select class="i" id="pl_st" style="max-width:170px"><option value="live">All (not cancelled)</option><option value="pending">Signature pending</option><option value="cancelled">Cancelled</option><option value="all">Everything</option></select>' +
+    '<input class="i" type="date" id="pl_f" style="max-width:150px"><input class="i" type="date" id="pl_t" max="' + today() + '" style="max-width:150px"><select class="i" id="pl_l" style="max-width:170px"><option value="">All stores</option>' +
+    L.map(l => '<option value="' + esc(l) + '">' + esc(pvLoc(l)) + '</option>').join('') + '</select></div><div id="pl_x" style="margin-top:10px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
+  const d = new Date(); $('#pl_f', m).value = today().slice(0, 8) + '01'; $('#pl_t', m).value = today();
+  const q = () => ({ status: $('#pl_st', m).value, from: $('#pl_f', m).value, to: $('#pl_t', m).value, loc: $('#pl_l', m).value });
+  let R = null;
+  const draw = r => {
+    R = r; const t = r.totals;
+    $('#pl_x', m).innerHTML = '<div class="bigp"><div><span>Paid out</span><b>' + pvRs(t.all) + '</b><span>' + t.count + ' voucher' + (t.count === 1 ? '' : 's') + '</span></div><div><span>Signed</span><b>' + pvRs(t.signed) + '</b><span>&nbsp;</span></div><div><span>Signature pending</span><b style="color:' + (t.pending ? 'var(--bad)' : 'inherit') + '">' + pvRs(t.pending) + '</b><span>' + (t.pendingAll ? t.pendingAll + ' in all, any date' : '&nbsp;') + '</span></div></div>' +
+      (r.byCat.length ? '<div class="tiny mute" style="margin:6px 0">By head: ' + r.byCat.map(c => esc(c.cat) + ' ' + pvRs(c.amount)).join(' · ') + (r.byLoc.length > 1 ? '<br>By store: ' + r.byLoc.map(c => esc(pvLoc(c.loc)) + ' ' + pvRs(c.amount)).join(' · ') : '') + '</div>' : '') +
+      (r.list.length ? '<div class="tscroll"><table class="t"><tr><th>Voucher</th><th>Date</th><th>Store</th><th>Paid to</th><th>For</th><th class="n">Amount</th><th>Signed</th></tr>' + r.list.map(v => '<tr data-pv="' + esc(v.no) + '" style="cursor:pointer' + (v.status === 'Cancelled' ? ';opacity:.5;text-decoration:line-through' : '') + '"><td class="nowrap">' + esc(v.no) + '</td><td class="nowrap">' + esc(pvD(v.date)) + '</td><td>' + esc(pvLoc(v.loc)) + '</td><td>' + esc(v.to) + '</td><td class="small">' + esc(v.cat) + '<div class="tiny mute">' + esc(v.purpose) + '</div></td><td class="n">' + pvRs(v.amount) + '</td><td>' + (v.status === 'Cancelled' ? 'cancelled' : v.signed ? '✓' : '<span style="color:var(--bad)">pending</span>') + '</td></tr>').join('') + '</table></div>' : '<div class="empty small">No vouchers.</div>') +
+      '<div class="row" style="margin-top:10px;gap:8px"><button class="btn ghost sm" id="pl_new">+ New voucher</button><button class="btn ghost sm" id="pl_csv">⬇ Download (Excel / CSV)</button></div>';
+    $$('[data-pv]', m).forEach(tr => tr.onclick = () => { const v = R.list.find(x => x.no === tr.dataset.pv); pvView(v, { canCancel: R.canCancel && v.status !== 'Cancelled', canReplace: R.canCancel, onChange: () => load() }); });
+    $('#pl_new', m).onclick = () => {
+      const mine = L.filter(l => !B.boot || !B.boot.locs || B.boot.locs.some(x => x.name === l));
+      const lm = modal('Which store?', mine.map(l => '<button class="btn ghost block" data-pl="' + esc(l) + '" style="margin-bottom:6px">' + esc(l === 'Event' ? 'Event stalls' : l) + '</button>').join(''));
+      $$('[data-pl]', lm).forEach(b => b.onclick = () => { lm.close(); pvForm(b.dataset.pl, today(), null, () => load()); });
+    };
+    $('#pl_csv', m).onclick = () => {
+      const rows = [['Voucher no.', 'Date', 'Time', 'Store', 'Paid to', 'Phone', 'Head', 'Details', 'Amount', 'Paid by', 'Status', 'Signed by']].concat(R.list.map(v => [v.no, v.date, v.time, v.loc, v.to, v.phone, v.cat, v.purpose, v.amount, v.by, v.status, v.signedBy]));
+      const csv = '﻿' + rows.map(r => r.map(x => '"' + String(x == null ? '' : x).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'Payout-vouchers-' + R.from + '-to-' + R.to + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+    };
+  };
+  const load = async () => { const x = q(); if (x.status === 'live') x.status = 'live'; try { draw(await call('pvList', x)); } catch (e) { $('#pl_x', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
+  ['pl_st', 'pl_f', 'pl_t', 'pl_l'].forEach(id => $('#' + id, m).onchange = load); load();
 }
 /* ───── next-day bank tally: UPI & card sold vs what ICICI / Paytm paid in (v18.24) ───── */
 async function bankTallySheet() {
@@ -3999,7 +4145,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '5aa76decc2';
+<script>window.NV_BUILD = '3043022d71';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
