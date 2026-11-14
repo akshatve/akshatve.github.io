@@ -10,5 +10,17 @@
                 "81:13:25:2C:A9:7F:81:CE:84:CB:D6:2E:58:38:56:D3:10:10:D7:61:A6:8C:31:2A:93:8C:C6:51:F1:9B:94:86"
             ]
         }
+    },
+    {
+        "relation": [
+            "delegate_permission/common.handle_all_urls"
+        ],
+        "target": {
+            "namespace": "android_app",
+            "package_name": "com.nutzyfoods.staffrota",
+            "sha256_cert_fingerprints": [
+                "FC:43:AE:0D:C6:1A:28:65:F4:72:44:69:2D:56:CF:B7:B3:3E:88:D2:15:B8:A0:FC:75:49:F1:D0:CC:90:89:52"
+            ]
+        }
     }
 ]
