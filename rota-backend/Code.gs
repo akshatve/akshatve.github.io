@@ -11,7 +11,7 @@
  *    the Payroll screen turns them into salary (monthly salary ÷ days in month × paid days) + approved overtime + travel.
  *  • Trips on company expense: start / end with GPS (own bike / car paid per km), Porter / Rapido / cab etc. with the
  *    actual fare + receipt screenshot. Manager approves; approved amounts go into that month's payroll.
- *  • Rota: Morning 10–7 / Evening 1–10, one weekly off per person on Tue, Wed or Thu only; auto-plan per store,
+ *  • Rota: Morning 10–7 / Evening 1–10, one weekly off per person on Mon–Fri (auto-plan spreads them over Tue–Thu); auto-plan per store,
  *    edit any cell, publish to staff.
  *
  * Editor helpers (Run menu): setup, installTriggers, nightlySummary, testInventoryLink.
@@ -24,7 +24,7 @@ const HO = 'Head Office';
 const STORES = ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120'];
 const SHIFT_CODES = ['M', 'E', 'OFF', 'LP', 'LU', 'HOL', 'CUST'];
 const SHIFT_LABEL = { M: 'Morning', E: 'Evening', OFF: 'Weekly off', LP: 'Leave (paid)', LU: 'Leave (unpaid)', HOL: 'Holiday', CUST: 'Custom' };
-const OFF_DAYS = [2, 3, 4];                          // Tue, Wed, Thu (JS getDay) – the normal weekly-off days
+const OFF_DAYS = [1, 2, 3, 4, 5];                    // Mon–Fri (JS getDay) – the normal weekly-off days (Mon & Fri added 15 Nov 2026)
 /** Extra weekly-off days the owner allowed for single weeks: {'2026-11-02': [1, 5]} (from the "Extra off days by week" setting). */
 function extraOffMap_() {
   const out = {};
@@ -36,8 +36,8 @@ function extraOffMap_() {
   return out;
 }
 function offDaysFor_(week) { return OFF_DAYS.concat(extraOffMap_()[week] || []); }
-function offDaysTxt_(week) { const x = extraOffMap_()[week] || []; return 'Tuesday, Wednesday or Thursday' + (x.length ? ' (this week also ' + x.map(d => DAY_NAMES[d]).join(', ') + ')' : ''); }
-/** Owner (Settings right): which extra days may be weekly offs in one week. d = {week, days:[1,5]} */
+function offDaysTxt_(week) { const x = extraOffMap_()[week] || []; return 'Monday to Friday' + (x.length ? ' (this week also ' + x.map(d => DAY_NAMES[d]).join(', ') + ')' : ''); }
+/** Owner / "offDays" right: which extra days may be weekly offs in one week. d = {week, days:[1,5]} */
 function offDaysSave_(d, me) {
   const week = monday_(d.week);
   const days = (d.days || []).map(Number).filter(x => x >= 0 && x <= 6 && OFF_DAYS.indexOf(x) < 0).filter((x, i, a) => a.indexOf(x) === i).sort();
@@ -48,7 +48,7 @@ function offDaysSave_(d, me) {
   const sh = tab_('set'), keys = rows_('set').map(r => s_(r[0])), i = keys.indexOf('Extra off days by week');
   if (i >= 0) sh.getRange(i + 2, 2).setValue(val); else sh.appendRow(['Extra off days by week', val, DEFAULT_SETTINGS.find(x => x[0] === 'Extra off days by week')[2]]);
   dirty_('set');
-  log_('Off days for week ' + week + ': Tue–Thu' + (days.length ? ' + ' + days.map(x => DAY_NAMES[x]).join(', ') : ' only'), me.name);
+  log_('Off days for week ' + week + ': Mon–Fri' + (days.length ? ' + ' + days.map(x => DAY_NAMES[x]).join(', ') : ' only'), me.name);
   return rotaGet_({ week: week }, me);
 }
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -139,13 +139,14 @@ const RRIGHTS = [
   ['trips', 'Approve trip claims (travel money)'],
   ['staff', 'Edit staff: store, shifts, weekly off, on rota, phone reset'],
   ['pay', 'Payroll and salaries'],
+  ['offDays', 'Allow extra weekly-off days for a week (Rota plan → Off days)'],
   ['settings', 'Settings, store locations and geofence']];
 const RRIGHT_LABEL = {}; RRIGHTS.forEach(r => RRIGHT_LABEL[r[0]] = r[1]);
 const DEFAULT_RIGHTS = { Manager: ['rota'], Staff: [] };
 const ACTION_NEED = { board: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], attendance: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], fixDay: ['times', 'payAdj', 'pastTimes'], approvePunch: 'approve', pending: 'approve',
   photo: ['team', 'approve', 'times', 'trips'], trips: 'trips', tripDecide: 'trips', staffList: ['staff', 'pay', 'rota'], staffSave: ['staff', 'pay'], resetPhone: 'staff',
   syncStaff: 'staff', rotaGet: 'rota', rotaAuto: 'rota', rotaSave: 'rota', payroll: 'pay', locSave: ['settings', 'rota'], settingsGet: 'settings', settingsSave: 'settings',
-  rightsList: 'owner', rightsSave: 'owner', offDaysSave: 'settings' };
+  rightsList: 'owner', rightsSave: 'owner', offDaysSave: ['settings', 'offDays'] };
 function can_(me, need) {
   if (me.owner) return true;
   if (need === 'owner') return false;
@@ -321,6 +322,13 @@ function ensureSetup_() {
     dirty_();
     log_('v5: event stalls, after-midnight clock-outs, clock-out approval', 'system');
   }
+  if (!p.getProperty('V11_MONFRI') && rows_('staff').length) {   // 15 Nov 2026: Mon & Fri allowed as weekly offs; Vikas Awasthi may set off days
+    p.setProperty('V11_MONFRI', '1');
+    const v = staffAll_().filter(s => /^vikas awasthi/i.test(s.name))[0];
+    if (v) { const r = rightsOf_(v, v.role); if (r.indexOf('offDays') < 0) r.push('offDays');
+      w_('staff').getRange(v.row, C.staff['App rights'] + 1).setValue(r.join(', ')); dirty_('staff'); }
+    log_('v11: weekly offs allowed Mon–Fri' + (v ? '; ' + v.name + ' given the Off days right' : ''), 'system');
+  }
   if (!p.getProperty('V10_MGR_NOEXTRA')) { p.setProperty('V10_MGR_NOEXTRA', '1'); log_('v10: managers are never paid extra time or extra days; their early / late times need no approval', 'system'); }
   if (!p.getProperty('V8_EARLYLATE')) {              // 13 Nov 2026: early clock-in / late clock-out need a manager's approval
     p.setProperty('V8_EARLYLATE', '1');
@@ -446,7 +454,7 @@ function staffSave_(d, me) {
     if (d.joined && !/^\d{4}-\d{2}-\d{2}$/.test(d.joined)) throw new Error('Pick the joining date.');
     const row = [newName, txt_(d.id, 20), txt_(d.loc, 60), d.role === 'Manager' ? 'Manager' : 'Staff', d.active === false ? 'No' : 'Yes',
       ['Rotate', 'Morning only', 'Evening only'].indexOf(d.pref) >= 0 ? d.pref : 'Rotate',
-      ['Any (Tue–Thu)', 'Tue', 'Wed', 'Thu'].indexOf(d.offPref) >= 0 ? d.offPref : 'Any (Tue–Thu)',
+      ['Any (Tue–Thu)', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'].indexOf(d.offPref) >= 0 ? d.offPref : 'Any (Tue–Thu)',
       !me.pay ? (s ? (s.salary || '') : '') : d.salary === '' || d.salary == null ? '' : Math.max(0, n_(d.salary)), d.joined || '', s ? s.phone : '', s ? (s.phoneAt ? new Date(s.phoneAt) : '') : '', txt_(d.notes, 200), new Date(),
       d.onRota === false ? 'No' : 'Yes', s ? s.rightsRaw : ''];
     if (!can_(me, 'staff')) {                       // payroll-only people may change the salary and nothing else
@@ -528,7 +536,7 @@ function rotaGet_(d, me) {
   return Object.assign({ week: week, days: [0, 1, 2, 3, 4, 5, 6].map(i => addDays_(week, i)), staff: staff.map(s => ({ name: s.name, loc: s.loc, pref: s.pref, offPref: s.offPref })),
     cells: cells, status: status, shifts: { M: shiftTimes_('M'), E: shiftTimes_('E') },
     locations: locs_(false).filter(l => l.type !== 'Event' || ((!l.to || l.to >= week) && (!l.from || l.from <= end))).map(l => ({ name: l.name, type: l.type, from: l.from, to: l.to, dstart: l.dstart, dend: l.dend, notes: l.notes, hasPos: l.lat != null })),
-    canEditStores: can_(me, 'settings'), offDays: offDaysFor_(week), canOffDays: can_(me, 'settings') },
+    canEditStores: can_(me, 'settings'), offDays: offDaysFor_(week), baseOffDays: OFF_DAYS, canOffDays: can_(me, ['settings', 'offDays']) },
     { warnings: rotaWarnings_(week, staff, cells) });
 }
 /** Auto plan for one week: one weekly off per person on Tue/Wed/Thu (spread out per store), Morning / Evening alternating week to week,
@@ -545,12 +553,12 @@ function rotaAuto_(d, me) {
   Object.keys(byLoc).forEach(loc => {
     const list = byLoc[loc].slice().sort((a, b) => a.name < b.name ? -1 : 1), isStore = locType[loc] !== 'Office';
     // 1) weekly offs: preferences first, then spread over Tue/Wed/Thu, rotating the order each week
-    const offCount = { 2: 0, 3: 0, 4: 0 }, off = {};
+    const offCount = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }, off = {};
     list.forEach(s => days.forEach(dt => { const k = keep[s.name + '|' + dt], dw = parse_(dt).getDay(); if (k && k.shift === 'OFF') { off[s.name] = dt; if (dw in offCount) offCount[dw]++; } }));
-    const want = { Tue: 2, Wed: 3, Thu: 4 };
+    const want = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5 };
     list.filter(s => !off[s.name] && want[s.offPref]).forEach(s => {
       const dow = want[s.offPref]; if (isStore && offCount[dow] >= Math.ceil(list.length / 3)) return;
-      off[s.name] = days[dow === 2 ? 1 : dow === 3 ? 2 : 3]; offCount[dow]++;
+      off[s.name] = days[dow - 1]; offCount[dow]++;
     });
     const order = [2, 3, 4], rot = wkNo % 3; const seq = order.slice(rot).concat(order.slice(0, rot));
     list.filter(s => !off[s.name]).forEach((s, i) => {
@@ -585,7 +593,7 @@ function rotaWarnings_(week, staff, cells) {
     const offs = days.filter(dt => (cells[s.name + '|' + dt] || {}).shift === 'OFF');
     if (offs.length === 0 && mine.length === 7 && !mine.some(c => ['LP', 'LU', 'HOL'].indexOf(c.shift) >= 0)) w.push(s.name + ': no weekly off this week.');
     if (offs.length > 1) w.push(s.name + ': ' + offs.length + ' weekly offs (only one allowed).');
-    offs.forEach(dt => { if (offDaysFor_(week).indexOf(parse_(dt).getDay()) < 0) w.push(s.name + ': weekly off on ' + DAY_NAMES[parse_(dt).getDay()] + ' – offs are only Tue, Wed or Thu.'); });
+    offs.forEach(dt => { if (offDaysFor_(week).indexOf(parse_(dt).getDay()) < 0) w.push(s.name + ': weekly off on ' + DAY_NAMES[parse_(dt).getDay()] + ' – offs are only ' + offDaysTxt_(week) + '.'); });
   });
   STORES.concat(locs_(false).filter(l => l.type === 'Store' && STORES.indexOf(l.name) < 0).map(l => l.name)).forEach(loc => {
     const here = staff.filter(s => s.loc === loc);
