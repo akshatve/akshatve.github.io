@@ -812,6 +812,8 @@ function coverSheet(loc, d, shift) {
 // Weekly offs are Mon–Fri. The owner (or anyone with the Off days right) can allow extra days for one week (Rota plan → Off days); the server sends them with the plan.
 const BASE_OFF = [1, 2, 3, 4, 5];
 function baseOff() { const r = S.plan && S.plan.r; return (r && r.baseOffDays) || (r && r.offDays ? [2, 3, 4] : BASE_OFF); }
+function offDaysOf(week, name) { const s = S.plan && S.plan.r && S.plan.r.staff.find(x => x.name === name); return s && s.offPref === 'Sun' ? [0] : offDaysFor(week); }
+function offDaysOfTxt(week, name) { const s = S.plan && S.plan.r && S.plan.r.staff.find(x => x.name === name); return s && s.offPref === 'Sun' ? 'Sunday' : offDaysTxt(week); }
 function offDaysFor(week) { const r = S.plan && S.plan.week === week && S.plan.r; return r && r.offDays ? r.offDays : baseOff(); }
 function offDaysTxt(week) { const b = baseOff(), x = offDaysFor(week).filter(d => b.indexOf(d) < 0); return (b.join() === '2,3,4' ? 'Tue–Thu' : 'Mon–Fri') + (x.length ? ' + ' + x.map(d => DAYS[d]).join(', ') + ' this week' : ' only'); }
 /** Owner / Off days right: tick the extra days that may be weekly offs in this week only. */
@@ -835,7 +837,7 @@ function rotaWarnLocal() {
     if (mine.length < 7) w.push(s.name + ': ' + (7 - mine.length) + ' day(s) not planned.');
     if (!offs.length && !mine.some(c => ['LP', 'LU', 'HOL'].indexOf(c.shift) >= 0)) w.push(s.name + ': no weekly off.');
     if (offs.length > 1) w.push(s.name + ': ' + offs.length + ' weekly offs (one allowed).');
-    offs.forEach(d => { const dw = pd(d).getDay(); if (offDaysFor(P.week).indexOf(dw) < 0) w.push(s.name + ': off on ' + DAYS[dw] + ' – only ' + offDaysTxt(P.week) + '.'); });
+    offs.forEach(d => { const dw = pd(d).getDay(); if (offDaysOf(P.week, s.name).indexOf(dw) < 0) w.push(s.name + ': off on ' + DAYS[dw] + ' – only ' + offDaysOfTxt(P.week, s.name) + '.'); });
   });
   const locs = {}; r.staff.forEach(s => { if (s.loc && s.loc !== 'Head Office' && r.locations.some(l => l.name === s.loc && l.type === 'Store')) locs[s.loc] = 1; });
   Object.keys(locs).forEach(loc => r.days.forEach(d => {
@@ -847,9 +849,9 @@ function rotaWarnLocal() {
 }
 function editCell(k) {
   const P = S.plan, [name, d] = k.split('|'), c = P.cells[k] || {}, s = P.r.staff.find(x => x.name === name);
-  const dw = pd(d).getDay(), offOk = offDaysFor(P.week).indexOf(dw) >= 0;
+  const dw = pd(d).getDay(), offOk = offDaysOf(P.week, name).indexOf(dw) >= 0;
   const sh = sheet(name + ' · ' + dLabel(d), '<div class="pills" id="cs">' + ['M', 'E', 'OFF', 'LP', 'LU', 'HOL', 'CUST'].map(x => '<button data-s="' + x + '"' + (c.shift === x ? ' class="on"' : '') + (x === 'OFF' && !offOk ? ' disabled style="opacity:.4"' : '') + '>' + esc(SHIFT[x]) + (x === 'M' || x === 'E' ? ' ' + esc(P.r.shifts[x].start) + '–' + esc(P.r.shifts[x].end) : '') + '</button>').join('') + '</div>' +
-    (!offOk ? '<p class="tiny mute">Weekly off only on ' + esc(offDaysTxt(P.week)) + '.</p>' : '') +
+    (!offOk ? '<p class="tiny mute">Weekly off only on ' + esc(offDaysOfTxt(P.week, name)) + '.</p>' : '') +
     '<div id="cust" style="display:' + (c.shift === 'CUST' ? 'block' : 'none') + '"><div class="row"><div class="grow"><label class="f">Start</label><input class="i" type="time" id="cst" value="' + esc(c.start || '11:00') + '"></div><div class="grow"><label class="f">End</label><input class="i" type="time" id="cen" value="' + esc(c.end || '20:00') + '"></div></div><p class="tiny mute" style="margin:4px 0 0">End earlier than start = after midnight.</p></div>' +
     '<label class="f">Works at</label><select class="i" id="cl">' + P.r.locations.map(l => '<option value="' + esc(l.name) + '"' + ((c.loc || s.loc) === l.name ? ' selected' : '') + '>' + (l.type === 'Event' ? '🎪 ' : '') + esc(l.name) + '</option>').join('') + '</select>' +
     '<label class="f">Note (optional)</label><input class="i" id="cn" value="' + esc(c.note || '') + '"><br><br><div class="row"><button class="btn grow" id="cok">Done</button><button class="btn ghost" id="cclr">Clear</button></div>' +
@@ -963,7 +965,7 @@ function editStaff(s, r, redraw) {
   const sh = sheet(s.name || 'New person', '<label class="f">Name (exactly as in the Nutvique app)</label><input class="i" id="sn" value="' + esc(s.name) + '">' +
     '<div class="row"><div class="grow"><label class="f">Employee ID</label><input class="i" id="sid" value="' + esc(s.id) + '"></div><div class="grow"><label class="f">Role</label>' + sel('sr', ['Staff', 'Manager'], s.role) + '</div></div>' +
     '<label class="f">Works at</label>' + sel('sl', [''].concat(r.locations), s.loc) + '<div class="row"><div class="grow"><label class="f">Shift</label>' + sel('sp', ['Rotate', 'Morning only', 'Evening only'], s.pref) + '</div>' +
-    '<div class="grow"><label class="f">Weekly off</label>' + sel('so', ['Any (Tue–Thu)', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'], s.offPref) + '</div></div>' +
+    '<div class="grow"><label class="f">Weekly off</label>' + sel('so', ['Any (Tue–Thu)', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sun'], s.offPref) + '</div></div>' +
     (r.canPay ? '<label class="f">Monthly salary (₹)</label><input class="i" id="ss" type="number" inputmode="numeric" value="' + esc(s.salary || '') + '">' : '') +
     '<label class="f">Joined on (blank = before the app)</label><input class="i" id="sj" type="date" value="' + esc(s.joined || '') + '">' +
     '<label class="f">Notes</label><input class="i" id="snt" value="' + esc(s.notes || '') + '"><label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="sa"' + (s.active ? ' checked' : '') + '> Active</label>' +

@@ -36,6 +36,9 @@ function extraOffMap_() {
   return out;
 }
 function offDaysFor_(week) { return OFF_DAYS.concat(extraOffMap_()[week] || []); }
+/** A person whose weekly-off preference is "Sun" (Veer, Head Office) may take the weekly off on Sunday only. */
+function offDaysOf_(week, s) { return s && s.offPref === 'Sun' ? [0] : offDaysFor_(week); }
+function offDaysOfTxt_(week, s) { return s && s.offPref === 'Sun' ? 'Sunday' : offDaysTxt_(week); }
 function offDaysTxt_(week) { const x = extraOffMap_()[week] || []; return 'Monday to Friday' + (x.length ? ' (this week also ' + x.map(d => DAY_NAMES[d]).join(', ') + ')' : ''); }
 /** Owner / "offDays" right: which extra days may be weekly offs in one week. d = {week, days:[1,5]} */
 function offDaysSave_(d, me) {
@@ -322,6 +325,12 @@ function ensureSetup_() {
     dirty_();
     log_('v5: event stalls, after-midnight clock-outs, clock-out approval', 'system');
   }
+  if (!p.getProperty('V12_VEERSUN') && rows_('staff').length) {   // 15 Nov 2026: Veer (Head Office) – weekly off on Sunday only
+    p.setProperty('V12_VEERSUN', '1');
+    const v = staffAll_().filter(s => /^veer pratap/i.test(s.name))[0];
+    if (v) { w_('staff').getRange(v.row, C.staff['Weekly off preference'] + 1).setValue('Sun'); dirty_('staff'); }
+    log_('v12: ' + (v ? v.name : 'Veer (not found)') + ' – weekly off on Sunday only', 'system');
+  }
   if (!p.getProperty('V11_MONFRI') && rows_('staff').length) {   // 15 Nov 2026: Mon & Fri allowed as weekly offs; Vikas Awasthi may set off days
     p.setProperty('V11_MONFRI', '1');
     const v = staffAll_().filter(s => /^vikas awasthi/i.test(s.name))[0];
@@ -454,7 +463,7 @@ function staffSave_(d, me) {
     if (d.joined && !/^\d{4}-\d{2}-\d{2}$/.test(d.joined)) throw new Error('Pick the joining date.');
     const row = [newName, txt_(d.id, 20), txt_(d.loc, 60), d.role === 'Manager' ? 'Manager' : 'Staff', d.active === false ? 'No' : 'Yes',
       ['Rotate', 'Morning only', 'Evening only'].indexOf(d.pref) >= 0 ? d.pref : 'Rotate',
-      ['Any (Tue–Thu)', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'].indexOf(d.offPref) >= 0 ? d.offPref : 'Any (Tue–Thu)',
+      ['Any (Tue–Thu)', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sun'].indexOf(d.offPref) >= 0 ? d.offPref : 'Any (Tue–Thu)',
       !me.pay ? (s ? (s.salary || '') : '') : d.salary === '' || d.salary == null ? '' : Math.max(0, n_(d.salary)), d.joined || '', s ? s.phone : '', s ? (s.phoneAt ? new Date(s.phoneAt) : '') : '', txt_(d.notes, 200), new Date(),
       d.onRota === false ? 'No' : 'Yes', s ? s.rightsRaw : ''];
     if (!can_(me, 'staff')) {                       // payroll-only people may change the salary and nothing else
@@ -553,12 +562,12 @@ function rotaAuto_(d, me) {
   Object.keys(byLoc).forEach(loc => {
     const list = byLoc[loc].slice().sort((a, b) => a.name < b.name ? -1 : 1), isStore = locType[loc] !== 'Office';
     // 1) weekly offs: preferences first, then spread over Tue/Wed/Thu, rotating the order each week
-    const offCount = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }, off = {};
+    const offCount = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }, off = {};
     list.forEach(s => days.forEach(dt => { const k = keep[s.name + '|' + dt], dw = parse_(dt).getDay(); if (k && k.shift === 'OFF') { off[s.name] = dt; if (dw in offCount) offCount[dw]++; } }));
-    const want = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5 };
-    list.filter(s => !off[s.name] && want[s.offPref]).forEach(s => {
-      const dow = want[s.offPref]; if (isStore && offCount[dow] >= Math.ceil(list.length / 3)) return;
-      off[s.name] = days[dow - 1]; offCount[dow]++;
+    const want = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5 };
+    list.filter(s => !off[s.name] && (s.offPref in want)).forEach(s => {
+      const dow = want[s.offPref]; if (isStore && dow !== 0 && offCount[dow] >= Math.ceil(list.length / 3)) return;
+      off[s.name] = days[(dow + 6) % 7]; offCount[dow]++;
     });
     const order = [2, 3, 4], rot = wkNo % 3; const seq = order.slice(rot).concat(order.slice(0, rot));
     list.filter(s => !off[s.name]).forEach((s, i) => {
@@ -593,7 +602,7 @@ function rotaWarnings_(week, staff, cells) {
     const offs = days.filter(dt => (cells[s.name + '|' + dt] || {}).shift === 'OFF');
     if (offs.length === 0 && mine.length === 7 && !mine.some(c => ['LP', 'LU', 'HOL'].indexOf(c.shift) >= 0)) w.push(s.name + ': no weekly off this week.');
     if (offs.length > 1) w.push(s.name + ': ' + offs.length + ' weekly offs (only one allowed).');
-    offs.forEach(dt => { if (offDaysFor_(week).indexOf(parse_(dt).getDay()) < 0) w.push(s.name + ': weekly off on ' + DAY_NAMES[parse_(dt).getDay()] + ' – offs are only ' + offDaysTxt_(week) + '.'); });
+    offs.forEach(dt => { if (offDaysOf_(week, s).indexOf(parse_(dt).getDay()) < 0) w.push(s.name + ': weekly off on ' + DAY_NAMES[parse_(dt).getDay()] + ' – offs are only ' + offDaysOfTxt_(week, s) + '.'); });
   });
   STORES.concat(locs_(false).filter(l => l.type === 'Store' && STORES.indexOf(l.name) < 0).map(l => l.name)).forEach(loc => {
     const here = staff.filter(s => s.loc === loc);
@@ -623,8 +632,8 @@ function rotaSave_(d, me) {
       start = hm_(c.start); fin = hm_(c.end);
       if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(fin) || fin === start) throw new Error(name + ' ' + date + ': custom shift needs start and end times.');
     }
-    if (c.shift === 'OFF' && offDaysFor_(week).indexOf(parse_(date).getDay()) < 0)
-      throw new Error(name + ': weekly off can only be on ' + offDaysTxt_(week) + ' (' + date + ' is a ' + DAY_NAMES[parse_(date).getDay()] + '). The owner can allow other days for one week: Rota plan → Off days.');
+    if (c.shift === 'OFF' && offDaysOf_(week, s).indexOf(parse_(date).getDay()) < 0)
+      throw new Error(name + ': weekly off can only be on ' + offDaysOfTxt_(week, s) + ' (' + date + ' is a ' + DAY_NAMES[parse_(date).getDay()] + ').' + (s.offPref === 'Sun' ? '' : ' The owner can allow other days for one week: Rota plan → Off days.'));
     names[norm_(name)] = 1;
     out.push([week, date, DAY_NAMES[parse_(date).getDay()], s.name, txt_(c.loc, 60) || s.loc, c.shift, start, fin, status, txt_(c.note, 120), me.name, now]);
   });
