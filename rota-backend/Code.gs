@@ -42,6 +42,7 @@ function offDaysOfTxt_(week, s) { return s && s.offPref === 'Sun' ? 'Sunday' : o
 function offDaysTxt_(week) { const x = extraOffMap_()[week] || []; return 'Monday to Friday' + (x.length ? ' (this week also ' + x.map(d => DAY_NAMES[d]).join(', ') + ')' : ''); }
 /** Owner / "offDays" right: which extra days may be weekly offs in one week. d = {week, days:[1,5]} */
 function offDaysSave_(d, me) {
+  if (!me.owner && (d.days || []).length) throw new Error('Saturday / Sunday weekly offs need the owner\'s approval: put OFF in the rota and it goes to the owner to approve.');
   const week = monday_(d.week);
   const days = (d.days || []).map(Number).filter(x => x >= 0 && x <= 6 && OFF_DAYS.indexOf(x) < 0).filter((x, i, a) => a.indexOf(x) === i).sort();
   const map = extraOffMap_();
@@ -67,6 +68,7 @@ const T = {
     'Joined on', 'Phone ID', 'Phone set on', 'Notes', 'Updated', 'On rota', 'App rights']],
   locs: ['Locations', ['Location', 'Type', 'Latitude', 'Longitude', 'Radius (m)', 'Active', 'Notes', 'From', 'To', 'Default start', 'Default end']],
   rota: ['Rota', ['Week (Mon)', 'Date', 'Day', 'Name', 'Location', 'Shift', 'Start', 'End', 'Status', 'Note', 'Saved by', 'Saved at']],
+  offreq: ['Weekend Off Requests', ['ID', 'Date', 'Name', 'Location', 'Requested by', 'Requested at', 'Status', 'Decided by', 'Decided at', 'Note']],
   punch: ['Punches', ['ID', 'Date', 'Name', 'Type', 'Time', 'Location', 'Distance (m)', 'Inside', 'Latitude', 'Longitude',
     'Accuracy (m)', 'Selfie', 'Phone ID', 'Flags', 'Reason', 'Approved', 'Approved by', 'Saved at']],
   fix: ['Day Corrections', ['Date', 'Name', 'Status', 'In', 'Out', 'Break (min)', 'Overtime approved (min)', 'Note', 'By', 'At', 'Late excused', 'Extra break paid (min)']],
@@ -103,6 +105,7 @@ const DEFAULT_SETTINGS = [
   ['Car rate ₹/km', 10, 'Own car.'],
   ['Road factor', 1.3, 'Straight-line GPS distance × this ≈ road distance (used when the phone could not record the route).'],
   ['Summary email', 'nutzyfoods@gmail.com', 'Nightly summary (late, absent, missed clock-out, flags, trips to approve). Blank = off.'],
+  ['Owner approval email', 'nutzyfoods@gmail.com', 'Who is emailed when a manager asks for a Saturday / Sunday weekly off (only the owner can approve it).'],
   ['Approval email', '', 'Who is emailed at once when a clock-in / clock-out needs approval (comma separated). Blank = the Summary email.'],
   ['Approval needed after (min)', 30, 'Clock-in this many minutes or more before the rota start, or clock-out this many minutes or more after the rota end, waits for a manager. Not approved = paid only the rota shift.'],
   ['Photo folder ID', '', 'Drive folder for selfies and receipts (created automatically).'],
@@ -146,7 +149,7 @@ const RRIGHTS = [
   ['settings', 'Settings, store locations and geofence']];
 const RRIGHT_LABEL = {}; RRIGHTS.forEach(r => RRIGHT_LABEL[r[0]] = r[1]);
 const DEFAULT_RIGHTS = { Manager: ['rota'], Staff: [] };
-const ACTION_NEED = { board: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], attendance: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], fixDay: ['times', 'payAdj', 'pastTimes'], approvePunch: 'approve', pending: 'approve',
+const ACTION_NEED = { board: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], attendance: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], fixDay: ['times', 'payAdj', 'pastTimes'], approvePunch: 'approve', pending: 'approve', offReqDecide: 'owner',
   photo: ['team', 'approve', 'times', 'trips'], trips: 'trips', tripDecide: 'trips', staffList: ['staff', 'pay', 'rota'], staffSave: ['staff', 'pay'], resetPhone: 'staff',
   syncStaff: 'staff', rotaGet: 'rota', rotaAuto: 'rota', rotaSave: 'rota', payroll: 'pay', locSave: ['settings', 'rota'], settingsGet: 'settings', settingsSave: 'settings',
   rightsList: 'owner', rightsSave: 'owner', offDaysSave: ['settings', 'offDays'] };
@@ -182,6 +185,7 @@ function api_(req) {
     case 'attendance': return attendance_(d, me);
     case 'fixDay': return fixDay_(d, me);
     case 'approvePunch': return approvePunch_(d, me);
+    case 'offReqDecide': return offReqDecide_(d, me);
     case 'pending': return pending_(d, me);
     case 'trips': return tripsAdmin_(d, me);
     case 'tripDecide': return tripDecide_(d, me);
@@ -263,7 +267,7 @@ function tab_(k) {
     sh = ss.insertSheet(name);
     sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground('#1F2A44').setFontColor('#F7F1DE').setWrap(true);
     sh.setFrozenRows(1);
-    const textCols = { rota: ['Week (Mon)', 'Date', 'Start', 'End'], punch: ['ID', 'Date'], fix: ['Date', 'In', 'Out'], trips: ['Trip ID', 'Date'],
+    const textCols = { offreq: ['ID', 'Date'], rota: ['Week (Mon)', 'Date', 'Start', 'End'], punch: ['ID', 'Date'], fix: ['Date', 'In', 'Out'], trips: ['Trip ID', 'Date'],
       att: ['Date', 'Sched start', 'Sched end', 'In', 'Out'], pay: ['Month'], staff: ['Emp ID', 'Joined on', 'Phone ID'], set: ['Value'] }[k] || [];
     textCols.forEach(h => { const i = head.indexOf(h); if (i >= 0) sh.getRange(1, i + 1, sh.getMaxRows(), 1).setNumberFormat('@'); });
     if (k === 'trips') sh.hideColumns(head.length);
@@ -545,7 +549,7 @@ function rotaGet_(d, me) {
   return Object.assign({ week: week, days: [0, 1, 2, 3, 4, 5, 6].map(i => addDays_(week, i)), staff: staff.map(s => ({ name: s.name, loc: s.loc, pref: s.pref, offPref: s.offPref })),
     cells: cells, status: status, shifts: { M: shiftTimes_('M'), E: shiftTimes_('E') },
     locations: locs_(false).filter(l => l.type !== 'Event' || ((!l.to || l.to >= week) && (!l.from || l.from <= end))).map(l => ({ name: l.name, type: l.type, from: l.from, to: l.to, dstart: l.dstart, dend: l.dend, notes: l.notes, hasPos: l.lat != null })),
-    canEditStores: can_(me, 'settings'), offDays: offDaysFor_(week), baseOffDays: OFF_DAYS, canOffDays: can_(me, ['settings', 'offDays']) },
+    canEditStores: can_(me, 'settings'), offDays: offDaysFor_(week), baseOffDays: OFF_DAYS, canOffDays: !!me.owner, offReqs: offReqList_(week, end, staff), isOwner: !!me.owner },
     { warnings: rotaWarnings_(week, staff, cells) });
 }
 /** Auto plan for one week: one weekly off per person on Tue/Wed/Thu (spread out per store), Morning / Evening alternating week to week,
@@ -620,7 +624,7 @@ function rotaSave_(d, me) {
   const week = monday_(d.week), end = addDays_(week, 6), now = new Date();
   const status = d.publish ? 'Published' : 'Draft';
   const names = {};
-  const out = [];
+  const out = [], weekendReq = [];
   Object.keys(d.cells || {}).forEach(k => {
     const [name, date] = k.split('|'), c = d.cells[k];
     if (date < week || date > end || SHIFT_CODES.indexOf(c.shift) < 0) return;
@@ -632,13 +636,21 @@ function rotaSave_(d, me) {
       start = hm_(c.start); fin = hm_(c.end);
       if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(fin) || fin === start) throw new Error(name + ' ' + date + ': custom shift needs start and end times.');
     }
-    if (c.shift === 'OFF' && offDaysOf_(week, s).indexOf(parse_(date).getDay()) < 0)
+    const dow0 = parse_(date).getDay();
+    if (c.shift === 'OFF' && (dow0 === 0 || dow0 === 6) && offDaysOf_(week, s).indexOf(dow0) < 0) {
+      // Saturday / Sunday weekly off: the owner's approval is needed (owner's own plan counts as approved)
+      const was = rows_('rota').find(r => ymd_(r[1]) === date && norm_(r[3]) === norm_(s.name));
+      if (!me.owner && !(was && s_(was[5]) === 'OFF')) { weekendReq.push({ name: s.name, date: date, loc: txt_(c.loc, 60) || s.loc, note: txt_(c.note, 120) }); names[norm_(name)] = 1; return; }
+    } else if (c.shift === 'OFF' && offDaysOf_(week, s).indexOf(dow0) < 0)
       throw new Error(name + ': weekly off can only be on ' + offDaysOfTxt_(week, s) + ' (' + date + ' is a ' + DAY_NAMES[parse_(date).getDay()] + ').' + (s.offPref === 'Sun' ? '' : ' The owner can allow other days for one week: Rota plan → Off days.'));
     names[norm_(name)] = 1;
     out.push([week, date, DAY_NAMES[parse_(date).getDay()], s.name, txt_(c.loc, 60) || s.loc, c.shift, start, fin, status, txt_(c.note, 120), me.name, now]);
   });
+  const keepOld_ = {};
   lock_(() => {
     const sh = tab_('rota'), all = rows_('rota');
+    // a Saturday / Sunday off waiting for the owner: keep whatever was planned there before
+    weekendReq.forEach(q => { const old = all.find(r => ymd_(r[1]) === q.date && norm_(r[3]) === norm_(q.name)); if (old) { out.push(old.map((v, i) => (i === 0 || i === 1) ? ymd_(v) : (i === 6 || i === 7) ? hm_(v) : v)); keepOld_[q.name + '|' + q.date] = s_(old[5]); } });
     const keep = all.filter(r => !(ymd_(r[0]) === week && names[norm_(r[3])]));
     if (keep.length !== all.length) {
       sh.getRange(2, 1, Math.max(all.length, 1), T.rota[1].length).clearContent();
@@ -646,8 +658,57 @@ function rotaSave_(d, me) {
     }
     append_('rota', out); dirty_('rota');
   });
+  if (weekendReq.length) offReqAdd_(weekendReq, me, keepOld_);
   log_('Rota ' + week + ' ' + status + ' (' + out.length + ' cells)', me.name);
   return rotaGet_({ week: week }, me);
+}
+// ───────────────────────────── Saturday / Sunday weekly offs – owner's approval ─────────────────────────────
+function offReqRows_() {
+  return rows_('offreq').map((r, i) => ({ row: i + 2, id: s_(r[0]), date: ymd_(r[1]), name: s_(r[2]), loc: s_(r[3]), by: s_(r[4]), at: iso_(r[5]), status: s_(r[6]), decidedBy: s_(r[7]), note: s_(r[9]) }));
+}
+function offReqList_(from, to, staff) {
+  return offReqRows_().filter(q => q.status === 'Pending' && q.date >= from && q.date <= to && (!staff || staff.some(s => norm_(s.name) === norm_(q.name))))
+    .map(q => ({ id: q.id, date: q.date, name: q.name, loc: q.loc, by: q.by, at: q.at, day: DAY_NAMES[parse_(q.date).getDay()], note: q.note }));
+}
+/** A manager planned a weekly off on Saturday / Sunday: saved as a request for the owner, the rota cell is not changed until approved. */
+function offReqAdd_(list, me, before) {
+  const now = new Date(), have = offReqRows_();
+  const add = [];
+  list.forEach(q => {
+    const old = have.find(x => x.status === 'Pending' && x.date === q.date && norm_(x.name) === norm_(q.name));
+    if (old) return;                                                     // already waiting
+    add.push(['WO' + now.getTime().toString(36) + add.length, q.date, q.name, q.loc, me.name, now, 'Pending', '', '', (before[q.name + '|' + q.date] ? 'Was ' + before[q.name + '|' + q.date] + '. ' : '') + (q.note || '')]);
+  });
+  if (!add.length) return;
+  lock_(() => append_('offreq', add));
+  log_('Weekend off asked: ' + add.map(a => a[2] + ' ' + a[1]).join(', '), me.name);
+  try {
+    const to = String(setv_('Owner approval email') || '').trim();
+    if (to) MailApp.sendEmail(to, 'Approve weekend off: ' + add.map(a => a[2] + ' ' + DAY_NAMES[parse_(a[1]).getDay()] + ' ' + a[1]).join(', '),
+      me.name + ' has planned a weekly off on Saturday / Sunday:\n\n' + add.map(a => '• ' + a[2] + ' – ' + DAY_NAMES[parse_(a[1]).getDay()] + ' ' + a[1] + ' (' + a[3] + ')').join('\n') +
+      '\n\nNo weekend off is given until you approve. Open the app → Rota plan (that week) or Team → Date range: https://vermakshat.com/rota/');
+  } catch (e) { log_('Weekend off email failed: ' + e, me.name); }
+}
+/** Owner: d = {id, approve} – approve puts the weekly off into the rota for that day. */
+function offReqDecide_(d, me) {
+  const q = offReqRows_().find(x => x.id === String(d.id || ''));
+  if (!q) throw new Error('Request not found.');
+  if (q.status !== 'Pending') throw new Error('Already decided (' + q.status + ').');
+  const s = staffByName_(q.name); if (!s) throw new Error('Person not found.');
+  const now = new Date(), week = monday_(q.date);
+  lock_(() => {
+    const sh = w_('offreq');
+    sh.getRange(q.row, 7, 1, 3).setValues([[d.approve ? 'Approved' : 'Refused', me.name, now]]); dirty_('offreq');
+    if (!d.approve) return;
+    const rs = tab_('rota'), all = rows_('rota');
+    const i = all.findIndex(r => ymd_(r[1]) === q.date && norm_(r[3]) === norm_(q.name));
+    const st = all.some(r => ymd_(r[0]) === week && s_(r[8]) === 'Draft') ? 'Draft' : 'Published';
+    const row = [week, q.date, DAY_NAMES[parse_(q.date).getDay()], s.name, q.loc || s.loc, 'OFF', '', '', st, 'Weekend off approved by ' + me.name, me.name, now];
+    if (i >= 0) rs.getRange(i + 2, 1, 1, row.length).setValues([row]); else append_('rota', [row]);
+    dirty_('rota');
+  });
+  log_('Weekend off ' + (d.approve ? 'approved' : 'refused') + ': ' + q.name + ' ' + q.date + ' (asked by ' + q.by + ')', me.name);
+  return { ok: true, id: q.id, approved: !!d.approve };
 }
 function myRota_(me) {
   const w1 = monday_(today_()), w2 = addDays_(w1, 7), end = addDays_(w2, 6);
@@ -963,7 +1024,7 @@ function pendingList_(staff) {
 /** Just the approval list – shown at once, before the slower attendance. */
 function pending_(d, me) {
   const staff = staffAll_().filter(s => s.onRota && (inScope_(me, s.loc) || !s.loc));
-  return { pending: pendingList_(staff) };
+  return { pending: pendingList_(staff), offReqs: me.owner ? offReqList_('2000-01-01', '2999-12-31', null) : [] };
 }
 /** Corrects a day: d = {date, name, status ('' = as per rota), in, out, brk, ot, lateOk, brkPaid, note}.
  *  status / in / out / break need the "times" right; overtime, excused late and paid extra break need "payAdj". The rest of the row is kept. */
