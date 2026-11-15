@@ -791,7 +791,7 @@ function lineHtml(l, i, lc) {
             '<div class="box"><span>MRP (not changed)</span><b>' + (p.mrp ? inr(p.mrp, 0) : '–') + '</b></div>' +
             '<div class="box"><span>Margin</span><b class="' + (mg != null && mg < S.settings.minMargin ? 'neg' : '') + '">' + (mg == null ? '–' : mg + '%') + '</b></div></div>' +
             ((num(a.sell) !== num(p.sell) || num(a.mrp) !== num(p.mrp)) ? '<div class="tiny" style="color:var(--warn);margin-top:4px">Price will change: ' + inr(p.sell, 0) + ' / MRP ' + inr(p.mrp, 0) + ' → ' + inr(a.sell, 0) + ' / MRP ' + inr(a.mrp, 0) + '</div>' : '') +
-            (mg != null && mg < S.settings.minMargin ? '<div class="tiny neg" style="margin-top:4px">Margin below ' + S.settings.minMargin + '% – suggested selling ' + inr(suggestSell(cost), 0) +  – invoices never change prices; change it yourself in Search → Edit product if you want</div>' : '') : '') +
+            (mg != null && mg < S.settings.minMargin ? '<div class="tiny neg" style="margin-top:4px">Margin below ' + S.settings.minMargin + '% – suggested selling ' + inr(suggestSell(cost), 0) + ' – invoices never change prices; change it yourself in Search → Edit product if you want</div>' : '') : '') +
           '</div>';
       });
       if (l.how === 'check' && (l.candidates || []).length > 1) h += '<div class="tiny" style="color:var(--warn);margin-top:6px">Not sure which one – it could also be: ' + l.candidates.filter(s => !(l.alloc || []).some(a => a.sku === s)).slice(0, 4).map(s => esc((S.bySku[s] || {}).name || s)).join(', ') + '. Tap the product to change it, or split the quantity.</div>';
@@ -4146,7 +4146,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '1c4d914212';
+<script>window.NV_BUILD = 'b65dd6eae1';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
