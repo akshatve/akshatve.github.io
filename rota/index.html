@@ -628,7 +628,7 @@ async function viewRange(m, pendingFirst) {
   $('#dy').onclick = () => viewTeam(m);
   const load = async () => {
     S.rFrom = $('#rf').value; S.rTo = $('#rt').value;
-    $('#rb').innerHTML = '<div id="rpend"></div><div id="rdays"><div class="spin" style="margin:30px auto"></div></div>';
+    $('#rb').innerHTML = '<div id="rwo"></div><div id="rpend"></div><div id="rdays"><div class="spin" style="margin:30px auto"></div></div>';
     // the approval list comes first from a quick call, the attendance (slower) fills in below
     const pendBox = $('#rpend');
     const drawPending = list => {
@@ -660,7 +660,7 @@ async function viewRange(m, pendingFirst) {
         return '<div class="card"><h2>' + esc(n) + ' <span class="small mute">' + hmin(w) + ' worked · ' + late + ' late · ' + ab + ' absent</span></h2><div class="list">' + ds.slice().reverse().map(x => '<div class="pd" data-k="' + esc(n + '|' + x.date) + '" style="cursor:pointer">' + dayLine(x).slice(5, -6) + '</div>').join('') + '</div></div>'; }).join('');
       box.querySelectorAll('.pd').forEach(el => el.onclick = () => { const [n, dt] = el.dataset.k.split('|'); personDay(r.days.find(x => x.name === n && x.date === dt), load); });
     };
-    if (can('approve')) call('pending', {}).then(r => drawPending(r.pending)).catch(() => { });
+    if (can('approve')) call('pending', {}).then(r => { drawPending(r.pending); const wb = $('#rwo'); if (wb && r.offReqs && r.offReqs.length) { wb.innerHTML = woCard(r.offReqs, true); woWire(wb); } }).catch(() => { });
     if (pendingFirst) window.scrollTo(0, 0);
     days(false);
   };
@@ -717,6 +717,7 @@ function drawPlan() {
     evHtml +
     (gaps().length ? '<div class="card"><h2>Shifts with nobody at the shop</h2>' + gaps().map(g => '<div class="row" style="padding:6px 0;border-top:1px solid var(--line)"><div class="grow small"><b>' + esc(g.loc) + '</b><br>' + esc(dLabel(g.date)) + ' · ' + SHIFT[g.shift] + '</div><button class="btn gold sm" data-cov="' + esc(g.loc + '|' + g.date + '|' + g.shift) + '">Who covers?</button></div>').join('') + '</div>' : '') +
     (warn.filter(w => !/nobody on/.test(w)).length ? '<div class="warnbox">' + warn.filter(w => !/nobody on/.test(w)).map(esc).join('<br>') + '</div>' : (Object.keys(cells).length && !gaps().length ? '<div class="warnbox ok">✓ Every store covered on both shifts, one weekly off each on ' + esc(offDaysTxt(P.week)) + '.</div>' : '')) +
+    woCard(r.offReqs || [], r.isOwner) +
     (r.canOffDays ? '<button class="btn ghost full sm" id="offd2" style="margin-bottom:8px">🗓 Weekly off days this week: ' + esc(offDaysTxt(P.week)) + ' – change</button>' : '') +
     '<div class="row wrap" style="gap:8px"><button class="btn gold grow" id="pauto">✨ Auto-plan this week</button><button class="btn ghost grow" id="pcopy">Copy last week</button></div><div style="height:8px"></div>' +
     '<div class="row" style="gap:8px"><button class="btn ghost grow" id="psave">Save draft</button><button class="btn ok grow" id="ppub">✓ Publish to staff</button></div>' +
@@ -724,6 +725,7 @@ function drawPlan() {
   $('#pb').querySelectorAll('td.c').forEach(td => td.onclick = () => editCell(td.dataset.k));
   const od = $('#offd'); if (od) od.onclick = e => { e.preventDefault(); offDaysSheet(); };
   const od2 = $('#offd2'); if (od2) od2.onclick = offDaysSheet;
+  woWire($('#pb'), () => viewPlan($('#main') || document.querySelector('main'), P.week));
   $('#pb').querySelectorAll('[data-cov]').forEach(el => el.onclick = () => { const [loc, d, sh] = el.dataset.cov.split('|'); coverSheet(loc, d, sh); });
   $('#pb').querySelectorAll('[data-ev]').forEach(el => el.onclick = () => { const [i, d] = el.dataset.ev.split('|'); eventDay(evs[+i], d); });
   $('#pb').querySelectorAll('[data-eved]').forEach(el => el.onclick = () => editLoc(evs[+el.dataset.eved], planReloadLocs, true));
@@ -837,7 +839,7 @@ function rotaWarnLocal() {
     if (mine.length < 7) w.push(s.name + ': ' + (7 - mine.length) + ' day(s) not planned.');
     if (!offs.length && !mine.some(c => ['LP', 'LU', 'HOL'].indexOf(c.shift) >= 0)) w.push(s.name + ': no weekly off.');
     if (offs.length > 1) w.push(s.name + ': ' + offs.length + ' weekly offs (one allowed).');
-    offs.forEach(d => { const dw = pd(d).getDay(); if (offDaysOf(P.week, s.name).indexOf(dw) < 0) w.push(s.name + ': off on ' + DAYS[dw] + ' – only ' + offDaysOfTxt(P.week, s.name) + '.'); });
+    offs.forEach(d => { const dw = pd(d).getDay(); if (offDaysOf(P.week, s.name).indexOf(dw) < 0 && dw !== 0 && dw !== 6) w.push(s.name + ': off on ' + DAYS[dw] + ' – only ' + offDaysOfTxt(P.week, s.name) + '.'); });
   });
   const locs = {}; r.staff.forEach(s => { if (s.loc && s.loc !== 'Head Office' && r.locations.some(l => l.name === s.loc && l.type === 'Store')) locs[s.loc] = 1; });
   Object.keys(locs).forEach(loc => r.days.forEach(d => {
@@ -849,9 +851,10 @@ function rotaWarnLocal() {
 }
 function editCell(k) {
   const P = S.plan, [name, d] = k.split('|'), c = P.cells[k] || {}, s = P.r.staff.find(x => x.name === name);
-  const dw = pd(d).getDay(), offOk = offDaysOf(P.week, name).indexOf(dw) >= 0;
+  const dw = pd(d).getDay(), offBase = offDaysOf(P.week, name).indexOf(dw) >= 0, wkend = !offBase && (dw === 0 || dw === 6), offOk = offBase || wkend;
   const sh = sheet(name + ' · ' + dLabel(d), '<div class="pills" id="cs">' + ['M', 'E', 'OFF', 'LP', 'LU', 'HOL', 'CUST'].map(x => '<button data-s="' + x + '"' + (c.shift === x ? ' class="on"' : '') + (x === 'OFF' && !offOk ? ' disabled style="opacity:.4"' : '') + '>' + esc(SHIFT[x]) + (x === 'M' || x === 'E' ? ' ' + esc(P.r.shifts[x].start) + '–' + esc(P.r.shifts[x].end) : '') + '</button>').join('') + '</div>' +
     (!offOk ? '<p class="tiny mute">Weekly off only on ' + esc(offDaysOfTxt(P.week, name)) + '.</p>' : '') +
+    (wkend ? '<p class="tiny mute">' + (P.r.isOwner ? 'Weekend off – you are the owner, so it is approved when you save.' : '⏳ A Saturday / Sunday off needs the <b>owner\'s approval</b>. When you save, it goes to the owner; the day stays as before until approved.') + '</p>' : '') +
     '<div id="cust" style="display:' + (c.shift === 'CUST' ? 'block' : 'none') + '"><div class="row"><div class="grow"><label class="f">Start</label><input class="i" type="time" id="cst" value="' + esc(c.start || '11:00') + '"></div><div class="grow"><label class="f">End</label><input class="i" type="time" id="cen" value="' + esc(c.end || '20:00') + '"></div></div><p class="tiny mute" style="margin:4px 0 0">End earlier than start = after midnight.</p></div>' +
     '<label class="f">Works at</label><select class="i" id="cl">' + P.r.locations.map(l => '<option value="' + esc(l.name) + '"' + ((c.loc || s.loc) === l.name ? ' selected' : '') + '>' + (l.type === 'Event' ? '🎪 ' : '') + esc(l.name) + '</option>').join('') + '</select>' +
     '<label class="f">Note (optional)</label><input class="i" id="cn" value="' + esc(c.note || '') + '"><br><br><div class="row"><button class="btn grow" id="cok">Done</button><button class="btn ghost" id="cclr">Clear</button></div>' +
@@ -869,13 +872,32 @@ function editCell(k) {
   sh.el.querySelector('#cweek').onclick = () => { if (['M', 'E', 'CUST'].indexOf(pick) < 0) return toast('Pick Morning, Evening or Custom first.', true);
     P.r.days.forEach(dd => { const kk = name + '|' + dd; if ((P.cells[kk] || {}).shift === 'OFF') return; P.cells[kk] = cell(); P.manual[kk] = 1; }); P.dirty = true; sh.close(); drawPlan(); };
 }
+/* Saturday / Sunday weekly offs planned by a manager wait for the owner. */
+function woCard(list, owner) {
+  if (!list.length) return '';
+  return '<div class="card"><h2>⏳ Weekend off – waiting for the owner <span class="small mute">' + list.length + '</span></h2><div class="list">' + list.map(q =>
+    '<div data-wo="' + esc(q.id) + '"><b>' + esc(q.name) + '</b> · ' + esc(dLabel(q.date)) + '<div class="tiny mute">Planned by ' + esc(q.by) + (q.note ? ' · ' + esc(q.note) : '') + '</div>' +
+    (owner ? '<div class="row" style="margin-top:6px;gap:6px"><button class="btn ok sm" data-woa="' + esc(q.id) + '">✓ Approve off</button><button class="btn ghost sm" data-wor="' + esc(q.id) + '">Refuse</button></div>' : '<div class="tiny mute">No off until the owner approves.</div>') +
+    '</div>').join('') + '</div></div>';
+}
+function woWire(box, after) {
+  if (!box) return;
+  box.querySelectorAll('[data-woa],[data-wor]').forEach(b => b.onclick = async () => {
+    const id = b.dataset.woa || b.dataset.wor, ok = !!b.dataset.woa;
+    await run('Saving…', () => call('offReqDecide', { id: id, approve: ok }));
+    toast(ok ? 'Weekend off approved – it is in the rota' : 'Refused – no off that day');
+    const row = box.querySelector('[data-wo="' + id + '"]'); if (row) row.remove();
+    after && after();
+  });
+}
 async function savePlan(publish) {
   const P = S.plan;
   const warn = rotaWarnLocal();
   if (publish && warn.length && !confirm('There are ' + warn.length + ' warning(s):\n\n' + warn.slice(0, 8).join('\n') + '\n\nPublish anyway?')) return;
   const r = await run(publish ? 'Publishing…' : 'Saving…', () => call('rotaSave', { week: P.week, cells: P.cells, publish: publish }));
   S.plan = { week: P.week, r: r, cells: JSON.parse(JSON.stringify(r.cells)), dirty: false };
-  toast(publish ? '✓ Published – staff can see it now' : 'Draft saved'); drawPlan();
+  const asked = Object.keys(P.cells).filter(k => P.cells[k].shift === 'OFF' && !(r.cells[k] && r.cells[k].shift === 'OFF'));
+  toast((publish ? '✓ Published – staff can see it now' : 'Draft saved') + (asked.length ? ' · ' + asked.length + ' weekend off(s) sent to the owner for approval' : '')); drawPlan();
   if (S.b.day) refreshBoot().catch(() => { });
 }
 
