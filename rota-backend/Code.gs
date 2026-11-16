@@ -204,6 +204,7 @@ function api_(req) {
     case 'expenseVoucher': return expenseVoucher_(d, me);
     case 'voucherView': return voucherGet_(d, me);
     case 'voucherStorePay': return voucherStorePay_(d, me);
+    case 'storeVouchers': return storeVouchers_(d, me);
     case 'tripEnd': return tripEnd_(d, me);
     case 'tripCancel': return tripCancel_(d, me);
     case 'myTrips': return { trips: tripsFor_(me.name, 60) };
@@ -267,7 +268,7 @@ function inScope_(me, loc) { return !me.scope || me.scope.indexOf(loc) >= 0; }
 //    Every write goes through append_ / w_() / dirty_(), which drop the copies.
 let MEMO = { book: null, tabs: {}, rows: {}, fresh: false };
 // Actions that only read; every other action reads the sheet fresh (never the between-request cache) before writing.
-const READ_ONLY = { voucherView: 1, myVouchers: 1, tripQuote: 1, vouchers: 1, voucherGet: 1, boot: 1, myDay: 1, myMonth: 1, myRota: 1, myTrips: 1, board: 1, rotaGet: 1, rotaAuto: 1, attendance: 1, trips: 1, photo: 1,
+const READ_ONLY = { storeVouchers: 1, voucherView: 1, myVouchers: 1, tripQuote: 1, vouchers: 1, voucherGet: 1, boot: 1, myDay: 1, myMonth: 1, myRota: 1, myTrips: 1, board: 1, rotaGet: 1, rotaAuto: 1, attendance: 1, trips: 1, photo: 1,
   staffList: 1, settingsGet: 1, rightsList: 1 };
 const XCACHE = { staff: 1, locs: 1, set: 1 };
 function resetMemo_(fresh) { MEMO = { book: null, tabs: {}, rows: {}, fresh: !!fresh }; }
@@ -1572,7 +1573,8 @@ function voucherPay_(d, me) {
     const sameDay = voucherRows_().filter(x => x.status === 'Paid' && x.paidOn === on && norm_(x.name) === norm_(v.name)).reduce((a, x) => a + x.amount, 0);
     if (lim > 0 && sameDay + v.amount > lim) throw new Error('Cash to ' + v.name + ' on ' + fmtDate_(on) + ' would be ₹' + (sameDay + v.amount) + ' – above ₹' + lim + ' (income-tax s.40A(3)). Pay this one by bank transfer.');
     tab_('vouchers').getRange(v.row, C.vouchers['Status'] + 1).setValue('Paid');
-    tab_('vouchers').getRange(v.row, C.vouchers['Paid on'] + 1, 1, 3).setValues([[on, me.name, 'Cash']]); dirty_('vouchers');
+    const from = txt_(d.from, 80), pmode = !from ? 'Cash' : from === 'Head office' ? 'Cash – Head office' : 'Cash – ' + from + ' drawer';   // v17: which cash paid it (a store drawer shows up in that store's day close)
+    tab_('vouchers').getRange(v.row, C.vouchers['Paid on'] + 1, 1, 3).setValues([[on, me.name, pmode]]); dirty_('vouchers');
     log_('Voucher ' + v.no + ' paid in cash ₹' + v.amount + ' to ' + v.name + ' on ' + on, me.name);
     return vouchersList_({}, me);
   });
@@ -1659,6 +1661,11 @@ function expenseVoucher_(d, me) {
     log_('Expense voucher ' + no + ' ' + head + ' ₹' + amount + ' to ' + to, me.name);
     return Object.assign(vouchersList_({}, me), { made: no });
   });
+}
+/** Billing app day close: vouchers paid in cash from this store's drawer on this date. d = {date, store} */
+function storeVouchers_(d, me) {
+  const date = String(d.date || ''), st = txt_(d.store, 80); if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !st) throw new Error('Date and store needed.');
+  return { vouchers: voucherRows_().filter(v => v.status === 'Paid' && v.paidOn === date && v.payMode.indexOf(st + ' drawer') >= 0).map(voucherPub_) };
 }
 /** Billing app (any signed-in person): the cash for voucher d.no was paid from a store drawer – store payout d.pv. d = {no, pv, store, paidOn, amount} */
 function voucherStorePay_(d, me) {
