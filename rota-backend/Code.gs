@@ -68,6 +68,9 @@ const T = {
     'Joined on', 'Phone ID', 'Phone set on', 'Notes', 'Updated', 'On rota', 'App rights']],
   locs: ['Locations', ['Location', 'Type', 'Latitude', 'Longitude', 'Radius (m)', 'Active', 'Notes', 'From', 'To', 'Default start', 'Default end']],
   rota: ['Rota', ['Week (Mon)', 'Date', 'Day', 'Name', 'Location', 'Shift', 'Start', 'End', 'Status', 'Note', 'Saved by', 'Saved at']],
+  former: ['Former Staff', ['Name', 'Emp ID', 'Role', 'Store', 'Joined', 'Last working day', 'Reason', 'Details', 'Monthly salary ₹', 'Days worked (app)', 'Hours worked (app)',
+    'First clock-in', 'Last clock-in', 'By month', 'Travel claims approved ₹', 'Travel vouchers paid ₹', 'Vouchers', 'Final settlement ₹', 'Settled on', 'Rights before',
+    'Billing app', 'Future rota removed', 'Recorded by', 'Recorded at']],
   offreq: ['Weekend Off Requests', ['ID', 'Date', 'Name', 'Location', 'Requested by', 'Requested at', 'Status', 'Decided by', 'Decided at', 'Note']],
   punch: ['Punches', ['ID', 'Date', 'Name', 'Type', 'Time', 'Location', 'Distance (m)', 'Inside', 'Latitude', 'Longitude',
     'Accuracy (m)', 'Selfie', 'Phone ID', 'Flags', 'Reason', 'Approved', 'Approved by', 'Saved at']],
@@ -168,7 +171,7 @@ const RRIGHT_LABEL = {}; RRIGHTS.forEach(r => RRIGHT_LABEL[r[0]] = r[1]);
 const DEFAULT_RIGHTS = { Manager: ['rota'], Staff: [] };
 const ACTION_NEED = { board: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], attendance: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], fixDay: ['times', 'payAdj', 'pastTimes'], approvePunch: 'approve', pending: 'approve', offReqDecide: 'owner',
   photo: ['team', 'approve', 'times', 'trips', 'vouchers'], trips: ['trips', 'vouchers'], tripDecide: 'trips', vouchers: 'vouchers', voucherGet: ['vouchers', 'trips'], voucherPay: 'vouchers', voucherAttach: 'vouchers', voucherIssue: ['vouchers', 'trips'], voucherCancel: 'owner', expenseVoucher: 'vouchers', voucherPayFrom: 'vouchers', claimSheet: 'owner', voucherAmend: 'owner', staffList: ['staff', 'pay', 'rota'], staffSave: ['staff', 'pay'], resetPhone: 'staff',
-  syncStaff: 'staff', rotaGet: 'rota', rotaAuto: 'rota', rotaSave: 'rota', payroll: 'pay', locSave: ['settings', 'rota'], settingsGet: 'settings', settingsSave: 'settings',
+  syncStaff: 'staff', staffLeave: 'owner', formerStaff: ['pay', 'staff'], rotaGet: 'rota', rotaAuto: 'rota', rotaSave: 'rota', payroll: 'pay', locSave: ['settings', 'rota'], settingsGet: 'settings', settingsSave: 'settings',
   rightsList: 'owner', rightsSave: 'owner', offDaysSave: ['settings', 'offDays'] };
 function can_(me, need) {
   if (me.owner) return true;
@@ -230,6 +233,8 @@ function api_(req) {
     case 'staffSave': return staffSave_(d, me);
     case 'resetPhone': return resetPhone_(d, me);
     case 'syncStaff': return syncStaff_(req.token, me);
+    case 'staffLeave': return staffLeave_(d, me, req.token);
+    case 'formerStaff': return formerStaff_(d, me);
     case 'locSave': return locSave_(d, me);
     case 'settingsGet': return settingsGet_();
     case 'settingsSave': return settingsSave_(d, me);
@@ -273,7 +278,7 @@ function inScope_(me, loc) { return !me.scope || me.scope.indexOf(loc) >= 0; }
 //    Every write goes through append_ / w_() / dirty_(), which drop the copies.
 let MEMO = { book: null, tabs: {}, rows: {}, fresh: false };
 // Actions that only read; every other action reads the sheet fresh (never the between-request cache) before writing.
-const READ_ONLY = { storeVouchers: 1, voucherView: 1, myVouchers: 1, tripQuote: 1, vouchers: 1, voucherGet: 1, boot: 1, myDay: 1, myMonth: 1, myRota: 1, myTrips: 1, board: 1, rotaGet: 1, rotaAuto: 1, attendance: 1, trips: 1, photo: 1,
+const READ_ONLY = { formerStaff: 1, storeVouchers: 1, voucherView: 1, myVouchers: 1, tripQuote: 1, vouchers: 1, voucherGet: 1, boot: 1, myDay: 1, myMonth: 1, myRota: 1, myTrips: 1, board: 1, rotaGet: 1, rotaAuto: 1, attendance: 1, trips: 1, photo: 1,
   staffList: 1, settingsGet: 1, rightsList: 1 };
 const XCACHE = { staff: 1, locs: 1, set: 1 };
 function resetMemo_(fresh) { MEMO = { book: null, tabs: {}, rows: {}, fresh: !!fresh }; }
@@ -302,7 +307,7 @@ function tab_(k) {
     sh = ss.insertSheet(name);
     sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground('#1F2A44').setFontColor('#F7F1DE').setWrap(true);
     sh.setFrozenRows(1);
-    const textCols = { presence: ['Date'], vouchers: ['Voucher No', 'Issued on', 'Claim date', 'Paid on', 'Emp ID'], offreq: ['ID', 'Date'], rota: ['Week (Mon)', 'Date', 'Start', 'End'], punch: ['ID', 'Date'], fix: ['Date', 'In', 'Out'], trips: ['Trip ID', 'Date'],
+    const textCols = { former: ['Joined', 'Last working day', 'Settled on', 'Emp ID'], presence: ['Date'], vouchers: ['Voucher No', 'Issued on', 'Claim date', 'Paid on', 'Emp ID'], offreq: ['ID', 'Date'], rota: ['Week (Mon)', 'Date', 'Start', 'End'], punch: ['ID', 'Date'], fix: ['Date', 'In', 'Out'], trips: ['Trip ID', 'Date'],
       att: ['Date', 'Sched start', 'Sched end', 'In', 'Out'], pay: ['Month'], staff: ['Emp ID', 'Joined on', 'Phone ID'], set: ['Value'] }[k] || [];
     textCols.forEach(h => { const i = head.indexOf(h); if (i >= 0) sh.getRange(1, i + 1, sh.getMaxRows(), 1).setNumberFormat('@'); });
     if (k === 'trips') sh.hideColumns(head.length);
@@ -1093,7 +1098,7 @@ function board_(d, me) {
 function attendance_(d, me) {
   const from = /^\d{4}-\d{2}-\d{2}$/.test(d.from || '') ? d.from : addDays_(today_(), -6), to = /^\d{4}-\d{2}-\d{2}$/.test(d.to || '') ? d.to : today_();
   if (parse_(to) - parse_(from) > 62 * 864e5) throw new Error('Pick at most 2 months.');
-  const staff = staffAll_().filter(s => s.onRota && (inScope_(me, s.loc) || !s.loc) && (!d.name || norm_(s.name) === norm_(d.name)) && (s.active || d.name));
+  const staff = staffAll_().filter(s => (s.onRota || (!s.active && d.name)) && (inScope_(me, s.loc) || !s.loc) && (!d.name || norm_(s.name) === norm_(d.name)) && (s.active || d.name));
   const days = daysFor_(staff.map(s => s.name), from, to, true);
   return { from: from, to: to, days: days, pending: pendingList_(staff), names: staff.map(s => s.name) };
 }
@@ -1766,7 +1771,7 @@ function payroll_(d, me) {
   const from = m + '-01', last = ymd_(new Date(Number(m.slice(0, 4)), Number(m.slice(5)), 0)), to = last < today_() ? last : today_();
   if (from > today_()) throw new Error('That month has not started.');
   const punched = {}; rows_('punch').forEach(r => { if (ymd_(r[1]) >= from) punched[norm_(r[2])] = 1; });
-  const staff = staffAll_().filter(s => tracked_(s) || (s.onRota && punched[norm_(s.name)]));
+  const staff = staffAll_().filter(s => tracked_(s) || punched[norm_(s.name)]);   // people who left keep their last month's pay
   const days = daysFor_(staff.map(s => s.name), from, to, false);
   const trips = tripRows_().filter(t => t.date >= from && t.date <= last).map(tripPub_);
   const list = staff.map(s => payFor_(s, m, days.filter(x => norm_(x.name) === norm_(s.name)), trips.filter(t => norm_(t.name) === norm_(s.name))));
@@ -1807,6 +1812,79 @@ function boot_(me, token) {
 }
 
 // ───────────────────────────── nightly summary ─────────────────────────────
+// ───────────────────────────── people who leave (17 Nov 2026) ─────────────────────────────
+// Owner: "Mark as left" keeps everything they did (attendance, hours, pay, travel, vouchers stay in their tabs) and writes a
+// summary to "Former Staff"; then removes them from the rota (inactive, off the rota, no rights, future rota deleted) and
+// switches off their billing-app login (Nutvique People: inactive, no rights – signed out on every phone).
+const LEAVE_REASONS = ['Resigned', 'Terminated', 'Absconded / stopped coming', 'Contract / probation ended', 'Other'];
+function formerRows_() {
+  return rows_('former').filter(r => s_(r[0])).map(r => ({ name: s_(r[0]), id: s_(r[1]), role: s_(r[2]), loc: s_(r[3]), joined: ymd_(r[4]), lastDay: ymd_(r[5]),
+    reason: s_(r[6]), details: s_(r[7]), salary: n_(r[8]), days: n_(r[9]), hours: n_(r[10]), first: ymd_(r[11]), last: ymd_(r[12]), byMonth: s_(r[13]),
+    travel: n_(r[14]), vouchersPaid: n_(r[15]), vouchers: s_(r[16]), settlement: r[17] === '' ? null : n_(r[17]), settledOn: ymd_(r[18]), rights: s_(r[19]),
+    billing: s_(r[20]), rotaRemoved: n_(r[21]), by: s_(r[22]), at: iso_(r[23]) }));
+}
+function formerStaff_(d, me) {
+  return { former: formerRows_().reverse(), reasons: LEAVE_REASONS, canLeave: !!me.owner,
+    active: staffAll_().filter(s => s.active).map(s => ({ name: s.name, role: s.role, loc: s.loc })) };
+}
+/** d = {name, lastDay, reason, details, settlement, settledOn} */
+function staffLeave_(d, me, token) {
+  const s = staffByName_(d.name); if (!s) throw new Error('Person not found.');
+  if (!s.active) throw new Error(s.name + ' is already marked as left.');
+  const lastDay = /^\d{4}-\d{2}-\d{2}$/.test(d.lastDay || '') ? d.lastDay : '';
+  if (!lastDay) throw new Error('Pick the last working day.');
+  const reason = LEAVE_REASONS.indexOf(d.reason) >= 0 ? d.reason : '';
+  if (!reason) throw new Error('Pick the reason.');
+  const details = txt_(d.details, 400);
+  if (reason !== 'Resigned' && details.length < 8) throw new Error('Write a short note of what happened.');
+  const ps = rows_('punch').filter(r => norm_(r[2]) === norm_(s.name));
+  const dates = ps.map(r => ymd_(r[1])).filter(Boolean).sort();
+  const first = dates[0] || '', last = dates[dates.length - 1] || '';
+  let daysW = 0, minsW = 0; const byM = {};
+  if (first) daysFor_([s.name], first, last > lastDay ? last : lastDay, false).forEach(x => {
+    if (!x.in) return; daysW++; minsW += n_(x.worked);
+    const m = x.date.slice(0, 7), o = byM[m] = byM[m] || { d: 0, m: 0 }; o.d++; o.m += n_(x.worked);
+  });
+  const byMonth = Object.keys(byM).sort().map(m => m + ': ' + byM[m].d + ' days, ' + Math.round(byM[m].m / 6) / 10 + ' h').join(' · ');
+  const trips = tripRows_().filter(t => norm_(t.name) === norm_(s.name) && t.status === 'Approved');
+  const vs = voucherRows_().filter(v => norm_(v.name) === norm_(s.name) && v.status !== 'Cancelled');
+  const rightsBefore = rightsOf_(s, s.role).join(', ');
+  let billing = 'not changed';
+  try {
+    const call = (action, data) => { const r = UrlFetchApp.fetch(INV_API, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
+      payload: JSON.stringify({ token: token, action: action, data: data || {} }) }); const j = JSON.parse(r.getContentText()); if (!j.ok) throw new Error(j.e); return j.r; };
+    const u = (call('listUsers').users || []).find(x => norm_(x.name) === norm_(s.name));
+    if (!u) billing = 'no billing login';
+    else if (!u.active && !(u.rights || []).length) billing = 'login already off';
+    else {
+      call('saveUser', { name: u.name, role: u.role, active: false, rights: [], home: u.home, email: u.email || '',
+        notes: txt_((u.notes ? u.notes + ' | ' : '') + 'Left ' + lastDay + ' (' + reason + ')', 200) });
+      billing = 'login switched off, rights removed (was: ' + (u.rights || []).join(', ') + ')';
+    }
+  } catch (e) { billing = 'FAILED – switch off in the billing app (More → People): ' + e.message; }
+  return lock_(() => {
+    const sh = w_('staff');
+    sh.getRange(s.row, C.staff['Active'] + 1).setValue('No');
+    sh.getRange(s.row, C.staff['On rota'] + 1).setValue('No');
+    sh.getRange(s.row, C.staff['App rights'] + 1).setValue('-');
+    sh.getRange(s.row, C.staff['Notes'] + 1).setValue(txt_((s.notes ? s.notes + ' | ' : '') + 'Left ' + lastDay + ' – ' + reason, 300));
+    const rs = tab_('rota'), all = rows_('rota');
+    const keep = all.filter(r => !(norm_(r[3]) === norm_(s.name) && ymd_(r[1]) > lastDay)), removed = all.length - keep.length;
+    if (removed) {
+      rs.getRange(2, 1, Math.max(rs.getLastRow() - 1, 1), T.rota[1].length).clearContent();
+      if (keep.length) rs.getRange(2, 1, keep.length, T.rota[1].length).setValues(keep.map(r => r.map((v, i) => (i === 0 || i === 1) ? ymd_(v) : (i === 6 || i === 7) ? hm_(v) : v)));
+      dirty_('rota');
+    }
+    append_('former', [[s.name, s.id, s.role, s.loc, s.joined, lastDay, reason, details, s.salary || '', daysW, Math.round(minsW / 6) / 10, first, last, byMonth,
+      trips.reduce((a, t) => a + n_(t.approved), 0), vs.filter(v => v.status === 'Paid').reduce((a, v) => a + v.amount, 0),
+      vs.map(v => v.no + ' ₹' + v.amount + ' ' + v.status).join(', '), d.settlement === '' || d.settlement == null ? '' : round2_(n_(d.settlement)),
+      /^\d{4}-\d{2}-\d{2}$/.test(d.settledOn || '') ? d.settledOn : '', rightsBefore, billing, removed, me.name, new Date()]]);
+    dirty_('former');
+    log_('Left: ' + s.name + ' (last day ' + lastDay + ', ' + reason + '); rota rows removed ' + removed + '; billing: ' + billing, me.name);
+    return Object.assign(formerStaff_({}, me), { done: s.name, billing: billing, removed: removed });
+  });
+}
+
 // ───────────────────────────── presence (last seen) ─────────────────────────────
 let PRES_ = null;
 function presenceRows_() {
