@@ -4866,14 +4866,15 @@ async function myTasks(startDate) {
     r.onend = end; setTimeout(end, 20000);
     try { r.start(); } catch (e) { end(); toast('Could not start the microphone – try again', true); }
   };
-  const save = async x => { if (busy) return; busy = true; try { x.view = dateOf(); R = await call('otSave', x); draw(); otBadge(); if ($('#ot_q', m).value.trim().length >= 2) $('#ot_q', m).oninput(); return true; } catch (e) { toast(e.message, true); return false; } finally { busy = false; } };
+  // v18.56: changes are queued one after another – a task spoken while the previous one is still saving is no longer dropped
+  let chain = Promise.resolve();
+  const save = x => (chain = chain.then(async () => { try { x.view = dateOf(); R = await call('otSave', x); draw(); otBadge(); if ($('#ot_q', m).value.trim().length >= 2) $('#ot_q', m).oninput(); return true; } catch (e) { toast(e.message, true); return false; } }));
   const add = async (txt, viaVoice) => {
     const t = (txt != null ? txt : $('#ot_t', m).value).trim(); if (!t) { toast('Type or say the task', true); return; }
-    const time = $('#ot_tm', m).value || otTimeOf(t);
-    if (await save({ act: 'add', task: t.charAt(0).toUpperCase() + t.slice(1), date: dateOf(), time: time, pri: $('#ot_p', m).checked })) {
-      $('#ot_t', m).value = ''; $('#ot_tm', m).value = ''; $('#ot_tm', m).style.outline = ''; tmAuto = true; $('#ot_p', m).checked = false; $('#ot_live', m).textContent = '';
-      toast((viaVoice ? '🎤 ' : '') + 'Task added for ' + OT_D(dateOf()));
-    }
+    const time = $('#ot_tm', m).value || otTimeOf(t), pri = $('#ot_p', m).checked, day = dateOf();
+    $('#ot_t', m).value = ''; $('#ot_tm', m).value = ''; $('#ot_tm', m).style.outline = ''; tmAuto = true; $('#ot_p', m).checked = false; $('#ot_live', m).textContent = '';
+    if (await save({ act: 'add', task: t.charAt(0).toUpperCase() + t.slice(1), date: day, time: time, pri: pri })) toast((viaVoice ? '🎤 ' : '') + 'Task added for ' + OT_D(day) + ': ' + t.slice(0, 40));
+    else if (!$('#ot_t', m).value) { $('#ot_t', m).value = t; $('#ot_tm', m).value = time; }
   };
   let tmAuto = true;   // the time box follows the words until you change it yourself
   const autoTime = () => { if (!tmAuto) return; const tm = otTimeOf($('#ot_t', m).value); $('#ot_tm', m).value = tm; $('#ot_tm', m).style.outline = tm ? '2px solid #39ff14' : ''; };
@@ -4997,7 +4998,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '33fa0ed815';
+<script>window.NV_BUILD = 'bb42251c6d';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
