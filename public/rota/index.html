@@ -407,8 +407,8 @@ async function doPunch(type, reason, selfieData) {
   catch (e) { return; }
   if (r.needReason) {
     const n = r.near;
-    const sh = sheet('You are not at a store', '<p class="warnbox">' + (n ? 'You are ' + distTxt(n.dist) + ' from ' + esc(n.name) + '.' : 'No store is near you.') + ' If you are working somewhere else (event, warehouse, delivery), write where and why. A manager has to approve it before it counts.</p>' +
-      '<label class="f">Where are you and why?</label><textarea class="i" rows="3" id="rsn" placeholder="e.g. Event stall at ATS Bouquet"></textarea><br><br><button class="btn full" id="rgo">Send for approval</button>');
+    const sh = sheet(r.owner ? 'Needs the owner\'s approval' : 'You are not at a store', '<p class="warnbox">' + (r.msg ? esc(r.msg) : (n && n.dist != null ? 'You are ' + distTxt(n.dist) + ' from ' + esc(n.name) + '.' : 'No store is near you.') + ' Write where you are and why. It must be approved before it counts.') + '</p>' +
+      '<label class="f">Where are you and why?</label><textarea class="i" rows="3" id="rsn" placeholder="e.g. Event stall at ATS Bouquet"></textarea><br><br><button class="btn full" id="rgo">Send to the ' + (r.owner ? 'owner' : 'manager') + ' for approval</button>');
     sh.el.querySelector('#rgo').onclick = () => { const v = sh.el.querySelector('#rsn').value.trim(); if (v.length < 5) return toast('Write where you are.', true); sh.close(); doPunch(type, v, pic); };
     return;
   }
@@ -480,32 +480,65 @@ function trailKm(trip) {
 }
 async function viewTrips(m) {
   const t = S.b.day && S.b.day.trip;
-  m.innerHTML = '<h1 class="pg">Trips on company work</h1><div id="tnow"></div><div class="card"><h2>My trips</h2><div id="tlist" class="list"><div class="spin" style="margin:10px auto"></div></div></div>' +
-    '<p class="small mute">Own bike / car is paid per km (from the GPS route). For Porter, Rapido, cab, auto or metro, type the exact fare and add a screenshot of the receipt. A manager approves each trip; approved money is added to your salary.</p>';
-  t ? tripRunning(t) : tripForm();
-  call('myTrips').then(r => { const el = $('#tlist'); if (el) el.innerHTML = r.trips.filter(x => x.status !== 'Running').map(tripLine).join('') || '<p class="mute small">No trips in the last 60 days.</p>'; }).catch(e => { const el = $('#tlist'); if (el) el.innerHTML = '<p class="warnbox bad">' + esc(e.message) + '</p>'; });
+  m.innerHTML = '<h1 class="pg">Travel claims</h1><div id="tnow"></div><div class="card"><h2>My claims</h2><div id="tlist" class="list"><div class="spin" style="margin:10px auto"></div></div></div>' +
+    '<p class="small mute"><b>Own bike:</b> pick where you started and where you went – the app finds the road distance on Google Maps and pays ' + rs(S.b.rates.bike) + ' per km. ' +
+    '<b>Rapido, cab, auto, Porter, metro:</b> type the fare and add the screenshot – no screenshot, no money. Approved claims are paid in cash against a numbered voucher that you sign. Written expense sheets are not accepted.</p>';
+  t ? tripRunning(t) : claimForm();
+  call('myTrips').then(r => { const el = $('#tlist'); if (el) el.innerHTML = r.trips.filter(x => x.status !== 'Running').map(tripLine).join('') || '<p class="mute small">No claims in the last 60 days.</p>'; }).catch(e => { const el = $('#tlist'); if (el) el.innerHTML = '<p class="warnbox bad">' + esc(e.message) + '</p>'; });
 }
 function tripLine(t) {
   const cls = { Approved: 'ok', Rejected: 'bad', Submitted: 'warn', Running: 'blue', Cancelled: '' }[t.status] || '';
-  return '<div><div class="row"><div class="grow"><b>' + esc(t.purpose) + '</b><div class="tiny mute">' + esc(dLabel(t.date)) + ' · ' + esc(t.modeLabel) + (t.km ? ' · ' + t.km + ' km' : '') + (t.fare ? ' · fare ' + rs(t.fare) : '') + '</div>' +
-    '<div class="tiny mute">' + esc(t.startPlace) + ' → ' + esc(t.endPlace || '…') + '</div>' + (t.mnote ? '<div class="tiny" style="color:var(--warn)">' + esc(t.mnote) + '</div>' : '') + '</div>' +
+  return '<div><div class="row"><div class="grow"><b>' + esc(t.purpose) + '</b><div class="tiny mute">' + esc(dLabel(t.date)) + ' · ' + esc(t.modeLabel) + (t.km ? ' · ' + t.km + ' km' + (t.ret ? ' (to and back)' : '') : '') + (t.fare ? ' · fare ' + rs(t.fare) : '') + '</div>' +
+    '<div class="tiny mute">' + esc(t.startPlace) + ' → ' + esc(t.endPlace || '…') + '</div>' + (t.voucher ? '<div class="tiny">🧾 Voucher <b>' + esc(t.voucher) + '</b></div>' : '') + (t.mnote ? '<div class="tiny" style="color:var(--warn)">' + esc(t.mnote) + '</div>' : '') + '</div>' +
     '<div class="right"><span class="chip ' + cls + '">' + esc(t.status === 'Submitted' ? 'Waiting' : t.status) + '</span><div><b>' + (t.status === 'Approved' ? rs(t.approved) : t.claimed ? rs(t.claimed) : '') + '</b></div></div></div></div>';
 }
-function tripForm() {
-  const el = $('#tnow'); let mode = store.get('lastMode') || 'bike';
-  el.innerHTML = '<div class="card"><h2>Start a trip</h2><label class="f">Where to and why</label><input class="i" id="tp" placeholder="e.g. Stock from warehouse to Gulshan store">' +
-    '<label class="f">Travelling by</label><div class="pills" id="tm">' + S.b.modes.map(x => '<button data-m="' + x.key + '"' + (x.key === mode ? ' class="on"' : '') + '>' + esc(x.label) + '</button>').join('') + '</div>' +
-    '<p class="tiny mute" id="tmh"></p><button class="btn gold full" id="tgo">▶ Start trip</button></div>';
-  const hint = () => { const x = S.b.modes.find(z => z.key === mode); $('#tmh').textContent = x.kind === 'km' ? 'Paid ' + rs(S.b.rates[mode === 'car' ? 'car' : 'bike']) + ' per km. Keep this app open on the way so the route is recorded.' : x.kind === 'fare' ? 'You will type the actual fare at the end' + (x.receipt ? ' and add the receipt screenshot.' : '.') : 'No money claimed.'; };
-  el.querySelectorAll('#tm button').forEach(b => b.onclick = () => { mode = b.dataset.m; el.querySelectorAll('#tm button').forEach(x => x.classList.toggle('on', x === b)); hint(); });
-  hint();
-  $('#tgo').onclick = async () => {
-    const purpose = $('#tp').value.trim(); if (purpose.length < 4) return toast('Write where you are going.', true);
-    let pos; const b = busy('Finding your location…');
-    try { pos = await getPos(p => b.set('Finding your location… ±' + p.acc + ' m')); } catch (e) { b.done(); return toast(e.message, true); }
-    b.done();
-    const r = await run('Starting…', () => call('tripStart', { purpose: purpose, mode: mode, lat: pos.lat, lng: pos.lng, acc: pos.acc }));
-    store.set('lastMode', mode); S.b.day.trip = r.trip; startTrail(r.trip); toast('Trip started'); go('trips');
+function placeOpts() { return (S.b.locations || []).filter(l => l.type !== 'Event' && l.lat != null).map(l => l.name); }
+function placePick(id, label) {
+  return '<label class="f">' + label + '</label><select class="i" id="' + id + 's">' + placeOpts().map(n => '<option>' + esc(n) + '</option>').join('') + '<option value="__other">Other place – type it…</option></select>' +
+    '<input class="i" id="' + id + 't" style="display:none;margin-top:6px" placeholder="Building / society / market and sector, e.g. ATS One Hamlet, Sector 104">';
+}
+function placeVal(el, id) { const s = el.querySelector('#' + id + 's').value; return s === '__other' ? { text: el.querySelector('#' + id + 't').value.trim() } : { loc: s }; }
+function claimForm() {
+  const el = $('#tnow'); let mode = store.get('lastMode') || 'bike', receipt = '', quote = null;
+  const modes = S.b.modes.filter(x => x.kind !== 'free');
+  if (!modes.some(x => x.key === mode)) mode = 'bike';
+  el.innerHTML = '<div class="card"><h2>New travel claim</h2>' +
+    '<div class="row"><div class="grow"><label class="f">Date of the journey</label><input class="i" type="date" id="cd" value="' + today() + '" max="' + today() + '" min="' + addD(today(), -(S.b.claimDays || 7)) + '"></div></div>' +
+    '<label class="f">Why did you travel? (what work)</label><input class="i" id="cp" placeholder="e.g. Took 2 cartons of stock from Central to Gulshan">' +
+    '<label class="f">Travelled by</label><div class="pills" id="cm">' + modes.map(x => '<button data-m="' + x.key + '"' + (x.key === mode ? ' class="on"' : '') + '>' + esc(x.label) + '</button>').join('') + '</div>' +
+    placePick('cf', 'From (where you started)') + placePick('ct', 'To (where you went)') +
+    '<label class="row" id="crw" style="gap:8px;margin-top:10px"><input type="checkbox" id="cr"> <span class="small">I came back the same way (to and back)</span></label>' +
+    '<div id="cfare"><label class="f">Fare you paid (₹) – exactly as in the screenshot</label><input class="i" id="cfa" type="number" inputmode="decimal">' +
+    '<label class="f">Screenshot of the fare / receipt (needed)</label><button class="btn ghost full" id="crc">📎 Add screenshot</button><div id="crp"></div></div>' +
+    '<label class="f">Note (optional)</label><input class="i" id="cn">' +
+    '<div id="cq" style="margin-top:10px"></div><button class="btn ghost full" id="cchk">📍 Check distance</button><div style="height:8px"></div><button class="btn gold full" id="cgo">Submit claim</button></div>';
+  const kind = () => (S.b.modes.find(x => x.key === mode) || {}).kind;
+  const sync = () => { const k = kind(); el.querySelector('#cfare').style.display = k === 'fare' ? '' : 'none'; el.querySelector('#crw').style.display = k === 'km' ? '' : 'none'; quote = null; el.querySelector('#cq').innerHTML = ''; };
+  ['cf', 'ct'].forEach(id => { const s = el.querySelector('#' + id + 's'); s.onchange = () => { el.querySelector('#' + id + 't').style.display = s.value === '__other' ? '' : 'none'; quote = null; el.querySelector('#cq').innerHTML = ''; }; });
+  el.querySelector('#ct' + 's').selectedIndex = Math.min(1, placeOpts().length - 1);
+  el.querySelector('#cr').onchange = () => { quote = null; el.querySelector('#cq').innerHTML = ''; };
+  el.querySelectorAll('#cm button').forEach(b => b.onclick = () => { mode = b.dataset.m; el.querySelectorAll('#cm button').forEach(x => x.classList.toggle('on', x === b)); sync(); });
+  el.querySelector('#crc').onclick = () => pickPhoto(d => { receipt = d; el.querySelector('#crp').innerHTML = '<img src="' + d + '" style="max-width:100%;max-height:240px;border-radius:10px;margin-top:8px">'; });
+  sync();
+  const data = () => ({ date: el.querySelector('#cd').value, purpose: el.querySelector('#cp').value.trim(), mode: mode, from: placeVal(el, 'cf'), to: placeVal(el, 'ct'), ret: el.querySelector('#cr').checked && kind() === 'km',
+    fare: el.querySelector('#cfa').value, receipt: receipt, note: el.querySelector('#cn').value.trim() });
+  const check = async () => {
+    const d = data(); quote = await run('Finding the road distance…', () => call('tripQuote', d));
+    el.querySelector('#cq').innerHTML = '<div class="warnbox blue"><b>' + esc(quote.from.addr) + '</b> → <b>' + esc(quote.to.addr) + '</b><br>Road distance (Google Maps): <b>' + quote.km + ' km</b>' + (quote.ret ? ' × 2 = ' + quote.totalKm + ' km' : '') +
+      (quote.kind === 'km' ? '<br>Claim: ' + quote.totalKm + ' km × ' + rs(quote.rate) + ' = <b>' + rs(quote.amount) + '</b>' : '') + ' · <a target="_blank" href="' + quote.map + '">see route</a>' +
+      ((quote.from.partial || quote.to.partial) ? '<br><span style="color:var(--warn)">Google was not sure of the typed place – check the address above is right.</span>' : '') + '</div>';
+    return quote;
+  };
+  el.querySelector('#cchk').onclick = () => check().catch(() => { });
+  el.querySelector('#cgo').onclick = async () => {
+    const d = data();
+    if (d.purpose.length < 8) return toast('Write why you travelled (what work).', true);
+    if (kind() === 'fare' && !(Number(d.fare) > 0)) return toast('Type the fare you paid.', true);
+    if (kind() === 'fare' && !receipt) return toast('Add the screenshot – without it the claim cannot be accepted.', true);
+    if (!quote) { try { await check(); } catch (e) { return; } }
+    if (!confirm('Submit this claim?\n\n' + quote.from.addr + ' → ' + quote.to.addr + '\n' + (kind() === 'km' ? quote.totalKm + ' km × ' + rs(quote.rate) + ' = ' + rs(quote.amount) : 'Fare ' + rs(d.fare)))) return;
+    const r = await run('Submitting…', () => call('tripClaim', d));
+    store.set('lastMode', mode); toast('Claim sent for approval – ' + rs(r.trip.claimed)); go('trips');
   };
 }
 function tripRunning(t) {
@@ -907,8 +940,9 @@ function viewMore(m) {
   const item = (id, ic, t, s, dot) => '<div class="person" id="' + id + '"><div class="av" style="background:var(--cream);color:var(--navy)">' + ic + '</div><div class="grow"><b>' + t + '</b><div class="tiny mute">' + s + '</div></div>' + (dot ? '<span class="chip bad">' + dot + '</span>' : '') + '<span class="mute">›</span></div>';
   m.innerHTML = '<h1 class="pg">More</h1>' + installBox() + '<div class="card">' +
     (b.day ? item('mh', '📊', 'My hours', 'This month: days, late, breaks, travel, pay estimate') : '') +
-    (can('trips') ? item('mt', '🛵', 'Trip claims', 'Approve travel money', b.pendingTrips) : '') +
-    (can('pay') ? item('mp', '₹', 'Payroll', 'Monthly salary from attendance + overtime + travel') : '') +
+    (can('trips') ? item('mt', '🛵', 'Travel claims', 'Check the route / screenshot and approve', b.pendingTrips) : '') +
+    (can('vouchers') ? item('mv', '🧾', 'Travel cash vouchers', 'Print, pay in cash, signed copies') : '') +
+    (can('pay') ? item('mp', '₹', 'Payroll', 'Monthly salary from attendance + overtime (travel is paid by cash voucher)') : '') +
     (can('staff') || can('pay') ? item('ms', '👥', 'Staff', 'Store, shifts, weekly-off choice' + (can('pay') ? ', salary' : '') + ', on rota, phone reset') : '') +
     (can('settings') ? item('mloc', '📍', 'Stores & event stalls', 'Add a store or an event stall, set its position, dates and hours') : '') +
     (can('settings') ? item('mset', '⚙', 'Rules & settings', 'Paid break, late grace, shift times, km rates') : '') +
@@ -917,27 +951,104 @@ function viewMore(m) {
     item('mout', '⎋', 'Sign out', esc(me.name)) + '</div>' +
     '<p class="tiny mute" style="text-align:center">Nutvique Staff Rota · Nutzy Foods Pvt Ltd<br>Phone ID ' + esc(phoneId().slice(-6)) + '</p>';
   const on = (id, f) => { const el = document.getElementById(id); if (el) el.onclick = f; };
-  on('mh', () => viewMonthSheet()); on('mt', viewTripClaims); on('mp', () => viewPayroll()); on('ms', viewStaff); on('mset', viewSettings); on('mloc', viewSettings); on('mperm', viewPerms);
+  on('mh', () => viewMonthSheet()); on('mt', viewTripClaims); on('mv', viewVouchers); on('mp', () => viewPayroll()); on('ms', viewStaff); on('mset', viewSettings); on('mloc', viewSettings); on('mperm', viewPerms);
   on('mpin', () => changePin(false)); on('mout', () => { if (confirm('Sign out on this phone?')) signOut(); });
 }
 async function viewTripClaims() {
-  const r = await run('Loading trips…', () => call('trips', {}));
-  const sh = sheet('Trip claims', '<div id="tcl"></div>');
+  const r = await run('Loading claims…', () => call('trips', {}));
+  const sh = sheet('Travel claims', '<div id="tcl"></div>');
+  const canDecide = can('trips');
   const draw = list => {
     const sub = list.filter(t => t.status === 'Submitted'), run_ = list.filter(t => t.status === 'Running'), rest = list.filter(t => ['Submitted', 'Running'].indexOf(t.status) < 0);
     sh.el.querySelector('#tcl').innerHTML = (sub.length ? '<h3 style="font-size:12px;color:var(--mute)">TO APPROVE</h3>' + sub.map(t => '<div class="card"><div class="row"><div class="av">' + esc(initials(t.name)) + '</div><div class="grow"><b>' + esc(t.name) + '</b><div class="tiny mute">' + esc(dLabel(t.date)) + ' · ' + esc(t.modeLabel) + '</div></div><b>' + rs(t.claimed) + '</b></div>' +
-      '<p class="small" style="margin:8px 0 4px">' + esc(t.purpose) + '</p><div class="tiny mute">' + esc(t.startPlace) + ' → ' + esc(t.endPlace) + ' · ' + new Date(t.start).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + '–' + new Date(t.end).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + '</div>' +
-      '<div class="tiny mute">GPS: straight ' + t.straight + ' km · route ' + t.trail + ' km' + (t.km ? ' · claimed ' + t.km + ' km × ₹' + t.rate : '') + (t.fare ? ' · fare ' + rs(t.fare) : '') + ' · <a target="_blank" href="https://www.google.com/maps/dir/' + t.sLat + ',' + t.sLng + '/' + t.eLat + ',' + t.eLng + '">route on map</a></div>' +
+      '<p class="small" style="margin:8px 0 4px">' + esc(t.purpose) + '</p><div class="tiny mute">' + esc(t.startPlace) + ' → ' + esc(t.endPlace) + (t.ret ? ' → back' : '') + '</div>' +
+      (t.ctype ? '<div class="tiny mute">Google Maps road distance ' + t.routeKm + ' km' + (t.ret ? ' × 2' : '') + (t.kind === 'km' ? ' = ' + t.km + ' km × ₹' + t.rate : '') + (t.map ? ' · <a target="_blank" href="' + t.map + '">route</a>' : '') + '</div>'
+        : '<div class="tiny mute">Old GPS trip: straight ' + t.straight + ' km · route ' + t.trail + ' km' + (t.km ? ' · claimed ' + t.km + ' km × ₹' + t.rate : '') + '</div>') +
       (t.note ? '<div class="tiny">Note: ' + esc(t.note) + '</div>' : '') +
-      '<div class="row" style="margin-top:8px">' + (t.receipt ? '<button class="btn ghost sm" data-rc="' + t.id + '">🧾 Receipt</button>' : '<span class="tiny mute">No receipt</span>') + '<div class="grow"></div><input class="i" style="width:100px" type="number" inputmode="decimal" value="' + t.claimed + '" id="am_' + t.id + '"></div>' +
-      '<div class="row" style="margin-top:8px"><button class="btn ok grow sm" data-ok="' + t.id + '">Approve</button><button class="btn ghost grow sm" data-no="' + t.id + '">Reject</button></div></div>').join('') : '<p class="warnbox ok">Nothing waiting for approval.</p>') +
-      (run_.length ? '<h3 style="font-size:12px;color:var(--mute)">ON THE ROAD NOW</h3><div class="card"><div class="list">' + run_.map(t => '<div><b>' + esc(t.name) + '</b> · ' + esc(t.modeLabel) + '<div class="tiny mute">' + esc(t.purpose) + ' · from ' + esc(t.startPlace) + '</div></div>').join('') + '</div></div>' : '') +
+      (t.kind === 'fare' ? (t.receipt ? '<div id="rcimg_' + t.id + '" class="tiny mute" style="margin-top:6px">Loading screenshot…</div><label class="f">Amount you can see on the screenshot (₹)</label><input class="i" type="number" inputmode="decimal" id="am_' + t.id + '" placeholder="Type it from the screenshot">'
+        : '<div class="warnbox bad" style="margin-top:6px">No screenshot – reject this claim.</div>') :
+        '<label class="f">Amount to approve (₹) – up to ' + rs(t.claimed) + '</label><input class="i" type="number" inputmode="decimal" id="am_' + t.id + '" value="' + t.claimed + '">') +
+      (canDecide ? '<div class="row" style="margin-top:8px"><button class="btn ok grow sm" data-ok="' + t.id + '">Approve → voucher</button><button class="btn ghost grow sm" data-no="' + t.id + '">Reject</button></div>' : '') + '</div>').join('') : '<p class="warnbox ok">Nothing waiting for approval.</p>') +
+      (run_.length ? '<h3 style="font-size:12px;color:var(--mute)">OLD TRIPS STILL RUNNING</h3><div class="card"><div class="list">' + run_.map(t => '<div><b>' + esc(t.name) + '</b> · ' + esc(t.modeLabel) + '<div class="tiny mute">' + esc(t.purpose) + ' · from ' + esc(t.startPlace) + '</div></div>').join('') + '</div></div>' : '') +
       '<h3 style="font-size:12px;color:var(--mute)">LAST 45 DAYS</h3><div class="card"><div class="list">' + (rest.map(t => tripLine(t).replace('<b>', '<b>' + esc(t.name) + ' – ')).join('') || '<p class="small mute">None.</p>') + '</div></div>';
-    sh.el.querySelectorAll('[data-rc]').forEach(b => b.onclick = () => showPhoto({ trip: b.dataset.rc }));
-    sh.el.querySelectorAll('[data-ok]').forEach(b => b.onclick = async () => { const x = await run('Approving…', () => call('tripDecide', { id: b.dataset.ok, approve: true, amount: sh.el.querySelector('#am_' + b.dataset.ok).value })); S.b.pendingTrips = x.trips.filter(t => t.status === 'Submitted').length; draw(x.trips); });
+    sub.filter(t => t.kind === 'fare' && t.receipt).forEach(t => call('photo', { trip: t.id }).then(p => { const el = sh.el.querySelector('#rcimg_' + t.id); if (el) el.innerHTML = '<img src="data:' + p.mime + ';base64,' + p.b64 + '" style="width:100%;max-height:420px;object-fit:contain;border-radius:10px;border:1px solid var(--line)">'; }).catch(e => { const el = sh.el.querySelector('#rcimg_' + t.id); if (el) el.textContent = e.message; }));
+    sh.el.querySelectorAll('[data-ok]').forEach(b => b.onclick = async () => {
+      const t = sub.find(x => x.id === b.dataset.ok), v = sh.el.querySelector('#am_' + t.id) ? sh.el.querySelector('#am_' + t.id).value : '';
+      const d = { id: t.id, approve: true };
+      if (t.kind === 'fare') { if (!(Number(v) > 0)) return toast('Type the amount you can see on the screenshot.', true); d.checked = v; } else d.amount = v;
+      if (Math.round(Number(v)) !== Math.round(t.claimed)) { const note = prompt('The amount is different from the claim (' + rs(t.claimed) + '). Why?'); if (!note) return; d.note = note; }
+      const x = await run('Approving…', () => call('tripDecide', d)); S.b.pendingTrips = x.trips.filter(t => t.status === 'Submitted').length;
+      toast('Approved – voucher ' + (x.voucher || '') + ' issued'); draw(x.trips); });
     sh.el.querySelectorAll('[data-no]').forEach(b => b.onclick = async () => { const note = prompt('Why is it rejected?'); if (!note) return; const x = await run('Saving…', () => call('tripDecide', { id: b.dataset.no, approve: false, note: note })); S.b.pendingTrips = x.trips.filter(t => t.status === 'Submitted').length; draw(x.trips); });
   };
   draw(r.trips);
+}
+
+/* ───────────── travel cash vouchers (Veer / owner) ───────────── */
+async function viewVouchers() {
+  let r = await run('Loading vouchers…', () => call('vouchers', {}));
+  const sh = sheet('Travel cash vouchers', '<div id="vcl"></div>');
+  const draw = () => {
+    const chip = s => '<span class="chip ' + ({ Unpaid: 'warn', Paid: 'ok', Cancelled: 'bad' }[s] || '') + '">' + esc(s) + '</span>';
+    sh.el.querySelector('#vcl').innerHTML = '<div class="kpis" style="grid-template-columns:1fr 1fr;margin-bottom:10px"><div class="kpi"><b>' + rs(r.unpaid) + '</b><span>to pay in cash</span></div><div class="kpi"><b>' + rs(r.paid) + '</b><span>paid (last 60 days)</span></div></div>' +
+      (r.unvouchered.length ? '<div class="card"><h2>Approved claims without a voucher</h2><div class="list">' + r.unvouchered.map(t => '<div class="row"><div class="grow"><b>' + esc(t.name) + '</b> · ' + rs(t.approved) + '<div class="tiny mute">' + esc(dLabel(t.date)) + ' · ' + esc(t.purpose) + '</div></div><button class="btn sm" data-iss="' + esc(t.id) + '">Issue voucher</button></div>').join('') + '</div><p class="tiny mute">Only for money not already paid in a salary.</p></div>' : '') +
+      '<div class="card"><div class="list">' + (r.vouchers.map(v => '<div><div class="row"><div class="grow"><b>' + esc(v.no) + '</b> ' + chip(v.status) + (v.signed ? ' <span class="chip ok">signed</span>' : '') + '<div class="small">' + esc(v.name) + ' · <b>' + rs(v.amount) + '</b></div>' +
+        '<div class="tiny mute">' + esc(dLabel(v.claimDate)) + ' · ' + esc(v.mode) + ' · ' + esc(v.from) + ' → ' + esc(v.to) + '</div><div class="tiny mute">Issued ' + esc(dLabel(v.issued)) + ' by ' + esc(v.approvedBy) + (v.paidOn ? ' · paid ' + esc(dLabel(v.paidOn)) + ' by ' + esc(v.paidBy) : '') + (v.cancelReason ? ' · cancelled: ' + esc(v.cancelReason) : '') + '</div></div></div>' +
+        '<div class="row wrap" style="gap:6px;margin-top:6px"><button class="btn ghost sm" data-pr="' + esc(v.no) + '">🖨 Print</button>' + (v.status === 'Unpaid' ? '<button class="btn ok sm" data-pay="' + esc(v.no) + '">✓ Paid in cash</button>' : '') +
+        (v.status !== 'Cancelled' ? '<button class="btn ghost sm" data-up="' + esc(v.no) + '">📷 ' + (v.signed ? 'Replace' : 'Upload') + ' signed copy</button>' : '') + (v.signed ? '<button class="btn ghost sm" data-see="' + esc(v.no) + '">See signed</button>' : '') +
+        (r.canCancel && v.status !== 'Cancelled' ? '<button class="btn ghost sm" data-can="' + esc(v.no) + '" style="color:var(--bad)">Cancel</button>' : '') + '</div></div>').join('') || '<p class="small mute">No vouchers yet.</p>') + '</div></div>' +
+      '<button class="btn ghost full sm" id="vcsv">⬇ Download list (Excel)</button>' +
+      '<p class="tiny mute">Each approved claim gets the next number (TV/26-27/0001…). Pay the cash, tap “Paid in cash” (the paid date is the date in the books), get the voucher signed by the person, upload the signed copy and file the paper. Cash to one person in one day must stay within ' + rs(10000) + ' (income-tax s.40A(3)).</p>';
+    const on = (sel, f) => sh.el.querySelectorAll(sel).forEach(b => b.onclick = () => f(b));
+    on('[data-pr]', b => printVoucher(b.dataset.pr));
+    on('[data-see]', b => showPhoto({ voucher: b.dataset.see }));
+    on('[data-iss]', async b => { if (!confirm('Issue a cash voucher for this approved claim? Only if it was not paid in a salary.')) return; r = await run('Issuing…', () => call('voucherIssue', { trip: b.dataset.iss })); draw(); });
+    on('[data-pay]', b => { const p = sheet('Paid in cash – ' + b.dataset.pay, '<label class="f">Date the cash was paid</label><input class="i" type="date" id="pdt" value="' + today() + '" max="' + today() + '"><p class="tiny mute">Hand over the cash and get the voucher signed.</p><button class="btn ok full" id="pgo">Save</button>');
+      p.el.querySelector('#pgo').onclick = async () => { r = await run('Saving…', () => call('voucherPay', { no: b.dataset.pay, paidOn: p.el.querySelector('#pdt').value })); p.close(); toast('Marked paid'); draw(); }; });
+    on('[data-up]', b => pickPhoto(async d => { r = await run('Uploading…', () => call('voucherAttach', { no: b.dataset.up, file: d })); toast('Signed copy saved'); draw(); }));
+    on('[data-can]', async b => { const why = prompt('Why cancel voucher ' + b.dataset.can + '? (the number stays used; the claim goes back to “waiting”)'); if (!why) return; r = await run('Cancelling…', () => call('voucherCancel', { no: b.dataset.can, reason: why })); draw(); });
+    sh.el.querySelector('#vcsv').onclick = () => {
+      const H = ['Voucher No', 'Issued on', 'Status', 'Paid on', 'Paid by', 'Paid to', 'Emp ID', 'Store', 'Head', 'Amount', 'Journey date', 'Mode', 'From', 'To', 'Km', 'Rate', 'Purpose', 'Claim ID', 'Approved by', 'Signed'];
+      const rows = r.vouchers.map(v => [v.no, v.issued, v.status, v.paidOn, v.paidBy, v.name, v.empId, v.store, v.head, v.amount, v.claimDate, v.mode, v.from, v.to, v.km || '', v.rate || '', v.purpose, v.claim, v.approvedBy, v.signed ? 'Yes' : 'No']);
+      const csv = [H].concat(rows).map(rw => rw.map(x => '"' + String(x == null ? '' : x).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'Nutzy_Travel_Vouchers_' + today() + '.csv'; a.click();
+    };
+  };
+  draw();
+}
+function fmtD(ymd) { return ymd ? ymd.slice(8, 10) + '-' + MON[Number(ymd.slice(5, 7)) - 1] + '-' + ymd.slice(0, 4) : ''; }
+async function printVoucher(no) {
+  const g = await run('Preparing voucher…', () => call('voucherGet', { no: no }));
+  const v = g.voucher, c = g.company, t = g.claim;
+  let img = '';
+  if (t && t.receipt) { try { const p = await call('photo', { trip: t.id }); img = 'data:' + p.mime + ';base64,' + p.b64; } catch (e) { } }
+  const e = esc, amt = '₹ ' + Number(v.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const kmRow = v.km ? v.km + ' km' : '—', rateRow = v.rate ? '₹' + v.rate + '/km' : (t && t.fare ? 'Actual fare' : '—');
+  const html = '<!doctype html><html><head><meta charset="utf-8"><title>' + e(v.no) + '</title><style>' +
+    '@page{size:A4;margin:12mm}body{font:12px/1.4 Arial,Helvetica,sans-serif;color:#111;margin:0}.v{border:1.5px solid #111;padding:12px 14px;position:relative}' +
+    'h1{font-size:17px;margin:0;text-align:center;letter-spacing:.5px}.c{text-align:center;font-size:10.5px;color:#333}.t{text-align:center;font-weight:bold;font-size:14px;margin:10px 0 2px;letter-spacing:1px}' +
+    '.st{text-align:center;font-size:11px;margin-bottom:8px}table{width:100%;border-collapse:collapse;margin:6px 0}td,th{border:1px solid #444;padding:5px 6px;vertical-align:top;text-align:left;font-size:12px}th{background:#eee;font-size:11px}' +
+    '.n{text-align:right;white-space:nowrap}.g{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin:6px 0}.lb{color:#555;font-size:10.5px}.sig{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:34px}' +
+    '.sig div{border-top:1px solid #111;padding-top:4px;font-size:10.5px;text-align:center}.note{font-size:10px;color:#333;margin-top:8px}.stamp{position:absolute;right:16px;bottom:58px;width:70px;height:80px;border:1px dashed #555;font-size:9px;text-align:center;padding-top:28px;box-sizing:border-box}' +
+    '.wm{position:absolute;top:40%;left:0;right:0;text-align:center;font-size:60px;color:rgba(200,0,0,.25);transform:rotate(-18deg);font-weight:bold}.att{page-break-before:always;text-align:center}.att img{max-width:100%;max-height:230mm;border:1px solid #999}</style></head><body>' +
+    '<div class="v">' + (v.status === 'Cancelled' ? '<div class="wm">CANCELLED</div>' : '') +
+    '<h1>' + e(c.name) + '</h1><div class="c">' + e(c.addr) + '<br>GSTIN: ' + e(c.gstin) + ' · CIN: ' + e(c.cin) + '</div>' +
+    '<div class="t">CASH PAYMENT VOUCHER</div><div class="st">(Travelling / Local Conveyance Expenses – reimbursement to employee)</div>' +
+    '<div class="g"><div><span class="lb">Voucher No.</span><br><b style="font-size:14px">' + e(v.no) + '</b></div><div class="n"><span class="lb">Voucher date (cash paid on)</span><br><b>' + e(fmtD(v.paidOn) || '__________') + '</b><br><span class="lb">Issued / approved on ' + e(fmtD(v.issued)) + '</span></div></div>' +
+    '<table><tr><th style="width:12%">Dr / Cr</th><th>Account</th><th class="n" style="width:22%">Amount</th></tr><tr><td>Debit</td><td><b>' + e(v.head) + '</b> A/c</td><td class="n">' + amt + '</td></tr><tr><td>Credit</td><td>Cash-in-hand A/c (Head office cash)</td><td class="n">' + amt + '</td></tr></table>' +
+    '<div class="g"><div><span class="lb">Paid to</span><br><b>' + e(v.name) + '</b> (' + e(v.empId || '—') + ')</div><div><span class="lb">Designation / store</span><br>' + e(v.desig) + (v.store ? ' · ' + e(v.store) : '') + '</div></div>' +
+    '<table><tr><th>Date of journey</th><th>From → To</th><th>Mode</th><th class="n">Distance</th><th class="n">Rate</th><th class="n">Amount</th></tr><tr><td>' + e(fmtD(v.claimDate)) + '</td><td>' + e(v.from) + ' → ' + e(v.to) + (t && t.ret ? ' → back' : '') + '</td><td>' + e(v.mode) + '</td><td class="n">' + e(kmRow) + '</td><td class="n">' + e(rateRow) + '</td><td class="n">' + amt + '</td></tr>' +
+    '<tr><td colspan="5" class="n"><b>Total</b></td><td class="n"><b>' + amt + '</b></td></tr></table>' +
+    '<div><span class="lb">Amount in words:</span> <b>' + e(v.words) + '</b></div><div style="margin-top:4px"><span class="lb">Purpose (business):</span> ' + e(v.purpose) + '</div>' +
+    '<div style="margin-top:4px"><span class="lb">Supporting document:</span> ' + e(v.support) + (t && t.map ? ' · Route: ' + e(t.map) : '') + '</div><div style="margin-top:4px"><span class="lb">Claim ref.:</span> ' + e(v.claim) + ' (Nutvique Staff Rota app) · <span class="lb">Payment mode:</span> Cash</div>' +
+    '<div class="note">Reimbursement of actual expenses incurred wholly and exclusively for the company\'s business (not salary). No GST input tax credit is claimed on this expense. Cash paid to one person in a day is kept within ' + e('₹' + Number(g.cashLimit).toLocaleString('en-IN')) + ' (Income-tax Act s.40A(3)).' + (v.amount > 5000 ? ' Receipt above ₹5,000: affix a ₹1 revenue stamp and sign across it.' : '') + '</div>' +
+    (v.amount > 5000 ? '<div class="stamp">Revenue stamp ₹1</div>' : '') +
+    '<div class="sig"><div>Prepared by<br><b>' + e(v.issuedBy) + '</b></div><div>Checked &amp; approved by<br><b>' + e(v.approvedBy) + '</b></div><div>Paid by (cashier)<br><b>' + e(v.paidBy || '') + '</b></div><div>Received the above amount in cash<br>Signature of ' + e(v.name) + '<br>Date: __________</div></div></div>' +
+    (img ? '<div class="att"><p><b>Attachment to ' + e(v.no) + '</b> – ' + e(v.mode) + ' fare screenshot submitted by ' + e(v.name) + ' (claim ' + e(v.claim) + ')</p><img src="' + img + '"></div>' : '') +
+    '</body></html>';
+  const f = document.createElement('iframe'); f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'; document.body.appendChild(f);
+  f.contentDocument.open(); f.contentDocument.write(html); f.contentDocument.close();
+  setTimeout(() => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (x) { const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); w.print(); } } setTimeout(() => f.remove(), 60000); }, 600);
 }
 async function viewPayroll(month) {
   month = month || S.payMonth || today().slice(0, 7); S.payMonth = month;

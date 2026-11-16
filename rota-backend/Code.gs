@@ -61,7 +61,7 @@ const TRIP_MODES = [
   ['bike', 'Own bike / scooter', 'km'], ['car', 'Own car', 'km'], ['porter', 'Porter', 'fare'], ['rapido', 'Rapido', 'fare'],
   ['cab', 'Uber / Ola cab', 'fare'], ['auto', 'Auto / e-rickshaw', 'fare'], ['metro', 'Metro / bus', 'fare'],
   ['company', 'Company vehicle', 'free'], ['other', 'Other', 'fare']];
-const RECEIPT_NEEDED = { porter: 1, rapido: 1, cab: 1 };
+const RECEIPT_NEEDED = { porter: 1, rapido: 1, cab: 1, auto: 1, metro: 1, other: 1 };   // every paid fare needs a screenshot / ticket (owner, 16 Nov 2026)
 
 const T = {
   staff: ['Staff', ['Name', 'Emp ID', 'Location', 'Role', 'Active', 'Shift preference', 'Weekly off preference', 'Monthly salary ₹',
@@ -74,7 +74,11 @@ const T = {
   fix: ['Day Corrections', ['Date', 'Name', 'Status', 'In', 'Out', 'Break (min)', 'Overtime approved (min)', 'Note', 'By', 'At', 'Late excused', 'Extra break paid (min)']],
   trips: ['Trips', ['Trip ID', 'Date', 'Name', 'Purpose', 'Mode', 'Status', 'Start time', 'Start place', 'Start lat', 'Start lng',
     'End time', 'End place', 'End lat', 'End lng', 'Straight km', 'GPS trail km', 'Claimed km', 'Rate ₹/km', 'Fare ₹', 'Receipt',
-    'Claimed ₹', 'Approved ₹', 'Decided by', 'Decided at', 'Staff note', 'Manager note', 'Trail']],
+    'Claimed ₹', 'Approved ₹', 'Decided by', 'Decided at', 'Staff note', 'Manager note', 'Trail',
+    'Route km (Google)', 'Return trip', 'Voucher No', 'Screenshot ₹ (checked)', 'Claim type']],
+  vouchers: ['Travel Vouchers', ['Voucher No', 'Issued on', 'FY', 'Seq', 'Paid to', 'Emp ID', 'Designation', 'Store', 'Expense head', 'Amount ₹', 'Amount in words',
+    'Claim ID', 'Claim date', 'Mode', 'From', 'To', 'Km', 'Rate ₹/km', 'Purpose', 'Particulars', 'Supporting document', 'Status', 'Approved by', 'Approved at',
+    'Paid on', 'Paid by', 'Payment mode', 'Signed copy', 'Cancelled by', 'Cancelled at', 'Cancel reason', 'Issued by']],
   att: ['Attendance', ['Date', 'Day', 'Name', 'Location', 'Shift', 'Sched start', 'Sched end', 'In', 'Out', 'Break (min)',
     'Extra break (min)', 'Late (min)', 'Left early (min)', 'Worked (min)', 'Credited (min)', 'Overtime (min)', 'OT approved (min)',
     'Day credit', 'Status', 'Flags']],
@@ -101,9 +105,17 @@ const DEFAULT_SETTINGS = [
   ['Overtime pay multiplier', 1, 'Approved overtime is paid at (day rate ÷ shift hours) × this.'],
   ['Pay work on weekly off', 'Yes', 'Yes = working on a weekly off earns an extra day (pro-rata).'],
   ['Attendance starts on', '', 'Days before this date are treated as paid (records were kept outside the app). Set when going live.'],
-  ['Bike rate ₹/km', 4, 'Own bike / scooter.'],
+  ['Clock-in distance (m)', 200, 'Clock in / clock out only within this many metres of a store / head office (staff: refused further away; managers: their rota location, anywhere else needs the owner\'s approval).'],
+  ['Bike rate ₹/km', 4, 'Own bike / scooter – paid on the Google Maps road distance between the start and end place.'],
   ['Car rate ₹/km', 10, 'Own car.'],
-  ['Road factor', 1.3, 'Straight-line GPS distance × this ≈ road distance (used when the phone could not record the route).'],
+  ['Road factor', 1.3, 'Straight-line GPS distance × this ≈ road distance (old start/end trips only).'],
+  ['Claim within (days)', 7, 'A travel claim must be made within this many days of the journey.'],
+  ['Voucher series', 'TV', 'Travel cash voucher number = series/FY/0001, e.g. TV/26-27/0001 (new series every 1 April).'],
+  ['Cash limit per person per day ₹', 10000, 'Income-tax s.40A(3): cash paid to one person in one day above this is not allowed as an expense – pay by bank instead.'],
+  ['Company name', 'NUTZY FOODS PRIVATE LIMITED', 'Printed on vouchers.'],
+  ['Company address', 'Unit No A-0917, 9th Floor, Tower-A, ATS Bouquet, Plot No A-2/2, Sector-132, Noida, Gautam Buddha Nagar, Uttar Pradesh 201304', 'Registered office – printed on vouchers.'],
+  ['Company GSTIN', '09AALCN8840K1ZR', ''],
+  ['Company CIN', 'U47219UW2026PTC256062', ''],
   ['Summary email', 'nutzyfoods@gmail.com', 'Nightly summary (late, absent, missed clock-out, flags, trips to approve). Blank = off.'],
   ['Owner approval email', 'nutzyfoods@gmail.com', 'Who is emailed when a manager asks for a Saturday / Sunday weekly off (only the owner can approve it).'],
   ['Approval email', '', 'Who is emailed at once when a clock-in / clock-out needs approval (comma separated). Blank = the Summary email.'],
@@ -142,7 +154,8 @@ const RRIGHTS = [
   ['pastTimes', 'Change EARLIER days\' in / out times and day status of staff (not managers), with a genuine reason'],
   ['payAdj', 'Pay adjustments: excuse a late day, pay extra break, approve overtime'],
   ['approve', 'Approve clock entries made away from a store'],
-  ['trips', 'Approve trip claims (travel money)'],
+  ['trips', 'Approve travel claims (check the route / screenshot)'],
+  ['vouchers', 'Travel cash vouchers – see, print, mark paid in cash, upload signed copy'],
   ['staff', 'Edit staff: store, shifts, weekly off, on rota, phone reset'],
   ['pay', 'Payroll and salaries'],
   ['offDays', 'Allow extra weekly-off days for a week (Rota plan → Off days)'],
@@ -150,7 +163,7 @@ const RRIGHTS = [
 const RRIGHT_LABEL = {}; RRIGHTS.forEach(r => RRIGHT_LABEL[r[0]] = r[1]);
 const DEFAULT_RIGHTS = { Manager: ['rota'], Staff: [] };
 const ACTION_NEED = { board: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], attendance: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], fixDay: ['times', 'payAdj', 'pastTimes'], approvePunch: 'approve', pending: 'approve', offReqDecide: 'owner',
-  photo: ['team', 'approve', 'times', 'trips'], trips: 'trips', tripDecide: 'trips', staffList: ['staff', 'pay', 'rota'], staffSave: ['staff', 'pay'], resetPhone: 'staff',
+  photo: ['team', 'approve', 'times', 'trips', 'vouchers'], trips: ['trips', 'vouchers'], tripDecide: 'trips', vouchers: 'vouchers', voucherGet: ['vouchers', 'trips'], voucherPay: 'vouchers', voucherAttach: 'vouchers', voucherIssue: ['vouchers', 'trips'], voucherCancel: 'owner', staffList: ['staff', 'pay', 'rota'], staffSave: ['staff', 'pay'], resetPhone: 'staff',
   syncStaff: 'staff', rotaGet: 'rota', rotaAuto: 'rota', rotaSave: 'rota', payroll: 'pay', locSave: ['settings', 'rota'], settingsGet: 'settings', settingsSave: 'settings',
   rightsList: 'owner', rightsSave: 'owner', offDaysSave: ['settings', 'offDays'] };
 function can_(me, need) {
@@ -174,7 +187,15 @@ function api_(req) {
     case 'myDay': return myDay_(me);
     case 'myMonth': return myMonth_(d, me);
     case 'myRota': return { weeks: myRota_(me) };
-    case 'tripStart': return tripStart_(d, me);
+    case 'tripStart': throw new Error('Trips are now claimed with a start and end place: open Trips → New travel claim (update the app if you do not see it).');
+    case 'tripQuote': return tripQuote_(d, me);
+    case 'tripClaim': return tripClaim_(d, me);
+    case 'vouchers': return vouchersList_(d, me);
+    case 'voucherGet': return voucherGet_(d, me);
+    case 'voucherPay': return voucherPay_(d, me);
+    case 'voucherAttach': return voucherAttach_(d, me);
+    case 'voucherIssue': return voucherIssueAct_(d, me);
+    case 'voucherCancel': return voucherCancel_(d, me);
     case 'tripEnd': return tripEnd_(d, me);
     case 'tripCancel': return tripCancel_(d, me);
     case 'myTrips': return { trips: tripsFor_(me.name, 60) };
@@ -238,7 +259,7 @@ function inScope_(me, loc) { return !me.scope || me.scope.indexOf(loc) >= 0; }
 //    Every write goes through append_ / w_() / dirty_(), which drop the copies.
 let MEMO = { book: null, tabs: {}, rows: {}, fresh: false };
 // Actions that only read; every other action reads the sheet fresh (never the between-request cache) before writing.
-const READ_ONLY = { boot: 1, myDay: 1, myMonth: 1, myRota: 1, myTrips: 1, board: 1, rotaGet: 1, rotaAuto: 1, attendance: 1, trips: 1, photo: 1,
+const READ_ONLY = { tripQuote: 1, vouchers: 1, voucherGet: 1, boot: 1, myDay: 1, myMonth: 1, myRota: 1, myTrips: 1, board: 1, rotaGet: 1, rotaAuto: 1, attendance: 1, trips: 1, photo: 1,
   staffList: 1, settingsGet: 1, rightsList: 1 };
 const XCACHE = { staff: 1, locs: 1, set: 1 };
 function resetMemo_(fresh) { MEMO = { book: null, tabs: {}, rows: {}, fresh: !!fresh }; }
@@ -267,7 +288,7 @@ function tab_(k) {
     sh = ss.insertSheet(name);
     sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground('#1F2A44').setFontColor('#F7F1DE').setWrap(true);
     sh.setFrozenRows(1);
-    const textCols = { offreq: ['ID', 'Date'], rota: ['Week (Mon)', 'Date', 'Start', 'End'], punch: ['ID', 'Date'], fix: ['Date', 'In', 'Out'], trips: ['Trip ID', 'Date'],
+    const textCols = { vouchers: ['Voucher No', 'Issued on', 'Claim date', 'Paid on', 'Emp ID'], offreq: ['ID', 'Date'], rota: ['Week (Mon)', 'Date', 'Start', 'End'], punch: ['ID', 'Date'], fix: ['Date', 'In', 'Out'], trips: ['Trip ID', 'Date'],
       att: ['Date', 'Sched start', 'Sched end', 'In', 'Out'], pay: ['Month'], staff: ['Emp ID', 'Joined on', 'Phone ID'], set: ['Value'] }[k] || [];
     textCols.forEach(h => { const i = head.indexOf(h); if (i >= 0) sh.getRange(1, i + 1, sh.getMaxRows(), 1).setNumberFormat('@'); });
     if (k === 'trips') sh.hideColumns(head.length);
@@ -328,6 +349,14 @@ function ensureSetup_() {
       append_('locs', [['Event stall', 'Event', '', '', 300, 'Yes', 'General event stall – rename it for each event or add events with their own dates', '', '', '11:00', '22:00']]);
     dirty_();
     log_('v5: event stalls, after-midnight clock-outs, clock-out approval', 'system');
+  }
+  if (!p.getProperty('V14_CLAIMS') && rows_('staff').length) {   // 16 Nov 2026: travel claims by place, cash vouchers, 200 m clock-in
+    p.setProperty('V14_CLAIMS', '1');
+    const th = tab_('trips'); th.getRange(1, 1, 1, T.trips[1].length).setValues([T.trips[1]]).setFontWeight('bold').setBackground('#1F2A44').setFontColor('#F7F1DE'); dirty_('trips');
+    tab_('vouchers');
+    const v = staffAll_().filter(s => /^veer pratap/i.test(s.name))[0];
+    if (v) { const r = rightsOf_(v, v.role); if (r.indexOf('vouchers') < 0) r.push('vouchers'); w_('staff').getRange(v.row, C.staff['App rights'] + 1).setValue(r.join(', ')); dirty_('staff'); }
+    log_('v14: travel claims by start/end place, cash vouchers' + (v ? ' (vouchers right: ' + v.name + ')' : '') + ', clock-in within 200 m', 'system');
   }
   if (!p.getProperty('V12_VEERSUN') && rows_('staff').length) {   // 15 Nov 2026: Veer (Head Office) – weekly off on Sunday only
     p.setProperty('V12_VEERSUN', '1');
@@ -804,21 +833,42 @@ function punch_(d, me) {
     const inEvt = ps.find(p => p.type === 'IN' && isEvent_(p.loc));
     const evt = ro && isEvent_(ro.loc) ? locOf_(ro.loc) : inEvt ? locOf_(inEvt.loc) : null;
     let near = nearest_(lat, lng, date), inside;
-    if (evt && evt.lat == null) { near = { name: evt.name, dist: null, radius: evt.radius }; inside = true; if (type === 'IN') flags.push('Event stall (no position set)'); }
+    const mgr = s.role === 'Manager';                   // managers are never paid extra time (owner, 13 Nov 2026) – their timings need no approval
+    let approved = 'Yes', reason = txt_(d.reason, 200);
+    if (type === 'IN' || type === 'OUT') {
+      // 16 Nov 2026 (owner): clock in / out only within 200 m. Staff: any store / head office (or the event they are planned at).
+      // Managers: the location they are planned at on the rota; anywhere else needs the owner's approval.
+      const LIM = setn_('Clock-in distance (m)', 200);
+      const working = ro && ['OFF', 'LP', 'LU', 'HOL'].indexOf(ro.shift) < 0;
+      const target = evt || (mgr && working && ro.loc ? locOf_(ro.loc) : null);
+      if (target && target.lat == null && target.type === 'Event') {
+        near = { name: target.name, dist: null, radius: LIM }; inside = true; if (type === 'IN') flags.push('Event stall (no position set)');
+      } else if (target && target.lat == null) {
+        near = { name: target.name, dist: null, radius: LIM };
+        if (!reason) return { needReason: true, near: { name: target.name, dist: null }, owner: true, msg: target.name + ' has no map position yet, so the owner must approve this entry.' };
+        inside = false; approved = 'Pending'; flags.push('No map position for ' + target.name + ' – owner approval');
+      } else if (target) {
+        const dist = haversine_(lat, lng, target.lat, target.lng); near = { name: target.name, dist: dist, radius: LIM }; inside = dist <= LIM;
+      } else inside = !mgr && !!(near && near.dist <= LIM);   // a manager not planned on the rota today always needs the owner
+      if (!inside && approved === 'Yes') {
+        if (!mgr) throw new Error('You are ' + distTxt_(near) + '. You can clock ' + (type === 'IN' ? 'in' : 'out') + ' only within ' + LIM + ' m of a Nutvique store or the head office.');
+        if (!reason) return { needReason: true, near: near ? { name: near.name, dist: near.dist == null ? null : Math.round(near.dist) } : null, owner: true,
+          msg: (target ? 'You are planned at ' + target.name + ' today but you are ' + distTxt_(near) + '.' : 'You are not planned on the rota today.') + ' This entry goes to the owner for approval.' };
+        approved = 'Pending'; flags.push((target ? 'Away from planned ' + target.name + ' (' + distTxt_(near) + ')' : 'Not planned on the rota (' + distTxt_(near) + ')') + ' – owner approval');
+      }
+    } else if (evt && evt.lat == null) { near = { name: evt.name, dist: null, radius: evt.radius }; inside = true; }
     else if (evt) { const dist = haversine_(lat, lng, evt.lat, evt.lng); near = { name: evt.name, dist: dist, radius: evt.radius }; inside = dist <= evt.radius + Math.min(acc, 100); }
     else inside = near && near.dist <= near.radius + Math.min(acc, 100);
-    const onTrip = !!runningTrip_(s.name);
-    let approved = 'Yes', reason = txt_(d.reason, 200);
-    if (!inside) {
+    const onTrip = false;
+    if (!inside && (type === 'BO' || type === 'BI')) {
       if (setv_('Outside location') === 'Block' && !onTrip) throw new Error('You are ' + distTxt_(near) + ' – clock in only at your store.');
       if (!onTrip && !reason) return { needReason: true, near: near ? { name: near.name, dist: Math.round(near.dist) } : null };
       flags.push(onTrip ? 'On a trip' : 'Outside store (' + distTxt_(near) + ')');
       if (!onTrip) approved = 'Pending';
-    } else if (s.loc && near.name !== s.loc && type === 'IN' && !evt) flags.push('At ' + near.name + ' (home: ' + s.loc + ')');
+    } else if (s.loc && near && near.name !== s.loc && type === 'IN' && !evt) flags.push('At ' + near.name + ' (home: ' + s.loc + ')');
     // a clock-out at an event stall, or after midnight, waits for the owner's approval
     const thr = setn_('Approval needed after (min)', 30);
     const overEnd = type === 'OUT' && ro && ro.start && ['OFF', 'LP', 'LU', 'HOL'].indexOf(ro.shift) < 0 ? minsOn_(date, now) - endMin_(ro.start, ro.end) : 0;
-    const mgr = s.role === 'Manager';                   // managers are never paid extra time (owner, 13 Nov 2026) – their timings need no approval
     const late = !mgr && type === 'OUT' && (evt || date !== today_() || (thr > 0 && overEnd >= thr));
     if (late) { approved = 'Pending'; flags.push(evt ? 'Event clock-out – needs approval' : date !== today_() ? 'Clock-out after midnight – needs approval' : 'Late clock-out ' + overEnd + ' min after rota end – needs approval'); }
     // a clock-in N min or more before the rota start waits for a manager (not approved = paid from the rota start)
@@ -1024,7 +1074,7 @@ function pendingList_(staff) {
 /** Just the approval list – shown at once, before the slower attendance. */
 function pending_(d, me) {
   const staff = staffAll_().filter(s => s.onRota && (inScope_(me, s.loc) || !s.loc));
-  return { pending: pendingList_(staff), offReqs: me.owner ? offReqList_('2000-01-01', '2999-12-31', null) : [] };
+  return { pending: pendingList_(staff).filter(p => me.owner || !/owner approval/.test(p.flags || '')), offReqs: me.owner ? offReqList_('2000-01-01', '2999-12-31', null) : [] };
 }
 /** Corrects a day: d = {date, name, status ('' = as per rota), in, out, brk, ot, lateOk, brkPaid, note}.
  *  status / in / out / break need the "times" right; overtime, excused late and paid extra break need "payAdj". The rest of the row is kept. */
@@ -1077,6 +1127,7 @@ function approvePunch_(d, me) {
   const s = staffByName_(p.name); if (s && s.loc && !inScope_(me, s.loc)) throw new Error('Not your store.');
   if (norm_(p.name) === norm_(me.name) && !me.owner) throw new Error('Someone else must approve your own entry.');
   if (p.approved !== 'Pending' && !me.owner) throw new Error('Already decided.');
+  if (/owner approval/.test(p.flags || '') && !me.owner) throw new Error('Only the owner can approve this entry.');
   sh.getRange(p.row, C.punch['Approved'] + 1, 1, 2).setValues([[d.approve ? 'Yes' : 'No', me.name]]); dirty_('punch');
   // approving a late clock-out = paying until that time: the minutes after the rota end are approved as overtime for that day
   if (d.approve && p.type === 'OUT' && d.payLate !== false) lock_(() => {
@@ -1109,6 +1160,7 @@ function photo_(d, me) {
   let id = '';
   if (d.punch) { const p = punchesOn_(null, null).find(x => x.id === d.punch); id = p ? fileId_(p.selfie) : ''; }
   if (d.trip) { const t = rows_('trips').find(r => s_(r[0]) === d.trip); id = t ? fileId_(s_(t[19])) : ''; }
+  if (d.voucher) { const v = voucherRows_().find(x => x.no === d.voucher); id = v ? fileId_(v.signedUrl) : ''; }
   if (!id) throw new Error('No photo.');
   const b = DriveApp.getFileById(id).getBlob();
   return { mime: b.getContentType(), b64: Utilities.base64Encode(b.getBytes()) };
@@ -1120,14 +1172,16 @@ function tripRows_() {
     start: iso_(r[6]), startPlace: s_(r[7]), sLat: r[8] === '' ? null : n_(r[8]), sLng: r[9] === '' ? null : n_(r[9]), end: iso_(r[10]), endPlace: s_(r[11]),
     eLat: r[12] === '' ? null : n_(r[12]), eLng: r[13] === '' ? null : n_(r[13]), straight: n_(r[14]), trail: n_(r[15]), km: n_(r[16]), rate: n_(r[17]),
     fare: n_(r[18]), receipt: s_(r[19]), claimed: n_(r[20]), approved: r[21] === '' ? null : n_(r[21]), by: s_(r[22]), at: iso_(r[23]), note: s_(r[24]),
-    mnote: s_(r[25]) })).filter(t => t.id);
+    mnote: s_(r[25]), routeKm: n_(r[C.trips['Route km (Google)']]), ret: s_(r[C.trips['Return trip']]) === 'Yes', voucher: s_(r[C.trips['Voucher No']]),
+    checked: r[C.trips['Screenshot ₹ (checked)']] === '' ? null : n_(r[C.trips['Screenshot ₹ (checked)']]), ctype: s_(r[C.trips['Claim type']]) })).filter(t => t.id);
 }
 function tripPub_(t) {
   if (!t) return null;
   const m = TRIP_MODES.find(x => x[0] === t.mode) || TRIP_MODES[TRIP_MODES.length - 1];
   return { id: t.id, date: t.date, name: t.name, purpose: t.purpose, mode: t.mode, modeLabel: m[1], kind: m[2], status: t.status, start: t.start, startPlace: t.startPlace,
     end: t.end, endPlace: t.endPlace, straight: t.straight, trail: t.trail, km: t.km, rate: t.rate, fare: t.fare, receipt: !!t.receipt, claimed: t.claimed,
-    approved: t.approved, by: t.by, at: t.at, note: t.note, mnote: t.mnote, sLat: t.sLat, sLng: t.sLng, eLat: t.eLat, eLng: t.eLng };
+    approved: t.approved, by: t.by, at: t.at, note: t.note, mnote: t.mnote, sLat: t.sLat, sLng: t.sLng, eLat: t.eLat, eLng: t.eLng,
+    routeKm: t.routeKm, ret: t.ret, voucher: t.voucher, checked: t.checked, ctype: t.ctype, receiptNeeded: !!RECEIPT_NEEDED[t.mode], map: t.sLat != null && t.eLat != null ? mapUrl_({ lat: t.sLat, lng: t.sLng }, { lat: t.eLat, lng: t.eLng }) : '' };
 }
 function runningTrip_(name) { return tripRows_().find(t => norm_(t.name) === norm_(name) && t.status === 'Running') || null; }
 function tripsFor_(name, days) {
@@ -1217,17 +1271,241 @@ function tripDecide_(d, me) {
     const t = tripRows_().find(x => x.id === d.id); if (!t) throw new Error('Trip not found.');
     const s = staffByName_(t.name); if (s && s.loc && !inScope_(me, s.loc)) throw new Error('Not your store.');
     if (norm_(t.name) === norm_(me.name) && !me.owner) throw new Error('Someone else must approve your own trip.');
+    if (t.voucher) throw new Error('Voucher ' + t.voucher + ' is already issued for this claim – the owner must cancel the voucher first.');
     if (t.status !== 'Submitted' && !me.owner) throw new Error('This trip is ' + t.status.toLowerCase() + '.');
     if (t.status === 'Running') throw new Error('The trip is still running.');
-    const amt = d.approve ? round2_(d.amount === '' || d.amount == null ? t.claimed : n_(d.amount)) : 0;
-    if (d.approve && amt < 0) throw new Error('Amount cannot be negative.');
+    const kind = (TRIP_MODES.find(x => x[0] === t.mode) || [0, 0, 'fare'])[2];
+    let amt = 0, checked = '';
+    if (d.approve && kind === 'fare') {
+      // paid fares: approved only on the amount read from the screenshot
+      if (!t.receipt) throw new Error('No screenshot – a fare without its screenshot cannot be approved. Reject it.');
+      checked = round2_(n_(d.checked));
+      if (!(checked > 0)) throw new Error('Type the amount you can see on the screenshot.');
+      amt = checked;
+    } else if (d.approve) {
+      amt = round2_(d.amount === '' || d.amount == null ? t.claimed : n_(d.amount));
+      if (amt < 0) throw new Error('Amount cannot be negative.');
+      if (amt > t.claimed && !me.owner) throw new Error('You cannot approve more than the Google Maps distance gives (' + rs_(t.claimed) + ').');
+    }
     if (!d.approve && !txt_(d.note, 200)) throw new Error('Write why it is rejected.');
+    if (d.approve && amt !== t.claimed && !txt_(d.note, 200)) throw new Error('The amount is different from the claim (' + rs_(t.claimed) + ') – write why in the note.');
     tab_('trips').getRange(t.row, C.trips['Status'] + 1).setValue(d.approve ? 'Approved' : 'Rejected');
     tab_('trips').getRange(t.row, C.trips['Approved ₹'] + 1, 1, 3).setValues([[amt, me.name, new Date()]]); dirty_('trips');
     tab_('trips').getRange(t.row, C.trips['Manager note'] + 1).setValue(txt_(d.note, 200)); dirty_('trips');
-    return tripsAdmin_({}, me);
+    if (checked !== '') { tab_('trips').getRange(t.row, C.trips['Screenshot ₹ (checked)'] + 1).setValue(checked); dirty_('trips'); }
+    let voucher = '';
+    if (d.approve && amt > 0) voucher = voucherFor_(Object.assign({}, t, { approved: amt }), amt, me);
+    return Object.assign(tripsAdmin_({}, me), { voucher: voucher });
   });
 }
+
+// ───────────────────────────── travel claims with start / end place (16 Nov 2026) ─────────────────────────────
+// Own bike / car: the person picks where they started and where they went; the server finds the road distance on Google Maps
+// and pays the km rate – nobody types km. Rapido / cab / auto / Porter / metro: the fare + a screenshot of it are required; the
+// approver reads the amount on the screenshot and that amount is approved. Every approved claim gets a numbered cash voucher.
+const PLACE_WORDS = [[/gulshan|one ?29/i, 'Gulshan One29 Mall'], [/galleria|gaur city/i, 'City Galleria – Gaur City-2'], [/central/i, 'Central Market – Sector 120'],
+  [/head ?office|^\s*h\.?o\.?\s*$|ats bouquet/i, 'Head Office']];
+/** A place: {loc:'Gulshan One29 Mall'} (our store / office) or {text:'ATS One Hamlet, Sector 104'} or a plain string. */
+function place_(x) {
+  const q = typeof x === 'string' ? { text: x } : (x || {});
+  let name = q.loc ? String(q.loc) : '';
+  if (!name && q.text) { const hit = PLACE_WORDS.find(w => w[0].test(q.text) && txt_(q.text, 200).split(/\s+/).length <= 3); if (hit) name = hit[1]; }
+  if (name) {
+    const l = locOf_(name);
+    if (!l) throw new Error('Unknown location: ' + name);
+    if (l.lat == null) throw new Error(l.name + ' has no map position – the owner must set it (More → Stores).');
+    return { name: l.name, addr: l.name, lat: l.lat, lng: l.lng, ours: true };
+  }
+  const text = txt_(q.text, 160);
+  if (text.length < 4) throw new Error('Type the place (building / society name and sector).');
+  const key = 'geo_' + Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text.toLowerCase())).slice(0, 40);
+  const c = CacheService.getScriptCache(), hit = c.get(key);
+  if (hit) return JSON.parse(hit);
+  let res = null;
+  [text, text + ', Noida, Uttar Pradesh'].some(t => {
+    const r = Maps.newGeocoder().setRegion('in').setBounds(28.35, 77.20, 28.80, 77.65).geocode(t);
+    res = r && r.status === 'OK' && r.results && r.results[0];
+    return !!res;
+  });
+  if (!res) throw new Error('Could not find "' + text + '" on Google Maps – add the sector / city.');
+  const g = res.geometry.location;
+  const out = { name: text, addr: String(res.formatted_address || text).replace(/, India$/, ''), lat: g.lat, lng: g.lng, ours: false, partial: !!res.partial_match };
+  c.put(key, JSON.stringify(out), 21600);
+  return out;
+}
+/** Shortest road distance in km between two places (Google Maps, driving). */
+function roadKm_(a, b) {
+  const key = 'rkm_' + [a.lat, a.lng, b.lat, b.lng].map(v => Number(v).toFixed(5)).join('_');
+  const c = CacheService.getScriptCache(), hit = c.get(key);
+  if (hit) return Number(hit);
+  if (haversine_(a.lat, a.lng, b.lat, b.lng) < 50) return 0;
+  const r = Maps.newDirectionFinder().setOrigin(a.lat, a.lng).setDestination(b.lat, b.lng).setMode(Maps.DirectionFinder.Mode.DRIVING).setAlternatives(true).getDirections();
+  if (!r || r.status !== 'OK' || !r.routes || !r.routes.length) throw new Error('Google Maps found no road route between these places.');
+  const m = Math.min.apply(null, r.routes.map(x => x.legs.reduce((s, l) => s + l.distance.value, 0)));
+  const km = Math.round(m / 100) / 10;
+  c.put(key, String(km), 21600);
+  return km;
+}
+function rateFor_(mode) { return mode === 'car' ? setn_('Car rate ₹/km', 10) : setn_('Bike rate ₹/km', 4); }
+function mapUrl_(a, b) { return 'https://www.google.com/maps/dir/?api=1&origin=' + a.lat + ',' + a.lng + '&destination=' + b.lat + ',' + b.lng + '&travelmode=driving'; }
+/** d = {from, to, mode, ret} → the distance and money before submitting. */
+function tripQuote_(d, me) {
+  const a = place_(d.from), b = place_(d.to);
+  if (a.ours && b.ours && a.name === b.name) throw new Error('Start and end are the same place.');
+  const km = roadKm_(a, b), trips = d.ret ? 2 : 1, m = TRIP_MODES.find(x => x[0] === d.mode) || TRIP_MODES[0];
+  const rate = m[2] === 'km' ? rateFor_(d.mode) : 0, total = round2_(km * trips);
+  return { from: a, to: b, km: km, ret: !!d.ret, totalKm: total, rate: rate, amount: m[2] === 'km' ? Math.round(total * rate) : 0, kind: m[2], map: mapUrl_(a, b) };
+}
+/** d = {date, purpose, mode, from, to, ret, fare, receipt (base64), note} – the only way to claim travel money. */
+function tripClaim_(d, me) {
+  const s = myStaff_(me); if (!s) throw new Error('The owner does not claim travel here.');
+  const m = TRIP_MODES.find(x => x[0] === d.mode); if (!m) throw new Error('Pick how you travelled.');
+  if (m[2] === 'free') throw new Error('Company vehicle – nothing to claim.');
+  const date = String(d.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today_()) throw new Error('Pick the date of the journey (not a future date).');
+  const within = setn_('Claim within (days)', 7);
+  if (date < addDays_(today_(), -within)) throw new Error('Claims must be made within ' + within + ' days of the journey. Ask the owner.');
+  const purpose = txt_(d.purpose, 200);
+  if (purpose.length < 8) throw new Error('Write why you travelled (what work).');
+  const q = tripQuote_(d, me);
+  let fare = 0, claimed = 0;
+  if (m[2] === 'km') {
+    if (!(q.totalKm > 0)) throw new Error('The distance is 0 km – check the start and end place.');
+    claimed = q.amount;
+  } else {
+    fare = round2_(n_(d.fare));
+    if (!(fare > 0)) throw new Error('Type the fare you paid (₹), exactly as in the screenshot.');
+    if (fare > 5000) throw new Error('That fare looks too high – check it.');
+    if (!d.receipt) throw new Error('Add the screenshot of the ' + m[1] + ' fare / receipt. Without it the claim cannot be accepted.');
+    claimed = fare;
+  }
+  return lock_(() => {
+    const dup = tripRows_().find(t => norm_(t.name) === norm_(s.name) && t.date === date && t.mode === d.mode && t.status !== 'Rejected' && t.status !== 'Cancelled' &&
+      t.startPlace === (q.from.ours ? q.from.name : q.from.addr) && t.endPlace === (q.to.ours ? q.to.name : q.to.addr));
+    if (dup) throw new Error('You already claimed this journey (' + dup.id + ').');
+    const now = new Date(), ids = tripRows_().map(t => t.id); let id = 'TR-' + Utilities.formatDate(now, tz_(), 'yyMMdd-HHmmss');
+    for (let k = 2; ids.indexOf(id) >= 0; k++) id = 'TR-' + Utilities.formatDate(now, tz_(), 'yyMMdd-HHmmss') + '-' + k;
+    const receipt = d.receipt ? savePhoto_(d.receipt, id + '_' + s.name + '_receipt.jpg', 'Receipts') : '';
+    const row = new Array(T.trips[1].length).fill('');
+    const put = (h, v) => { row[C.trips[h]] = v; };
+    put('Trip ID', id); put('Date', date); put('Name', s.name); put('Purpose', purpose); put('Mode', d.mode); put('Status', 'Submitted');
+    put('Start time', now); put('Start place', q.from.ours ? q.from.name : q.from.addr); put('Start lat', q.from.lat); put('Start lng', q.from.lng);
+    put('End time', now); put('End place', q.to.ours ? q.to.name : q.to.addr); put('End lat', q.to.lat); put('End lng', q.to.lng);
+    put('Straight km', round2_(haversine_(q.from.lat, q.from.lng, q.to.lat, q.to.lng) / 1000)); put('Claimed km', m[2] === 'km' ? q.totalKm : '');
+    put('Rate ₹/km', m[2] === 'km' ? q.rate : ''); put('Fare ₹', fare || ''); put('Receipt', receipt); put('Claimed ₹', claimed); put('Staff note', txt_(d.note, 200));
+    put('Route km (Google)', q.km); put('Return trip', q.ret ? 'Yes' : 'No'); put('Claim type', 'Start–end place');
+    append_('trips', [row]);
+    log_('Travel claim ' + id + ' ' + s.name + ' ' + date + ' ' + m[1] + ' ₹' + claimed, me.name);
+    return { trip: tripPub_(tripRows_().find(x => x.id === id)), trips: tripsFor_(s.name, 60) };
+  });
+}
+
+// ───────────────────────────── travel cash vouchers ─────────────────────────────
+function fyOf_(date) { const y = Number(date.slice(0, 4)), mo = Number(date.slice(5, 7)), a = mo >= 4 ? y : y - 1; return String(a).slice(2) + '-' + String(a + 1).slice(2); }
+function voucherRows_() {
+  return rows_('vouchers').map((r, i) => { const o = { row: i + 2 }; T.vouchers[1].forEach((h, j) => o[h] = r[j] instanceof Date ? (/on$|at$/.test(h) ? iso_(r[j]) : r[j]) : r[j]); return o; })
+    .filter(v => s_(v['Voucher No'])).map(v => ({ row: v.row, no: s_(v['Voucher No']), issued: ymd_(v['Issued on']), fy: s_(v['FY']), seq: n_(v['Seq']), name: s_(v['Paid to']),
+      empId: s_(v['Emp ID']), desig: s_(v['Designation']), store: s_(v['Store']), head: s_(v['Expense head']), amount: n_(v['Amount ₹']), words: s_(v['Amount in words']),
+      claim: s_(v['Claim ID']), claimDate: ymd_(v['Claim date']), mode: s_(v['Mode']), from: s_(v['From']), to: s_(v['To']), km: n_(v['Km']), rate: n_(v['Rate ₹/km']),
+      purpose: s_(v['Purpose']), particulars: s_(v['Particulars']), support: s_(v['Supporting document']), status: s_(v['Status']), approvedBy: s_(v['Approved by']),
+      approvedAt: s_(v['Approved at']), paidOn: ymd_(v['Paid on']), paidBy: s_(v['Paid by']), payMode: s_(v['Payment mode']), signed: !!s_(v['Signed copy']),
+      signedUrl: s_(v['Signed copy']), cancelledBy: s_(v['Cancelled by']), cancelReason: s_(v['Cancel reason']), issuedBy: s_(v['Issued by']) }));
+}
+function words_(n) {
+  n = Math.round(n_(n));
+  const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const two = x => x < 20 ? a[x] : b[Math.floor(x / 10)] + (x % 10 ? ' ' + a[x % 10] : '');
+  const three = x => (x >= 100 ? a[Math.floor(x / 100)] + ' Hundred' + (x % 100 ? ' ' : '') : '') + (x % 100 ? two(x % 100) : '');
+  if (n === 0) return 'Rupees Zero Only';
+  const parts = []; const cr = Math.floor(n / 1e7), lk = Math.floor(n / 1e5) % 100, th = Math.floor(n / 1000) % 100, rest = n % 1000;
+  if (cr) parts.push(three(cr) + ' Crore'); if (lk) parts.push(two(lk) + ' Lakh'); if (th) parts.push(two(th) + ' Thousand'); if (rest) parts.push(three(rest));
+  return 'Rupees ' + parts.join(' ') + ' Only';
+}
+/** Issue the voucher for an approved claim (inside a lock). */
+function voucherFor_(t, amount, me) {
+  const have = voucherRows_();
+  const old = have.find(v => v.claim === t.id && v.status !== 'Cancelled'); if (old) return old.no;
+  const today = today_(), fy = fyOf_(today), series = String(setv_('Voucher series') || 'TV').trim() || 'TV';
+  const seq = have.filter(v => v.fy === fy).reduce((mx, v) => Math.max(mx, v.seq), 0) + 1;
+  const no = series + '/' + fy + '/' + String(seq).padStart(4, '0');
+  const s = staffByName_(t.name) || {}, m = TRIP_MODES.find(x => x[0] === t.mode) || TRIP_MODES[TRIP_MODES.length - 1];
+  const kmTxt = m[2] === 'km' ? t.km + ' km × ₹' + t.rate + '/km' + (t.ret ? ' (to and back)' : '') : 'fare ₹' + t.fare;
+  const particulars = 'Local conveyance on company work on ' + fmtDate_(t.date) + ': ' + t.startPlace + ' → ' + t.endPlace + (t.ret ? ' → back' : '') + ' by ' + m[1] + ', ' + kmTxt + '. Purpose: ' + t.purpose + '. Claim ' + t.id + '.';
+  const support = m[2] === 'km' ? 'Road distance from Google Maps ' + (t.routeKm || t.km) + ' km one way (start / end place recorded in the app)' : m[1] + ' fare screenshot attached in the app (amount checked: ₹' + amount + ')';
+  const now = new Date();
+  append_('vouchers', [[no, today, fy, seq, t.name, s.id || '', s.role || 'Staff', s.loc || '', 'Conveyance expenses (local travel)', amount, words_(amount),
+    t.id, t.date, m[1], t.startPlace, t.endPlace, m[2] === 'km' ? t.km : '', m[2] === 'km' ? t.rate : '', t.purpose, particulars, support, 'Unpaid', me.name, now,
+    '', '', '', '', '', '', '', me.name]]);
+  tab_('trips').getRange(t.row, C.trips['Voucher No'] + 1).setValue(no); dirty_('trips');
+  return no;
+}
+function voucherPub_(v) { return v && Object.assign({}, v, { row: undefined, signedUrl: undefined }); }
+function vouchersList_(d, me) {
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(d.from || '') ? d.from : addDays_(today_(), -60), to = /^\d{4}-\d{2}-\d{2}$/.test(d.to || '') ? d.to : today_();
+  const list = voucherRows_().filter(v => (v.status === 'Unpaid') || (v.issued >= from && v.issued <= to)).reverse();
+  const loose = tripRows_().filter(t => t.status === 'Approved' && n_(t.approved) > 0 && !t.voucher).map(tripPub_);
+  const sum = st => list.filter(v => v.status === st).reduce((a, v) => a + v.amount, 0);
+  return { vouchers: list.map(voucherPub_), unvouchered: loose, from: from, to: to, unpaid: sum('Unpaid'), paid: sum('Paid'), canCancel: !!me.owner };
+}
+function company_() {
+  return { name: setv_('Company name') || 'NUTZY FOODS PRIVATE LIMITED', addr: setv_('Company address') || '', gstin: setv_('Company GSTIN') || '', cin: setv_('Company CIN') || '' };
+}
+function voucherGet_(d, me) {
+  const v = voucherRows_().find(x => x.no === String(d.no || '')); if (!v) throw new Error('Voucher not found.');
+  const t = tripRows_().find(x => x.id === v.claim);
+  return { voucher: voucherPub_(v), claim: t ? tripPub_(t) : null, company: company_(), cashLimit: setn_('Cash limit per person per day ₹', 10000) };
+}
+/** d = {no, paidOn} – cash handed over; the voucher date for the books is the paid date (cash basis). */
+function voucherPay_(d, me) {
+  return lock_(() => {
+    const v = voucherRows_().find(x => x.no === String(d.no || '')); if (!v) throw new Error('Voucher not found.');
+    if (v.status !== 'Unpaid') throw new Error('This voucher is ' + v.status.toLowerCase() + '.');
+    const on = /^\d{4}-\d{2}-\d{2}$/.test(d.paidOn || '') ? d.paidOn : today_();
+    if (on > today_()) throw new Error('The paid date cannot be in the future.');
+    if (on < v.issued) throw new Error('The paid date cannot be before the voucher date (' + fmtDate_(v.issued) + ').');
+    const lim = setn_('Cash limit per person per day ₹', 10000);
+    const sameDay = voucherRows_().filter(x => x.status === 'Paid' && x.paidOn === on && norm_(x.name) === norm_(v.name)).reduce((a, x) => a + x.amount, 0);
+    if (lim > 0 && sameDay + v.amount > lim) throw new Error('Cash to ' + v.name + ' on ' + fmtDate_(on) + ' would be ₹' + (sameDay + v.amount) + ' – above ₹' + lim + ' (income-tax s.40A(3)). Pay this one by bank transfer.');
+    tab_('vouchers').getRange(v.row, C.vouchers['Status'] + 1).setValue('Paid');
+    tab_('vouchers').getRange(v.row, C.vouchers['Paid on'] + 1, 1, 3).setValues([[on, me.name, 'Cash']]); dirty_('vouchers');
+    log_('Voucher ' + v.no + ' paid in cash ₹' + v.amount + ' to ' + v.name + ' on ' + on, me.name);
+    return vouchersList_({}, me);
+  });
+}
+/** d = {no, file (base64 image)} – photo of the voucher signed by the person who took the cash. */
+function voucherAttach_(d, me) {
+  const v = voucherRows_().find(x => x.no === String(d.no || '')); if (!v) throw new Error('Voucher not found.');
+  if (!d.file) throw new Error('Add the photo of the signed voucher.');
+  const url = savePhoto_(d.file, v.no.replace(/\//g, '-') + '_' + v.name + '_signed.jpg', 'Vouchers');
+  lock_(() => { tab_('vouchers').getRange(v.row, C.vouchers['Signed copy'] + 1).setValue(url); dirty_('vouchers'); });
+  return vouchersList_({}, me);
+}
+/** d = {trip} – an approved claim from before vouchers began gets its voucher. */
+function voucherIssueAct_(d, me) {
+  return lock_(() => {
+    const t = tripRows_().find(x => x.id === String(d.trip || '')); if (!t) throw new Error('Claim not found.');
+    if (t.status !== 'Approved' || !(n_(t.approved) > 0)) throw new Error('Only an approved claim gets a voucher.');
+    voucherFor_(t, n_(t.approved), me);
+    return vouchersList_({}, me);
+  });
+}
+/** Owner: d = {no, reason} – the number stays used (shown as cancelled); the claim goes back to "waiting" so it can be decided again. */
+function voucherCancel_(d, me) {
+  const why = txt_(d.reason, 200); if (why.length < 8) throw new Error('Write why the voucher is cancelled.');
+  return lock_(() => {
+    const v = voucherRows_().find(x => x.no === String(d.no || '')); if (!v) throw new Error('Voucher not found.');
+    if (v.status === 'Cancelled') throw new Error('Already cancelled.');
+    tab_('vouchers').getRange(v.row, C.vouchers['Status'] + 1).setValue('Cancelled');
+    tab_('vouchers').getRange(v.row, C.vouchers['Cancelled by'] + 1, 1, 3).setValues([[me.name, new Date(), why]]); dirty_('vouchers');
+    const t = tripRows_().find(x => x.id === v.claim);
+    if (t) { const sh = tab_('trips'); sh.getRange(t.row, C.trips['Status'] + 1).setValue('Submitted'); sh.getRange(t.row, C.trips['Voucher No'] + 1).setValue('');
+      sh.getRange(t.row, C.trips['Approved ₹'] + 1, 1, 3).setValues([['', '', '']]); dirty_('trips'); }
+    log_('Voucher ' + v.no + ' cancelled: ' + why, me.name);
+    return vouchersList_({}, me);
+  });
+}
+function fmtDate_(ymd) { return ymd ? ymd.slice(8, 10) + '-' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(ymd.slice(5, 7)) - 1] + '-' + ymd.slice(0, 4) : ''; }
 
 // ───────────────────────────── payroll ─────────────────────────────
 function payFor_(s, month, days, trips) {
@@ -1258,7 +1536,8 @@ function payFor_(s, month, days, trips) {
     const shiftH = (toMin_(shiftTimes_('M').end) - toMin_(shiftTimes_('M').start)) / 60;
     o.otPay = Math.round(o.rate / shiftH * (o.otMin / 60) * setn_('Overtime pay multiplier', 1));
   }
-  o.travel = Math.round((trips || []).filter(t => t.status === 'Approved').reduce((a, t) => a + n_(t.approved), 0));
+  // travel paid by cash voucher is not added to salary (16 Nov 2026); only old approved claims without a voucher still are
+  o.travel = Math.round((trips || []).filter(t => t.status === 'Approved' && !t.voucher).reduce((a, t) => a + n_(t.approved), 0));
   o.total = o.earned + o.otPay + o.travel;
   o.otH = round2_(o.otMin / 60);
   return o;
@@ -1297,7 +1576,7 @@ function boot_(me, token) {
   const s = me.owner ? staffByName_(me.name) : myStaff_(me);
   const out = { me: { name: me.name, role: me.role, home: me.home, admin: me.admin, pay: me.pay, owner: me.owner, rights: me.rights, staffLoc: s ? s.loc : '' },
     shifts: { M: shiftTimes_('M'), E: shiftTimes_('E') }, modes: TRIP_MODES.map(m => ({ key: m[0], label: m[1], kind: m[2], receipt: !!RECEIPT_NEEDED[m[0]] })),
-    selfie: setv_('Selfie required') === 'Yes', breakAllow: setn_('Break allowed (min per shift)', 30), grace: setn_('Late grace (min)', 5), maxAcc: setn_('Max GPS error (m)', 250), rates: { bike: setn_('Bike rate ₹/km', 4), car: setn_('Car rate ₹/km', 10) },
+    selfie: setv_('Selfie required') === 'Yes', breakAllow: setn_('Break allowed (min per shift)', 30), grace: setn_('Late grace (min)', 5), maxAcc: setn_('Max GPS error (m)', 250), rates: { bike: setn_('Bike rate ₹/km', 4), car: setn_('Car rate ₹/km', 10) }, claimDays: setn_('Claim within (days)', 7),
     locations: locs_(false).map(l => ({ name: l.name, type: l.type, lat: l.lat, lng: l.lng, radius: l.radius })) };
   if (s && tracked_(s)) { out.day = myDay_(me); out.weeks = myRota_(me); }
   if (me.admin) {
@@ -1381,6 +1660,7 @@ function s_(v) { return v == null ? '' : String(v).trim(); }
 function n_(v) { if (typeof v === 'number') return isFinite(v) ? v : 0; const x = Number(String(v == null ? '' : v).replace(/[₹,\s]/g, '')); return isFinite(x) ? x : 0; }
 function txt_(v, max) { return String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max || 200); }
 function norm_(v) { return String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim(); }
+function rs_(x) { return '₹' + Math.round(n_(x)).toLocaleString('en-IN'); }
 function round2_(x) { return Math.round(n_(x) * 100) / 100; }
 function round5_(x) { return Math.round(n_(x) * 1e5) / 1e5; }
 function digest_(s) { return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, s).map(b => ((b + 256) % 256).toString(16).padStart(2, '0')).join(''); }
