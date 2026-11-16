@@ -4853,12 +4853,14 @@ async function myTasks(startDate) {
   const nextDay = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 1); return x.toISOString().slice(0, 10); };
   const otDictate = (inp, btn) => {
     if (!SR) { toast('Voice typing is not available here – use the 🎤 on your phone keyboard', true); inp.focus(); return; }
-    const r = new SR(); r.lang = lang; r.interimResults = true; const base = inp.value.trim(); let fin = '';
-    btn.textContent = '⏹'; btn.onclick = () => { try { r.stop(); } catch (e) { } };
-    r.onresult = e => { let im = ''; for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) fin += e.results[i][0].transcript; else im += e.results[i][0].transcript; } inp.value = (base ? base + ' ' : '') + (fin + ' ' + im).trim(); };
-    r.onerror = e => toast(e.error === 'not-allowed' ? 'Allow the microphone for this app' : 'Voice: ' + e.error, true);
-    r.onend = () => { btn.textContent = '🎤'; btn.onclick = () => otDictate(inp, btn); };
-    try { r.start(); } catch (e) { btn.textContent = '🎤'; }
+    if (sess) finish(false);
+    const r = new SR(); r.lang = lang; r.interimResults = true; r.continuous = false; const base = inp.value.trim(); let done = false, q = null;
+    const end = () => { if (done) return; done = true; clearTimeout(q); try { r.stop(); } catch (e) { } btn.textContent = '🎤'; btn.onclick = () => otDictate(inp, btn); };
+    btn.textContent = '⏹'; btn.onclick = end;
+    r.onresult = e => { let t = ''; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; inp.value = (base ? base + ' ' : '') + t.trim(); clearTimeout(q); q = setTimeout(end, 1500); };
+    r.onerror = e => { if (e.error !== 'aborted' && e.error !== 'no-speech') toast(micMsg(e.error), true); end(); };
+    r.onend = end; setTimeout(end, 20000);
+    try { r.start(); } catch (e) { end(); toast('Could not start the microphone – try again', true); }
   };
   const save = async x => { if (busy) return; busy = true; try { x.view = dateOf(); R = await call('otSave', x); draw(); otBadge(); if ($('#ot_q', m).value.trim().length >= 2) $('#ot_q', m).oninput(); return true; } catch (e) { toast(e.message, true); return false; } finally { busy = false; } };
   const add = async (txt, viaVoice) => {
@@ -4883,16 +4885,49 @@ async function myTasks(startDate) {
       bind();
     } catch (e) { toast(e.message, true); } }, 400); };
   $('#ot_t', m).onkeydown = e => { if (e.key === 'Enter') add(); };
-  $('#ot_mic', m).onclick = () => {
+  // v18.55: one speech recogniser is kept and re-used (fewer microphone prompts); a session ends by itself after ~1.5 s of
+  // silence (phones often never send "final" or "end"), and a stuck previous session can never block the next one.
+  let sess = null, sid = 0;
+  const mic = $('#ot_mic', m), live = $('#ot_live', m);
+  const micMsg = er => er === 'not-allowed' || er === 'service-not-allowed' ? '⚠ Microphone blocked – allow it for this app in the phone settings, then try again.' : er === 'no-speech' ? 'Did not hear anything – tap 🎤 and speak.' : er === 'audio-capture' ? '⚠ The microphone is busy – close other apps using it and try again.' : er === 'network' ? '⚠ Voice needs internet – check the connection.' : '⚠ Voice: ' + er;
+  const finish = keep => {
+    const ss = sess; if (!ss) return; sess = null; clearTimeout(ss.quiet); clearTimeout(ss.cap);
+    try { rec && rec.stop(); } catch (e) { }
+    mic.textContent = '🎤';
+    const t = (ss.txt || '').trim();
+    if (keep && t) { live.textContent = ''; add(t, true); } else live.textContent = ss.err ? micMsg(ss.err) : (t ? '' : 'Did not hear anything – tap 🎤 and speak.');
+  };
+  const getRec = () => {
+    if (rec) return rec;
+    rec = new SR(); rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+    rec.onstart = () => { if (sess) sess.on = true; };
+    rec.onresult = e => {
+      if (!sess) return; let txt = '', allFinal = true;
+      for (let i = 0; i < e.results.length; i++) { txt += e.results[i][0].transcript; if (!e.results[i].isFinal) allFinal = false; }
+      sess.txt = txt.trim(); $('#ot_t', m).value = sess.txt; autoTime();
+      clearTimeout(sess.quiet); const ss = sess; sess.quiet = setTimeout(() => { if (sess === ss) finish(true); }, allFinal ? 400 : 1500);
+    };
+    rec.onerror = e => { if (!sess || e.error === 'aborted') return; sess.err = e.error; if (!sess.txt) finish(false); };
+    rec.onend = () => { if (sess && sess.on) finish(true); };
+    return rec;
+  };
+  mic.onclick = () => {
     if (!SR) { toast('Voice typing is not available in this browser – tap the text box and use the 🎤 on your phone keyboard', true); $('#ot_t', m).focus(); return; }
-    if (rec) { try { rec.stop(); } catch (e) { } return; }
-    rec = new SR(); rec.lang = lang; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
-    let finalTxt = '';
-    $('#ot_mic', m).textContent = '⏹'; $('#ot_live', m).textContent = '🎙 Listening… speak your task';
-    rec.onresult = e => { let interim = ''; for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) finalTxt += e.results[i][0].transcript; else interim += e.results[i][0].transcript; } $('#ot_t', m).value = (finalTxt + ' ' + interim).trim(); autoTime(); };
-    rec.onerror = e => { $('#ot_live', m).textContent = e.error === 'not-allowed' ? '⚠ Allow the microphone for this app (browser / phone settings) and try again.' : e.error === 'no-speech' ? 'Did not hear anything – tap 🎤 and speak.' : '⚠ ' + e.error; };
-    rec.onend = () => { rec = null; $('#ot_mic', m).textContent = '🎤'; const t = finalTxt.trim() || $('#ot_t', m).value.trim(); if (finalTxt.trim()) add(t, true); else if (!/⚠|Did not/.test($('#ot_live', m).textContent)) $('#ot_live', m).textContent = ''; };
-    try { rec.start(); } catch (e) { rec = null; $('#ot_mic', m).textContent = '🎤'; toast('Could not start the microphone: ' + e.message, true); }
+    if (sess) { finish(true); return; }          // tap again = done speaking
+    let r; try { r = getRec(); } catch (e) { toast('Could not start voice: ' + e.message, true); return; }
+    r.lang = lang;
+    const my = ++sid; sess = { id: my, txt: '', err: '', on: false };
+    $('#ot_t', m).value = ''; mic.textContent = '⏹'; live.textContent = '🎙 Listening… speak your task (tap ⏹ when done)';
+    sess.cap = setTimeout(() => { if (sess && sess.id === my) finish(true); }, 20000);
+    const go = n => {
+      if (!sess || sess.id !== my) return;
+      try { r.start(); }
+      catch (e) {
+        if (n < 4) { try { r.abort(); } catch (x) { } setTimeout(() => go(n + 1), 350); }
+        else { sess = null; mic.textContent = '🎤'; try { rec = null; } catch (x) { } live.textContent = '⚠ Could not start the microphone – tap 🎤 again.'; }
+      }
+    };
+    go(0);
   };
   const load = async () => { try { const x = {}; R = await call('otList', x); if (view !== 'today') { R = await call('otList', { date: dateOf() }); } draw(); } catch (e) { $('#ot_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
   load();
@@ -4970,7 +5005,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '29d25bde98';
+<script>window.NV_BUILD = '316b59fdef';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
