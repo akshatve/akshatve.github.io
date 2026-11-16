@@ -3875,6 +3875,7 @@ async function dayCloseSheet(loc, date) {
     };
     $('#dc_pk', m).onclick = () => cashPickupForm(R.loc, R.date, R.people, () => load());
     if ($('#dc_pv', m)) $('#dc_pv', m).onclick = () => pvForm(R.loc, R.date, R.people, () => load());
+    $$('[data-acct]', m).forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); acctView(a.dataset.acct); });
     $$('[data-pvno]', m).forEach(el => el.onclick = () => pvView((R.vouchers || []).find(x => x.no === el.dataset.pvno), { onChange: () => load(), canCancel: R.canCheck, canReplace: R.canCheck }));
     if ($('#dc_ck', m)) $('#dc_ck', m).onclick = async () => { const x = await run('Saving…', () => call('dayCloseCheck', { date: R.date, loc: R.loc, reopen: sv.Status === 'Checked' })).catch(() => null); if (x) load(); };
   };
@@ -3944,10 +3945,36 @@ function pvTot(R) { return Math.round((R.vouchers || []).reduce((a, v) => a + v.
 function pvDayBox(R) {
   const vs = R.vouchers || [], miss = vs.filter(v => !v.signed).length;
   return '<div class="card" style="padding:10px 12px;margin:4px 0 0">' + (vs.length ? vs.map(v => '<div class="row" data-pvno="' + esc(v.no) + '" style="cursor:pointer;padding:5px 0;border-bottom:1px solid var(--line,#eee);flex-wrap:nowrap"><div class="grow small"><b>' + esc(v.no.split('/').pop()) + '</b> · ' + esc(v.to) + ' · ' + esc(v.cat) +
-      '<div class="tiny mute">' + esc(v.purpose) + '</div></div><b class="nowrap">' + pvRs(v.amount) + '</b><span class="pill ' + (v.signed ? 'p-ok' : 'p-warn') + '" style="margin-left:6px">' + (v.signed ? 'signed ✓' : 'sign!') + '</span></div>').join('')
+      '<div class="tiny mute">' + esc(v.purpose) + '</div><div class="tiny">' + (v.acct ? '🧾 <a href="#" data-acct="' + esc(v.acct) + '">' + esc(v.acct) + '</a>' : '<span style="color:var(--bad)">accounting voucher no. missing</span>') + '</div></div><b class="nowrap">' + pvRs(v.amount) + '</b><span class="pill ' + (v.signed ? 'p-ok' : 'p-warn') + '" style="margin-left:6px">' + (v.signed ? 'signed ✓' : 'sign!') + '</span></div>').join('')
     : '<div class="tiny mute">No cash paid out today. Every payout needs a voucher – tap below when you pay someone.</div>') +
     (miss ? '<div class="tiny" style="color:var(--bad);margin-top:6px">⚠ ' + miss + ' voucher' + (miss > 1 ? 's' : '') + ' without the signed copy – tap it and upload the photo or let the person sign on the screen.</div>' : '') +
     '<button class="btn ghost sm" id="dc_pv" style="margin-top:8px">🧾 New payout voucher</button></div>';
+}
+/* ───── accounting vouchers (Staff Rota app: travel TV/…, cash / cleaning / sundry EV/…) linked to store payouts (v18.45, owner 16 Nov 2026) ───── */
+const ROTA_API = 'https://script.google.com/macros/s/AKfycbw1IBSKWEB4Hn3k-MGidvGRkVwQS9YyUts4vKxGucFojYH5KWjm32FXbnfXLit-NRxk-g/exec';
+const ACCT_RX = /^[A-Z]{2,4}\/\d{2}-\d{2}\/\d{1,5}$/;
+function acctNorm(x) { x = String(x || '').trim().toUpperCase().replace(/\s+/g, ''); const m = x.match(/^([A-Z]{2,4})\/?(\d{2})-?(\d{2})\/?(\d{1,5})$/); return m ? m[1] + '/' + m[2] + '-' + m[3] + '/' + m[4].padStart(4, '0') : x; }
+async function rotaCall(action, data) {
+  if (!S.token) throw new Error('Open the Nutvique app (installed app or vermakshat.com/nutvique) to see accounting vouchers.');
+  const r = await fetch(ROTA_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ token: S.token, action: action, data: data || {} }) }).then(x => x.json()).catch(() => null);
+  if (!r) throw new Error('Could not reach the Staff Rota app – check the internet and try again.');
+  if (!r.ok) throw new Error(r.e || 'Staff Rota app error');
+  return r.r;
+}
+async function acctView(no) {
+  const g = await run('Opening voucher ' + no + '…', () => rotaCall('voucherView', { no: no })).catch(() => null); if (!g) return;
+  const v = g.voucher, c = g.company || {}, ex = !v.claim, m = n => '₹' + money(n);
+  const rows = ex ? '<tr><td>' + esc(pvD(v.claimDate)) + '</td><td>' + esc(v.particulars) + '</td><td class="n">' + m(v.amount) + '</td></tr>'
+    : ((g.claims || []).length ? g.claims : [{ date: v.claimDate, startPlace: v.from, endPlace: v.to, modeLabel: v.mode, km: v.km, approved: v.amount }]).map(x => '<tr><td>' + esc(pvD(x.date)) + '</td><td>' + esc(x.startPlace) + ' → ' + esc(x.endPlace) + ' · ' + esc(x.modeLabel || '') + (x.km ? ' · ' + x.km + ' km' : '') + '</td><td class="n">' + m(x.approved) + '</td></tr>').join('');
+  modal('🧾 ' + v.no, '<div style="border:1.5px solid #1F2A44;border-radius:10px;padding:12px;background:#fff;color:#1d2433">' +
+    '<div style="text-align:center;font-weight:800;color:#1F2A44">' + esc(c.name || 'NUTZY FOODS PRIVATE LIMITED') + '</div><div style="text-align:center;font-size:11px;color:#555">' + esc(c.addr || '') + (c.gstin ? '<br>GSTIN ' + esc(c.gstin) : '') + '</div>' +
+    '<div style="text-align:center;font-weight:700;letter-spacing:.12em;border:1px solid #1F2A44;margin:8px 0;padding:3px;font-size:13px">CASH PAYMENT VOUCHER</div><div style="text-align:center;font-size:12px;margin-bottom:6px">' + esc(ex ? v.head : 'Travelling / local conveyance') + '</div>' +
+    '<table class="t"><tr><td>Voucher no.</td><td><b>' + esc(v.no) + '</b></td></tr><tr><td>Status</td><td><b>' + esc(v.status) + '</b>' + (v.paidOn ? ' · paid ' + esc(pvD(v.paidOn)) + ' by ' + esc(v.paidBy) : '') + (v.payMode ? '<div class="tiny mute">' + esc(v.payMode) + '</div>' : '') + '</td></tr>' +
+    '<tr><td>Debit</td><td>' + esc(v.head) + ' A/c</td></tr><tr><td>Paid to</td><td><b>' + esc(v.name) + '</b>' + (v.empId ? ' (' + esc(v.empId) + ')' : '') + (v.desig ? ' · ' + esc(v.desig) : '') + '</td></tr>' +
+    '<tr><td>Amount</td><td><b style="font-size:17px">' + m(v.amount) + '</b><div class="tiny">' + esc(v.words) + '</div></td></tr><tr><td>Purpose</td><td>' + esc(v.purpose) + '</td></tr>' +
+    '<tr><td>Issued</td><td>' + esc(pvD(v.issued)) + ' by ' + esc(v.issuedBy || v.approvedBy) + '</td></tr><tr><td>Receipt</td><td>' + (v.esig ? '✍️ digitally signed ' + esc(v.signedAt) : v.copy ? 'signed copy uploaded' : '<span style="color:var(--bad)">not signed yet</span>') + '</td></tr></table>' +
+    '<table class="t" style="margin-top:8px"><tr><th>Date</th><th>Particulars</th><th class="n">Amount</th></tr>' + rows + '</table></div>' +
+    '<div class="tiny mute" style="margin-top:6px">From the Staff Rota app (More → Cash vouchers), where Veer prints and files it.</div>', { wide: true });
 }
 function pvForm(loc, date, people, done) {
   const cats = PV_CATS0;
@@ -3957,11 +3984,31 @@ function pvForm(loc, date, people, done) {
     '<div><label class="f">Paid to (person taking the cash)</label><input class="i" id="pv_t" list="pv_tl" placeholder="Name" autocomplete="off"><datalist id="pv_tl">' + (people || []).map(p => '<option value="' + esc(p) + '">').join('') + '</datalist></div>' +
     '<div><label class="f">Their mobile (optional)</label><input class="i" id="pv_p" inputmode="tel" placeholder="10 digits"></div></div>' +
     '<label class="f">Details</label><input class="i" id="pv_u" placeholder="e.g. porter for Nutcraft delivery, 6 teas for staff, floor cleaning">' +
+    '<label class="f">Accounting voucher no. (from the Staff Rota app – travel TV/…, expenses EV/…)</label><div class="row" style="gap:6px;flex-wrap:nowrap"><input class="i grow" id="pv_v" placeholder="e.g. TV/26-27/0002 or EV/26-27/0001" autocapitalize="characters"><button class="btn ghost sm" id="pv_vc">Check</button></div><div class="tiny" id="pv_vi"></div>' +
     '<div class="tiny mute" style="margin-top:6px">After saving, the person signs the voucher – on paper (then upload a photo) or on this screen. It goes into tonight’s day close as “cash paid out”.</div>' +
     '<button class="btn gold block" id="pv_s" style="margin-top:12px">Save voucher</button>');
+  let acct = null;
+  const chk = async () => {
+    const no = acctNorm($('#pv_v', m).value); $('#pv_v', m).value = no; acct = null; $('#pv_vi', m).innerHTML = '';
+    if (!no) return true;
+    if (!ACCT_RX.test(no)) { $('#pv_vi', m).innerHTML = '<span style="color:var(--bad)">Type the number like TV/26-27/0002</span>'; return false; }
+    const g = await run('Checking ' + no + '…', () => rotaCall('voucherView', { no: no })).catch(() => null); if (!g) return false;
+    const v = g.voucher; acct = v;
+    if (v.status === 'Cancelled') { $('#pv_vi', m).innerHTML = '<span style="color:var(--bad)">' + esc(no) + ' is cancelled</span>'; acct = null; return false; }
+    $('#pv_vi', m).innerHTML = '✓ <b>' + esc(v.no) + '</b> · ' + esc(v.name) + ' · ' + esc(v.head) + ' · <b>₹' + money(v.amount) + '</b> · ' + esc(v.status);
+    if (!$('#pv_a', m).value.trim()) $('#pv_a', m).value = v.amount;
+    if (!$('#pv_t', m).value.trim()) $('#pv_t', m).value = v.name;
+    if (!$('#pv_u', m).value.trim()) $('#pv_u', m).value = v.purpose || '';
+    if (!$('#pv_c', m).value) $('#pv_c', m).value = !v.claim ? (/Cleaning/.test(v.head) ? 'Cleaning / housekeeping' : 'Other') : 'Staff travel / fuel';
+    return true;
+  };
+  $('#pv_vc', m).onclick = chk;
   $('#pv_s', m).onclick = async () => {
-    const r = await run('Saving the voucher…', () => call('pvCreate', { loc: loc, date: date || today(), amount: $('#pv_a', m).value.trim(), cat: $('#pv_c', m).value, to: $('#pv_t', m).value.trim(), phone: $('#pv_p', m).value.trim(), purpose: $('#pv_u', m).value.trim() })).catch(() => null);
+    if ($('#pv_v', m).value.trim() && (!acct || acct.no !== acctNorm($('#pv_v', m).value))) { if (!(await chk())) return; }
+    if (acct && Math.abs(num($('#pv_a', m).value) - acct.amount) >= 1) { toast('Voucher ' + acct.no + ' is for ₹' + money(acct.amount) + ' – the amount paid must be the same', true); return; }
+    const r = await run('Saving the voucher…', () => call('pvCreate', { loc: loc, date: date || today(), amount: $('#pv_a', m).value.trim(), cat: $('#pv_c', m).value, to: $('#pv_t', m).value.trim(), phone: $('#pv_p', m).value.trim(), purpose: $('#pv_u', m).value.trim(), acct: acct ? acct.no : '' })).catch(() => null);
     if (!r) return;
+    if (acct) { const p = await rotaCall('voucherStorePay', { no: acct.no, pv: r.voucher.no, store: loc, paidOn: r.voucher.date, amount: r.voucher.amount }).catch(e => { toast('Saved, but ' + acct.no + ' could not be marked paid in the Staff Rota app: ' + e.message, true); return null; }); if (p) toast(acct.no + ' marked paid from ' + pvLoc(loc)); }
     m.close(); toast('Voucher ' + r.voucher.no + ' saved – now get it signed');
     if (done) done(r.voucher);
     pvView(r.voucher, { onChange: done });
@@ -3972,7 +4019,7 @@ function pvCard(v) {
     '<div style="text-align:center;font-weight:800;letter-spacing:.14em;color:#1F2A44;font-size:18px">NUTVIQUE</div><div style="text-align:center;font-size:12px">NUTZY FOODS PRIVATE LIMITED</div>' +
     '<div style="text-align:center;font-weight:700;letter-spacing:.18em;border:1px solid #1F2A44;margin:8px 0;padding:3px;font-size:13px">CASH PAYMENT VOUCHER</div>' +
     '<table style="width:100%;font-size:13px;border-collapse:collapse">' +
-    [['Voucher no.', '<b>' + esc(v.no) + '</b>'], ['Date', esc(pvD(v.date)) + ' ' + esc(v.time)], ['Store', esc(v.loc === 'Event' ? 'Event stall' : v.loc)], ['Paid to', '<b>' + esc(v.to) + '</b>' + (v.phone ? ' · ' + esc(v.phone) : '')], ['For', esc(v.cat) + ' – ' + esc(v.purpose)], ['Amount', '<b style="font-size:18px">' + pvRs(v.amount) + '</b>'], ['In words', esc(v.words)], ['Paid by', esc(v.by)]]
+    [['Voucher no.', '<b>' + esc(v.no) + '</b>'], ['Date', esc(pvD(v.date)) + ' ' + esc(v.time)], ['Store', esc(v.loc === 'Event' ? 'Event stall' : v.loc)], ['Paid to', '<b>' + esc(v.to) + '</b>' + (v.phone ? ' · ' + esc(v.phone) : '')], ['For', esc(v.cat) + ' – ' + esc(v.purpose)], ['Amount', '<b style="font-size:18px">' + pvRs(v.amount) + '</b>'], ['In words', esc(v.words)], ['Paid by', esc(v.by)], ['Accounting voucher', v.acct ? '<b>' + esc(v.acct) + '</b>' : '<span style="color:var(--bad)">not linked</span>']]
       .map(x => '<tr><td style="padding:3px 6px 3px 0;color:#666;white-space:nowrap;vertical-align:top">' + x[0] + '</td><td style="padding:3px 0">' + x[1] + '</td></tr>').join('') + '</table>' +
     '<div style="margin-top:28px;display:flex;gap:16px;font-size:12px;color:#444"><div style="flex:1;border-top:1px solid #333;padding-top:4px">Received the above amount in cash<br><b>Signature of ' + esc(v.to) + '</b></div><div style="flex:1;border-top:1px solid #333;padding-top:4px">Paid by<br><b>' + esc(v.by) + '</b></div></div></div>';
 }
@@ -3984,6 +4031,7 @@ function pvView(v, opts) {
       pvCard(v) +
       (v.status !== 'Cancelled' ? '<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">' +
         (!v.signed || opts.canReplace ? '<button class="btn gold" id="pv_sg">✍️ Sign on this screen</button><label class="btn ghost" style="cursor:pointer">📷 Upload signed voucher<input type="file" id="pv_up" accept="image/*,application/pdf" style="display:none"></label>' : '') +
+        (v.acct ? '<button class="btn ghost" id="pv_av">👁 Accounting voucher ' + esc(v.acct) + '</button>' : '') + '<button class="btn ghost" id="pv_al">🔗 ' + (v.acct ? 'Change' : 'Add') + ' accounting voucher no.</button>' +
         '<button class="btn ghost" id="pv_pr">🖨 Print voucher</button>' + (v.signed ? '<button class="btn ghost" id="pv_vw">👁 See signed copy</button>' : '') +
         (opts.canCancel ? '<button class="btn ghost" id="pv_cx" style="color:var(--bad)">Cancel voucher</button>' : '') + '</div>' : '') +
       '<div id="pv_img" style="margin-top:10px"></div>';
@@ -3995,6 +4043,17 @@ function pvView(v, opts) {
       const r = await run('Saving the signed voucher…', () => call('pvAttach', { no: v.no, b64: b.base64, mime: b.mime, kind: 'photo' })).catch(() => null); if (r) got(r);
     };
     $('#pv_pr', m) && ($('#pv_pr', m).onclick = () => pvPrint(v));
+    if ($('#pv_av', m)) $('#pv_av', m).onclick = () => acctView(v.acct);
+    if ($('#pv_al', m)) $('#pv_al', m).onclick = async () => {
+      const no = acctNorm(prompt('Accounting voucher no. from the Staff Rota app (travel TV/…, expenses EV/…) for ' + v.no + ' (₹' + money(v.amount) + ' to ' + v.to + '):', v.acct || '') || ''); if (!no) return;
+      if (!ACCT_RX.test(no)) { toast('Type the number like TV/26-27/0002', true); return; }
+      const g = await run('Checking ' + no + '…', () => rotaCall('voucherView', { no: no })).catch(() => null); if (!g) return;
+      if (g.voucher.status === 'Cancelled') { toast(no + ' is cancelled', true); return; }
+      if (Math.abs(g.voucher.amount - v.amount) >= 1) { toast(no + ' is for ₹' + money(g.voucher.amount) + ' (' + g.voucher.name + '), this payout is ₹' + money(v.amount) + ' – they must match', true); return; }
+      const r = await run('Linking…', () => call('pvSetAcct', { no: v.no, acct: no })).catch(() => null); if (!r) return;
+      await rotaCall('voucherStorePay', { no: no, pv: v.no, store: v.loc, paidOn: v.date, amount: v.amount }).catch(e => toast('Linked, but the Staff Rota app said: ' + e.message, true));
+      v = r.voucher; opts.changed = true; draw(); toast('Linked to ' + no);
+    };
     if ($('#pv_vw', m)) $('#pv_vw', m).onclick = async () => {
       const r = await run('Loading…', () => call('pvSlip', { no: v.no })).catch(() => null); if (!r) return;
       const url = 'data:' + r.mime + ';base64,' + r.b64;
@@ -4056,8 +4115,9 @@ async function pvListSheet() {
     R = r; const t = r.totals;
     $('#pl_x', m).innerHTML = '<div class="bigp"><div><span>Paid out</span><b>' + pvRs(t.all) + '</b><span>' + t.count + ' voucher' + (t.count === 1 ? '' : 's') + '</span></div><div><span>Signed</span><b>' + pvRs(t.signed) + '</b><span>&nbsp;</span></div><div><span>Signature pending</span><b style="color:' + (t.pending ? 'var(--bad)' : 'inherit') + '">' + pvRs(t.pending) + '</b><span>' + (t.pendingAll ? t.pendingAll + ' in all, any date' : '&nbsp;') + '</span></div></div>' +
       (r.byCat.length ? '<div class="tiny mute" style="margin:6px 0">By head: ' + r.byCat.map(c => esc(c.cat) + ' ' + pvRs(c.amount)).join(' · ') + (r.byLoc.length > 1 ? '<br>By store: ' + r.byLoc.map(c => esc(pvLoc(c.loc)) + ' ' + pvRs(c.amount)).join(' · ') : '') + '</div>' : '') +
-      (r.list.length ? '<div class="tscroll"><table class="t"><tr><th>Voucher</th><th>Date</th><th>Store</th><th>Paid to</th><th>For</th><th class="n">Amount</th><th>Signed</th></tr>' + r.list.map(v => '<tr data-pv="' + esc(v.no) + '" style="cursor:pointer' + (v.status === 'Cancelled' ? ';opacity:.5;text-decoration:line-through' : '') + '"><td class="nowrap">' + esc(v.no) + '</td><td class="nowrap">' + esc(pvD(v.date)) + '</td><td>' + esc(pvLoc(v.loc)) + '</td><td>' + esc(v.to) + '</td><td class="small">' + esc(v.cat) + '<div class="tiny mute">' + esc(v.purpose) + '</div></td><td class="n">' + pvRs(v.amount) + '</td><td>' + (v.status === 'Cancelled' ? 'cancelled' : v.signed ? '✓' : '<span style="color:var(--bad)">pending</span>') + '</td></tr>').join('') + '</table></div>' : '<div class="empty small">No vouchers.</div>') +
+      (r.list.length ? '<div class="tscroll"><table class="t"><tr><th>Voucher</th><th>Date</th><th>Store</th><th>Paid to</th><th>For</th><th class="n">Amount</th><th>Signed</th><th>Acct. voucher</th></tr>' + r.list.map(v => '<tr data-pv="' + esc(v.no) + '" style="cursor:pointer' + (v.status === 'Cancelled' ? ';opacity:.5;text-decoration:line-through' : '') + '"><td class="nowrap">' + esc(v.no) + '</td><td class="nowrap">' + esc(pvD(v.date)) + '</td><td>' + esc(pvLoc(v.loc)) + '</td><td>' + esc(v.to) + '</td><td class="small">' + esc(v.cat) + '<div class="tiny mute">' + esc(v.purpose) + '</div></td><td class="n">' + pvRs(v.amount) + '</td><td>' + (v.status === 'Cancelled' ? 'cancelled' : v.signed ? '✓' : '<span style="color:var(--bad)">pending</span>') + '</td><td class="nowrap">' + (v.acct ? '<a href="#" data-acct="' + esc(v.acct) + '">' + esc(v.acct) + '</a>' : '<span class="tiny mute">–</span>') + '</td></tr>').join('') + '</table></div>' : '<div class="empty small">No vouchers.</div>') +
       '<div class="row" style="margin-top:10px;gap:8px"><button class="btn ghost sm" id="pl_new">+ New voucher</button><button class="btn ghost sm" id="pl_csv">⬇ Download (Excel / CSV)</button></div>';
+    $$('[data-acct]', m).forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); acctView(a.dataset.acct); });
     $$('[data-pv]', m).forEach(tr => tr.onclick = () => { const v = R.list.find(x => x.no === tr.dataset.pv); pvView(v, { canCancel: R.canCancel && v.status !== 'Cancelled', canReplace: R.canCancel, onChange: () => load() }); });
     $('#pl_new', m).onclick = () => {
       const mine = L.filter(l => !B.boot || !B.boot.locs || B.boot.locs.some(x => x.name === l));
@@ -4065,7 +4125,7 @@ async function pvListSheet() {
       $$('[data-pl]', lm).forEach(b => b.onclick = () => { lm.close(); pvForm(b.dataset.pl, today(), null, () => load()); });
     };
     $('#pl_csv', m).onclick = () => {
-      const rows = [['Voucher no.', 'Date', 'Time', 'Store', 'Paid to', 'Phone', 'Head', 'Details', 'Amount', 'Paid by', 'Status', 'Signed by']].concat(R.list.map(v => [v.no, v.date, v.time, v.loc, v.to, v.phone, v.cat, v.purpose, v.amount, v.by, v.status, v.signedBy]));
+      const rows = [['Voucher no.', 'Date', 'Time', 'Store', 'Paid to', 'Phone', 'Head', 'Details', 'Amount', 'Paid by', 'Status', 'Signed by', 'Accounting voucher']].concat(R.list.map(v => [v.no, v.date, v.time, v.loc, v.to, v.phone, v.cat, v.purpose, v.amount, v.by, v.status, v.signedBy, v.acct]));
       const csv = '﻿' + rows.map(r => r.map(x => '"' + String(x == null ? '' : x).replace(/"/g, '""') + '"').join(',')).join('\r\n');
       const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'Payout-vouchers-' + R.from + '-to-' + R.to + '.csv'; document.body.appendChild(a); a.click(); a.remove();
     };
@@ -4146,7 +4206,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = 'b65dd6eae1';
+<script>window.NV_BUILD = '7a603cfb39';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
