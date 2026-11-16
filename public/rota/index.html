@@ -478,12 +478,44 @@ function trailKm(trip) {
   for (let i = 1; i < pts.length; i++) { const s = haversine(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]); if (s < 5000) d += s; }
   return d / 1000;
 }
+/* Finger / mouse signature → JPEG on white. */
+function signPad(title, html, onDone) {
+  const sh = sheet(title, html + '<div style="border:2px dashed var(--line);border-radius:12px;background:#fff;touch-action:none"><canvas id="spc" style="width:100%;height:200px;display:block;touch-action:none"></canvas></div>' +
+    '<div class="tiny mute" style="text-align:center;margin:4px 0 10px">Sign inside the box with your finger</div><div class="row" style="gap:8px"><button class="btn ghost grow" id="spx">Clear</button><button class="btn ok grow" id="spok">✓ Sign &amp; confirm</button></div>');
+  const c = sh.el.querySelector('#spc'), r = c.getBoundingClientRect(), k = 2;
+  c.width = Math.max(300, r.width) * k; c.height = 200 * k; const x = c.getContext('2d');
+  const blank = () => { x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.strokeStyle = '#0b1f4a'; x.lineWidth = 2.6 * k; x.lineCap = 'round'; x.lineJoin = 'round'; };
+  blank(); let down = false, ink = 0, last = null;
+  const pt = e => { const b = c.getBoundingClientRect(); return [(e.clientX - b.left) * c.width / b.width, (e.clientY - b.top) * c.height / b.height]; };
+  c.onpointerdown = e => { down = true; last = pt(e); try { c.setPointerCapture(e.pointerId); } catch (z) { } e.preventDefault(); };
+  c.onpointermove = e => { if (!down) return; const p = pt(e); x.beginPath(); x.moveTo(last[0], last[1]); x.lineTo(p[0], p[1]); x.stroke(); ink += Math.hypot(p[0] - last[0], p[1] - last[1]); last = p; e.preventDefault(); };
+  c.onpointerup = c.onpointercancel = () => { down = false; };
+  sh.el.querySelector('#spx').onclick = () => { blank(); ink = 0; };
+  sh.el.querySelector('#spok').onclick = async () => {
+    if (ink < 150 * k) return toast('Please sign properly in the box.', true);
+    try { await onDone(c.toDataURL('image/jpeg', 0.85)); sh.close(); } catch (e) { }
+  };
+  return sh;
+}
+async function myVoucherCard(el) {
+  let r; try { r = await call('myVouchers', {}); } catch (e) { return; }
+  if (!r.vouchers.length || !el) return;
+  el.innerHTML = '<div class="card"><h2>🧾 My cash vouchers</h2><div class="list">' + r.vouchers.map(v => '<div class="row"><div class="grow"><b>' + esc(v.no) + '</b> · <b>' + rs(v.amount) + '</b><div class="tiny mute">' +
+    (v.esig ? '✓ Signed ' + esc(v.signedAt) : v.status === 'Paid' ? 'Paid in cash on ' + esc(dLabel(v.paidOn)) + ' – please sign that you received it' : 'Approved – cash not paid yet') + '</div></div>' +
+    (v.status === 'Paid' && !v.esig ? '<button class="btn ok sm" data-sg="' + esc(v.no) + '">✍️ Sign</button>' : '') + '</div>').join('') + '</div></div>';
+  el.querySelectorAll('[data-sg]').forEach(b => b.onclick = () => { const v = r.vouchers.find(x => x.no === b.dataset.sg); signVoucher(v, () => myVoucherCard(el)); });
+}
+function signVoucher(v, after) {
+  signPad('Sign voucher ' + v.no, '<div class="warnbox blue">I, <b>' + esc(v.name) + '</b>, have received <b>' + rs(v.amount) + '</b> (' + esc(v.words) + ') in cash from Nutzy Foods Pvt Ltd against voucher <b>' + esc(v.no) + '</b> for my travel on company work.</div>',
+    async sig => { const x = await run('Saving signature…', () => call('voucherSign', { no: v.no, sig: sig, phone: phoneId() })); toast('Signed ' + x.signedAt); after && after(); });
+}
 async function viewTrips(m) {
   const t = S.b.day && S.b.day.trip;
-  m.innerHTML = '<h1 class="pg">Travel claims</h1><div id="tnow"></div><div class="card"><h2>My claims</h2><div id="tlist" class="list"><div class="spin" style="margin:10px auto"></div></div></div>' +
+  m.innerHTML = '<h1 class="pg">Travel claims</h1><div id="tvch"></div><div id="tnow"></div><div class="card"><h2>My claims</h2><div id="tlist" class="list"><div class="spin" style="margin:10px auto"></div></div></div>' +
     '<p class="small mute"><b>Own bike:</b> pick where you started and where you went – the app finds the road distance on Google Maps and pays ' + rs(S.b.rates.bike) + ' per km. ' +
     '<b>Rapido, cab, auto, Porter, metro:</b> type the fare and add the screenshot – no screenshot, no money. Approved claims are paid in cash against a numbered voucher that you sign. Written expense sheets are not accepted.</p>';
   t ? tripRunning(t) : claimForm();
+  myVoucherCard($('#tvch'));
   call('myTrips').then(r => { const el = $('#tlist'); if (el) el.innerHTML = r.trips.filter(x => x.status !== 'Running').map(tripLine).join('') || '<p class="mute small">No claims in the last 60 days.</p>'; }).catch(e => { const el = $('#tlist'); if (el) el.innerHTML = '<p class="warnbox bad">' + esc(e.message) + '</p>'; });
 }
 function tripLine(t) {
@@ -992,16 +1024,18 @@ async function viewVouchers() {
     const chip = s => '<span class="chip ' + ({ Unpaid: 'warn', Paid: 'ok', Cancelled: 'bad' }[s] || '') + '">' + esc(s) + '</span>';
     sh.el.querySelector('#vcl').innerHTML = '<div class="kpis" style="grid-template-columns:1fr 1fr;margin-bottom:10px"><div class="kpi"><b>' + rs(r.unpaid) + '</b><span>to pay in cash</span></div><div class="kpi"><b>' + rs(r.paid) + '</b><span>paid (last 60 days)</span></div></div>' +
       (r.unvouchered.length ? '<div class="card"><h2>Approved claims without a voucher</h2><div class="list">' + r.unvouchered.map(t => '<div class="row"><div class="grow"><b>' + esc(t.name) + '</b> · ' + rs(t.approved) + '<div class="tiny mute">' + esc(dLabel(t.date)) + ' · ' + esc(t.purpose) + '</div></div><button class="btn sm" data-iss="' + esc(t.id) + '">Issue voucher</button></div>').join('') + '</div><p class="tiny mute">Only for money not already paid in a salary.</p></div>' : '') +
-      '<div class="card"><div class="list">' + (r.vouchers.map(v => '<div><div class="row"><div class="grow"><b>' + esc(v.no) + '</b> ' + chip(v.status) + (v.signed ? ' <span class="chip ok">signed</span>' : '') + '<div class="small">' + esc(v.name) + ' · <b>' + rs(v.amount) + '</b></div>' +
-        '<div class="tiny mute">' + esc(dLabel(v.claimDate)) + ' · ' + esc(v.mode) + ' · ' + esc(v.from) + ' → ' + esc(v.to) + '</div><div class="tiny mute">Issued ' + esc(dLabel(v.issued)) + ' by ' + esc(v.approvedBy) + (v.paidOn ? ' · paid ' + esc(dLabel(v.paidOn)) + ' by ' + esc(v.paidBy) : '') + (v.cancelReason ? ' · cancelled: ' + esc(v.cancelReason) : '') + '</div></div></div>' +
-        '<div class="row wrap" style="gap:6px;margin-top:6px"><button class="btn ghost sm" data-pr="' + esc(v.no) + '">🖨 Print</button>' + (v.status === 'Unpaid' ? '<button class="btn ok sm" data-pay="' + esc(v.no) + '">✓ Paid in cash</button>' : '') +
-        (v.status !== 'Cancelled' ? '<button class="btn ghost sm" data-up="' + esc(v.no) + '">📷 ' + (v.signed ? 'Replace' : 'Upload') + ' signed copy</button>' : '') + (v.signed ? '<button class="btn ghost sm" data-see="' + esc(v.no) + '">See signed</button>' : '') +
+      '<div class="card"><div class="list">' + (r.vouchers.map(v => '<div><div class="row"><div class="grow"><b>' + esc(v.no) + '</b> ' + chip(v.status) + (v.esig ? ' <span class="chip ok">✍️ signed</span>' : v.copy ? ' <span class="chip ok">signed copy</span>' : '') + '<div class="small">' + esc(v.name) + ' · <b>' + rs(v.amount) + '</b></div>' +
+        '<div class="tiny mute">' + esc(dLabel(v.claimDate)) + ' · ' + esc(v.mode) + ' · ' + esc(v.from) + ' → ' + esc(v.to) + '</div><div class="tiny mute">Issued ' + esc(dLabel(v.issued)) + ' by ' + esc(v.approvedBy) + (v.paidOn ? ' · paid ' + esc(dLabel(v.paidOn)) + ' by ' + esc(v.paidBy) : '') + (v.cancelReason ? ' · cancelled: ' + esc(v.cancelReason) : '') + '</div>' + (v.esig ? '<div class="tiny" style="color:var(--ok)">Digitally signed by ' + esc(v.name) + ' on ' + esc(v.signedAt) + ' · ' + esc(v.signedOn) + '</div>' : v.status === 'Paid' ? '<div class="tiny" style="color:var(--warn)">Receipt not signed yet</div>' : '') + '</div></div>' +
+        '<div class="row wrap" style="gap:6px;margin-top:6px"><button class="btn ghost sm" data-pr="' + esc(v.no) + '">🖨 Print</button>' + (v.status === 'Unpaid' ? '<button class="btn ok sm" data-pay="' + esc(v.no) + '">✓ Paid in cash</button>' : '') + (v.status === 'Paid' && !v.esig ? '<button class="btn sm" data-esg="' + esc(v.no) + '">✍️ Sign on this screen</button>' : '') + (v.esig ? '<button class="btn ghost sm" data-ess="' + esc(v.no) + '">See signature</button>' : '') +
+        (v.status !== 'Cancelled' ? '<button class="btn ghost sm" data-up="' + esc(v.no) + '">📷 ' + (v.copy ? 'Replace' : 'Upload') + ' signed paper copy</button>' : '') + (v.copy ? '<button class="btn ghost sm" data-see="' + esc(v.no) + '">See signed copy</button>' : '') +
         (r.canCancel && v.status !== 'Cancelled' ? '<button class="btn ghost sm" data-can="' + esc(v.no) + '" style="color:var(--bad)">Cancel</button>' : '') + '</div></div>').join('') || '<p class="small mute">No vouchers yet.</p>') + '</div></div>' +
       '<button class="btn ghost full sm" id="vcsv">⬇ Download list (Excel)</button>' +
-      '<p class="tiny mute">Each approved claim gets the next number (TV/26-27/0001…). Pay the cash, tap “Paid in cash” (the paid date is the date in the books), get the voucher signed by the person, upload the signed copy and file the paper. Cash to one person in one day must stay within ' + rs(10000) + ' (income-tax s.40A(3)).</p>';
+      '<p class="tiny mute">Each approved claim gets the next number (TV/26-27/0001…). Pay the cash, tap “Paid in cash” (the paid date is the date in the books), then the person signs the receipt digitally – on their own phone (Trips → My cash vouchers) or here with “Sign on this screen”. Date, time, login and device are recorded. Print and file the signed voucher. Cash to one person in one day must stay within ' + rs(10000) + ' (income-tax s.40A(3)).</p>';
     const on = (sel, f) => sh.el.querySelectorAll(sel).forEach(b => b.onclick = () => f(b));
     on('[data-pr]', b => printVoucher(b.dataset.pr));
     on('[data-see]', b => showPhoto({ voucher: b.dataset.see }));
+    on('[data-ess]', b => showPhoto({ esig: b.dataset.ess }));
+    on('[data-esg]', b => { const v = r.vouchers.find(x => x.no === b.dataset.esg); signVoucher(v, async () => { r = await call('vouchers', {}); draw(); }); });
     on('[data-iss]', async b => { if (!confirm('Issue a cash voucher for this approved claim? Only if it was not paid in a salary.')) return; r = await run('Issuing…', () => call('voucherIssue', { trip: b.dataset.iss })); draw(); });
     on('[data-pay]', b => { const p = sheet('Paid in cash – ' + b.dataset.pay, '<label class="f">Date the cash was paid</label><input class="i" type="date" id="pdt" value="' + today() + '" max="' + today() + '"><p class="tiny mute">Hand over the cash and get the voucher signed.</p><button class="btn ok full" id="pgo">Save</button>');
       p.el.querySelector('#pgo').onclick = async () => { r = await run('Saving…', () => call('voucherPay', { no: b.dataset.pay, paidOn: p.el.querySelector('#pdt').value })); p.close(); toast('Marked paid'); draw(); }; });
@@ -1023,13 +1057,15 @@ async function printVoucher(no) {
   ['approvedBy', 'issuedBy', 'paidBy'].forEach(k => { if (v[k] === 'Owner') v[k] = 'Pankaj Verma (Owner)'; });
   let img = '';
   if (t && t.receipt) { try { const p = await call('photo', { trip: t.id }); img = 'data:' + p.mime + ';base64,' + p.b64; } catch (e) { } }
+  let sigImg = '';
+  if (g.voucher.esig) { try { const p = await call('photo', { esig: g.voucher.no }); sigImg = 'data:' + p.mime + ';base64,' + p.b64; } catch (e) { } }
   const e = esc, amt = '₹ ' + Number(v.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const kmRow = v.km ? v.km + ' km' : '—', rateRow = v.rate ? '₹' + v.rate + '/km' : (t && t.fare ? 'Actual fare' : '—');
   const html = '<!doctype html><html><head><meta charset="utf-8"><title>' + e(v.no) + '</title><style>' +
     '@page{size:A4;margin:12mm}body{font:12px/1.4 Arial,Helvetica,sans-serif;color:#111;margin:0}.v{border:1.5px solid #111;padding:12px 14px;position:relative}' +
     'h1{font-size:17px;margin:0;text-align:center;letter-spacing:.5px}.c{text-align:center;font-size:10.5px;color:#333}.t{text-align:center;font-weight:bold;font-size:14px;margin:10px 0 2px;letter-spacing:1px}' +
     '.st{text-align:center;font-size:11px;margin-bottom:8px}table{width:100%;border-collapse:collapse;margin:6px 0}td,th{border:1px solid #444;padding:5px 6px;vertical-align:top;text-align:left;font-size:12px}th{background:#eee;font-size:11px}' +
-    '.n{text-align:right;white-space:nowrap}.g{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin:6px 0}.lb{color:#555;font-size:10.5px}.sig{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:34px}' +
+    '.n{text-align:right;white-space:nowrap}.g{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin:6px 0}.lb{color:#555;font-size:10.5px}.sig{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:34px;align-items:end}' +
     '.sig div{border-top:1px solid #111;padding-top:4px;font-size:10.5px;text-align:center}.note{font-size:10px;color:#333;margin-top:8px}.stamp{position:absolute;right:16px;bottom:58px;width:70px;height:80px;border:1px dashed #555;font-size:9px;text-align:center;padding-top:28px;box-sizing:border-box}' +
     '.wm{position:absolute;top:40%;left:0;right:0;text-align:center;font-size:60px;color:rgba(200,0,0,.25);transform:rotate(-18deg);font-weight:bold}.att{page-break-before:always;text-align:center}.att img{max-width:100%;max-height:230mm;border:1px solid #999}</style></head><body>' +
     '<div class="v">' + (v.status === 'Cancelled' ? '<div class="wm">CANCELLED</div>' : '') +
@@ -1047,7 +1083,7 @@ async function printVoucher(no) {
     '<div style="margin-top:4px"><span class="lb">Supporting document:</span> ' + e(v.support) + ((g.claims || []).length < 2 && t && t.map ? ' · Route: ' + e(t.map) : '') + '</div><div style="margin-top:4px"><span class="lb">Claim ref.:</span> ' + e(v.claim) + ' (Nutvique Staff Rota app) · <span class="lb">Payment mode:</span> Cash</div>' +
     '<div class="note">Reimbursement of actual expenses incurred wholly and exclusively for the company\'s business (not salary). No GST input tax credit is claimed on this expense. Cash paid to one person in a day is kept within ' + e('₹' + Number(g.cashLimit).toLocaleString('en-IN')) + ' (Income-tax Act s.40A(3)).' + (v.amount > 5000 ? ' Receipt above ₹5,000: affix a ₹1 revenue stamp and sign across it.' : '') + '</div>' +
     (v.amount > 5000 ? '<div class="stamp">Revenue stamp ₹1</div>' : '') +
-    '<div class="sig"><div>Prepared by<br><b>' + e(v.issuedBy) + '</b></div><div>Checked &amp; approved by<br><b>' + e(v.approvedBy) + '</b></div><div>Paid by (cashier)<br><b>' + e(v.paidBy || '') + '</b></div><div>Received the above amount in cash<br>Signature of ' + e(v.name) + '<br>Date: __________</div></div></div>' +
+    '<div class="sig"><div>Prepared by<br><b>' + e(v.issuedBy) + '</b></div><div>Checked &amp; approved by<br><b>' + e(v.approvedBy) + '</b></div><div>Paid by (cashier)<br><b>' + e(v.paidBy || '') + '</b></div>' + (sigImg ? '<div style="border-top:0;padding-top:0"><img src="' + sigImg + '" style="height:56px;max-width:100%;display:block;margin:0 auto 2px"><div style="border-top:1px solid #111;padding-top:4px">Received the above amount in cash<br>Signature of ' + e(v.name) + '<br>Digitally signed ' + e(v.signedAt) + '<br><span style="font-size:9px">' + e(v.signedOn) + '</span></div></div>' : '<div>Received the above amount in cash<br>Signature of ' + e(v.name) + '<br>Date: __________</div>') + '</div></div>' +
     (img ? '<div class="att"><p><b>Attachment to ' + e(v.no) + '</b> – ' + e(v.mode) + ' fare screenshot submitted by ' + e(v.name) + ' (claim ' + e(v.claim) + ')</p><img src="' + img + '"></div>' : '') +
     '</body></html>';
   const f = document.createElement('iframe'); f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'; document.body.appendChild(f);

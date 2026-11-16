@@ -78,7 +78,8 @@ const T = {
     'Route km (Google)', 'Return trip', 'Voucher No', 'Screenshot ₹ (checked)', 'Claim type']],
   vouchers: ['Travel Vouchers', ['Voucher No', 'Issued on', 'FY', 'Seq', 'Paid to', 'Emp ID', 'Designation', 'Store', 'Expense head', 'Amount ₹', 'Amount in words',
     'Claim ID', 'Claim date', 'Mode', 'From', 'To', 'Km', 'Rate ₹/km', 'Purpose', 'Particulars', 'Supporting document', 'Status', 'Approved by', 'Approved at',
-    'Paid on', 'Paid by', 'Payment mode', 'Signed copy', 'Cancelled by', 'Cancelled at', 'Cancel reason', 'Issued by']],
+    'Paid on', 'Paid by', 'Payment mode', 'Signed copy', 'Cancelled by', 'Cancelled at', 'Cancel reason', 'Issued by',
+    'Digital signature', 'Signed at', 'Signed by (login)', 'Signed on', 'Signed phone ID']],
   att: ['Attendance', ['Date', 'Day', 'Name', 'Location', 'Shift', 'Sched start', 'Sched end', 'In', 'Out', 'Break (min)',
     'Extra break (min)', 'Late (min)', 'Left early (min)', 'Worked (min)', 'Credited (min)', 'Overtime (min)', 'OT approved (min)',
     'Day credit', 'Status', 'Flags']],
@@ -192,6 +193,8 @@ function api_(req) {
     case 'tripClaim': return tripClaim_(d, me);
     case 'claimSheet': return claimSheet_(d, me);
     case 'voucherAmend': return voucherAmend_(d, me);
+    case 'myVouchers': return myVouchers_(d, me);
+    case 'voucherSign': return voucherSign_(d, me);
     case 'vouchers': return vouchersList_(d, me);
     case 'voucherGet': return voucherGet_(d, me);
     case 'voucherPay': return voucherPay_(d, me);
@@ -261,7 +264,7 @@ function inScope_(me, loc) { return !me.scope || me.scope.indexOf(loc) >= 0; }
 //    Every write goes through append_ / w_() / dirty_(), which drop the copies.
 let MEMO = { book: null, tabs: {}, rows: {}, fresh: false };
 // Actions that only read; every other action reads the sheet fresh (never the between-request cache) before writing.
-const READ_ONLY = { tripQuote: 1, vouchers: 1, voucherGet: 1, boot: 1, myDay: 1, myMonth: 1, myRota: 1, myTrips: 1, board: 1, rotaGet: 1, rotaAuto: 1, attendance: 1, trips: 1, photo: 1,
+const READ_ONLY = { myVouchers: 1, tripQuote: 1, vouchers: 1, voucherGet: 1, boot: 1, myDay: 1, myMonth: 1, myRota: 1, myTrips: 1, board: 1, rotaGet: 1, rotaAuto: 1, attendance: 1, trips: 1, photo: 1,
   staffList: 1, settingsGet: 1, rightsList: 1 };
 const XCACHE = { staff: 1, locs: 1, set: 1 };
 function resetMemo_(fresh) { MEMO = { book: null, tabs: {}, rows: {}, fresh: !!fresh }; }
@@ -351,6 +354,10 @@ function ensureSetup_() {
       append_('locs', [['Event stall', 'Event', '', '', 300, 'Yes', 'General event stall – rename it for each event or add events with their own dates', '', '', '11:00', '22:00']]);
     dirty_();
     log_('v5: event stalls, after-midnight clock-outs, clock-out approval', 'system');
+  }
+  if (!p.getProperty('V16_ESIGN') && rows_('staff').length) {   // 16 Nov 2026: digital signature columns on Travel Vouchers
+    p.setProperty('V16_ESIGN', '1');
+    const vh = tab_('vouchers'); vh.getRange(1, 1, 1, T.vouchers[1].length).setValues([T.vouchers[1]]).setFontWeight('bold').setBackground('#1F2A44').setFontColor('#F7F1DE');
   }
   if (!p.getProperty('V14_CLAIMS') && rows_('staff').length) {   // 16 Nov 2026: travel claims by place, cash vouchers, 200 m clock-in
     p.setProperty('V14_CLAIMS', '1');
@@ -1163,6 +1170,7 @@ function photo_(d, me) {
   if (d.punch) { const p = punchesOn_(null, null).find(x => x.id === d.punch); id = p ? fileId_(p.selfie) : ''; }
   if (d.trip) { const t = rows_('trips').find(r => s_(r[0]) === d.trip); id = t ? fileId_(s_(t[19])) : ''; }
   if (d.voucher) { const v = voucherRows_().find(x => x.no === d.voucher); id = v ? fileId_(v.signedUrl) : ''; }
+  if (d.esig) { const v = voucherRows_().find(x => x.no === d.esig); id = v ? fileId_(v.esigUrl) : ''; }
   if (!id) throw new Error('No photo.');
   const b = DriveApp.getFileById(id).getBlob();
   return { mime: b.getContentType(), b64: Utilities.base64Encode(b.getBytes()) };
@@ -1410,7 +1418,8 @@ function voucherRows_() {
       empId: s_(v['Emp ID']), desig: s_(v['Designation']), store: s_(v['Store']), head: s_(v['Expense head']), amount: n_(v['Amount ₹']), words: s_(v['Amount in words']),
       claim: s_(v['Claim ID']), claimDate: ymd_(v['Claim date']), mode: s_(v['Mode']), from: s_(v['From']), to: s_(v['To']), km: n_(v['Km']), rate: n_(v['Rate ₹/km']),
       purpose: s_(v['Purpose']), particulars: s_(v['Particulars']), support: s_(v['Supporting document']), status: s_(v['Status']), approvedBy: s_(v['Approved by']),
-      approvedAt: s_(v['Approved at']), paidOn: ymd_(v['Paid on']), paidBy: s_(v['Paid by']), payMode: s_(v['Payment mode']), signed: !!s_(v['Signed copy']),
+      approvedAt: s_(v['Approved at']), paidOn: ymd_(v['Paid on']), paidBy: s_(v['Paid by']), payMode: s_(v['Payment mode']), signed: !!s_(v['Signed copy']) || !!s_(v['Digital signature']),
+      esig: !!s_(v['Digital signature']), esigUrl: s_(v['Digital signature']), signedAt: s_(v['Signed at']), signedBy: s_(v['Signed by (login)']), signedOn: s_(v['Signed on']), copy: !!s_(v['Signed copy']),
       signedUrl: s_(v['Signed copy']), cancelledBy: s_(v['Cancelled by']), cancelReason: s_(v['Cancel reason']), issuedBy: s_(v['Issued by']) }));
 }
 function words_(n) {
@@ -1531,7 +1540,7 @@ function claimSheet_(d, me) {
     return { voucher: no, trips: made.map(tripPub_), total: Math.round(made.reduce((a, t) => a + t.approved, 0)) };
   });
 }
-function voucherPub_(v) { return v && Object.assign({}, v, { row: undefined, signedUrl: undefined }); }
+function voucherPub_(v) { return v && Object.assign({}, v, { row: undefined, signedUrl: undefined, esigUrl: undefined }); }
 function vouchersList_(d, me) {
   const from = /^\d{4}-\d{2}-\d{2}$/.test(d.from || '') ? d.from : addDays_(today_(), -60), to = /^\d{4}-\d{2}-\d{2}$/.test(d.to || '') ? d.to : today_();
   const list = voucherRows_().filter(v => (v.status === 'Unpaid') || (v.issued >= from && v.issued <= to)).reverse();
@@ -1594,6 +1603,31 @@ function voucherCancel_(d, me) {
       sh.getRange(t.row, C.trips['Approved ₹'] + 1, 1, 3).setValues([['', '', '']]); dirty_('trips'); });
     log_('Voucher ' + v.no + ' cancelled: ' + why, me.name);
     return vouchersList_({}, me);
+  });
+}
+/** The signed-in person's own vouchers (to sign the cash receipt on their phone). */
+function myVouchers_(d, me) {
+  return { vouchers: voucherRows_().filter(v => norm_(v.name) === norm_(me.name) && v.status !== 'Cancelled').reverse().slice(0, 30).map(voucherPub_) };
+}
+/** Digital signature for the cash receipt. d = {no, sig (image, base64), phone}
+ *  The payee signs on their own phone (signed in with their PIN), or – with the "vouchers" right – the payee signs on the cashier's device.
+ *  Server time, the login used and the device are recorded; a signature cannot be changed afterwards. */
+function voucherSign_(d, me) {
+  if (!d.sig) throw new Error('Sign in the box first.');
+  if (String(d.sig).length < 2500) throw new Error('The signature is too small – sign again with your full name or signature.');
+  return lock_(() => {
+    const v = voucherRows_().find(x => x.no === String(d.no || '')); if (!v) throw new Error('Voucher not found.');
+    if (v.status !== 'Paid') throw new Error(v.status === 'Unpaid' ? 'Sign only when you receive the cash – the voucher is not marked paid yet.' : 'This voucher is ' + v.status.toLowerCase() + '.');
+    if (v.esig) throw new Error('Already signed on ' + v.signedAt + '.');
+    const own = norm_(v.name) === norm_(me.name);
+    if (!own && !can_(me, 'vouchers')) throw new Error('Only ' + v.name + ' can sign this voucher.');
+    const now = new Date(), at = Utilities.formatDate(now, tz_(), 'dd-MM-yyyy HH:mm:ss');
+    const url = savePhoto_(d.sig, v.no.replace(/\//g, '-') + '_' + v.name + '_esign.jpg', 'Signatures');
+    const on = own ? v.name + '\'s own phone (signed in with own PIN)' : 'device of ' + me.name + ' (handed to ' + v.name + ')';
+    const sh = tab_('vouchers');
+    sh.getRange(v.row, C.vouchers['Digital signature'] + 1, 1, 5).setValues([[url, at, me.name, on, txt_(d.phone, 64)]]); dirty_('vouchers');
+    log_('Voucher ' + v.no + ' signed digitally by ' + v.name + ' at ' + at + ' on ' + on, me.name);
+    return { ok: true, no: v.no, signedAt: at, signedOn: on };
   });
 }
 function fmtDate_(ymd) { return ymd ? ymd.slice(8, 10) + '-' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(ymd.slice(5, 7)) - 1] + '-' + ymd.slice(0, 4) : ''; }
