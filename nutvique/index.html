@@ -2095,6 +2095,7 @@ async function viewMore() {
   if (S.user && can('corporate')) h += '<div class="card"><h3>🏢 Corporate orders (Tally)</h3><div class="small mute">Upload the Tally invoice PDF – the sale goes into the Sales report and the items (and hamper contents) come out of stock.</div><button class="btn sm" id="col" style="margin-top:10px">Open</button></div>';
   if (can('sales') || isOwnerUi()) h += '<div class="card"><h3>🏦 Bank tally – UPI &amp; card</h3><div class="small mute">Next day: UPI and card sold against what ICICI and Paytm paid into the bank (read from the ICICI emails).</div><button class="btn sm" id="btl" style="margin-top:10px">Open</button></div>';
   if (can('sales') || isOwnerUi()) h += '<div class="card"><h3>💰 Cash pickups</h3><div class="small mute">Every time cash is taken from a store drawer – who took it, how much, and whether the owner has confirmed receiving it.</div><button class="btn sm" id="kpl" style="margin-top:10px">Open</button></div>';
+  h += '<div class="card"><h3>🏦 Cash deposited in the bank</h3><div class="small mute">Store cash deposited in the bank – who deposited it, how much, which bank, and the photo of the deposit slip.</div><button class="btn sm" id="bkl" style="margin-top:10px">Open</button></div>';
   h += '<div class="card"><h3>🧾 Payout vouchers</h3><div class="small mute">Cash paid out of the store drawers – voucher no., who took it, what for, and the signed copy.</div><button class="btn sm" id="pvl" style="margin-top:10px">Open</button></div>';
   if (can('sales')) h += '<div class="card"><h3>UPI payments (bank emails)</h3><div class="small mute">Every payment ICICI emails about, and the bill it belongs to. Payments not linked to a bill are flagged.</div><button class="btn sm" id="upil" style="margin-top:10px">Open</button></div>';
   if (canApprove() && !can('approve')) h += '<div class="card"><h3>Store access requests</h3><div class="small mute">Staff covering a shift at another store ask here for one day.</div><button class="btn sm" id="apv" style="margin-top:10px">Requests</button></div>';
@@ -2123,6 +2124,7 @@ async function viewMore() {
   if ($('#col')) $('#col').onclick = () => corpScreen();
   if ($('#kpl')) $('#kpl').onclick = () => cashPickupsSheet(isOwnerUi() ? 'waiting' : 'all');
   if ($('#pvl')) $('#pvl').onclick = () => pvListSheet();
+  if ($('#bkl')) $('#bkl').onclick = () => bkListSheet();
   if ($('#apc')) $('#apc').onclick = codesSheet;
   if (!can('settings')) return;
   $('#sy').onclick = async () => { const r = await run('Syncing…', () => call('syncNc')); toast('Night Closing: ' + r.products); };
@@ -3826,6 +3828,7 @@ async function dayCloseSheet(loc, date) {
   const DEN = [500, 200, 100, 50, 20, 10, 5, 2, 1];
   const draw = R => {
     const f = R.figures, a = f.app, q = f.qb, sv = R.saved || {};
+    if (R.bkAns === undefined) R.bkAns = bkAnsDefault(R);
     const val = (k, dflt) => sv[k] !== undefined && sv[k] !== '' ? sv[k] : (dflt == null ? '' : dflt);
     const inp = (id, v, ph) => '<input class="i num" id="' + id + '" inputmode="decimal" value="' + esc(v === '' || v == null ? '' : String(v)) + '" placeholder="' + esc(ph || '0') + '">';
     let den = {}; try { den = JSON.parse(sv['Cash count (notes/coins)'] || '{}'); } catch (e) { }
@@ -3840,7 +3843,8 @@ async function dayCloseSheet(loc, date) {
         '<div class="span2">' + pvDayBox(R) + '</div>' :
       '<div><label class="f">Cash paid out today</label>' + inp('dc_po', val('Cash paid out ₹', '')) + '</div>' +
       '<div class="span2"><input class="i" id="dc_pn" placeholder="Paid out for… (e.g. porter, tea, cleaning)" value="' + esc(val('Paid out note', '')) + '"></div>') +
-      '<div><label class="f">Cash handed over / deposited</label>' + inp('dc_dp', val('Cash deposited ₹', R.pickedSep || '')) + '</div>' +
+      '<div class="span2">' + bkDayBox(R) + '</div>' +
+      '<div><label class="f">Cash handed over (to owner / a person)</label>' + inp('dc_dp', val('Cash deposited ₹', R.pickedSep || '')) + '</div>' +
       '<div><label class="f">Taken by</label><select class="i" id="dc_cb"><option value="">– who took it? –</option>' + (R.people || []).map(p => '<option' + (p === dcTaker(R) ? ' selected' : '') + '>' + esc(p) + '</option>').join('') + '</select></div></div>' +
       ((R.pickups || []).length ? '<div class="tiny" style="margin-top:6px">' + R.pickups.map(p => '💰 ' + rs(p.amount) + ' taken by <b>' + esc(p.by) + '</b> (' + esc(p.from === 'Day close' ? 'day close' : 'recorded ' + new Date(p.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })) + ') – <span class="' + (p.status === 'Confirmed' ? 'dcok' : 'dcbad') + '">' + esc(p.status === 'Confirmed' ? 'confirmed by owner ✓' : p.status) + '</span>').join('<br>') + '</div>' : '') +
       '<button class="btn ghost sm" id="dc_pk" style="margin-top:6px">💰 Someone is taking cash now – record it</button>' +
@@ -3857,7 +3861,7 @@ async function dayCloseSheet(loc, date) {
     const g = id => num($('#' + id, m).value);
     const res = (el, diff, okTxt) => { el.innerHTML = Math.abs(diff) < 1 ? '<span class="dcok">✓ ' + okTxt + '</span>' : '<span class="dcbad">' + (diff > 0 ? 'Extra ' : 'Short ') + rs(Math.abs(diff)) + '</span>'; };
     const calc = () => {
-      const exp = g('dc_op') + a.cash + g('dc_qc') - g('dc_po') - g('dc_dp');
+      const exp = g('dc_op') + a.cash + g('dc_qc') - g('dc_po') - g('dc_dp') - bkTot(R);
       const ce = $('#dc_ce', m); if ($('#dc_ct', m).value === '') ce.innerHTML = '<span class="mute small">Should be ' + rs(exp) + '</span>'; else { res(ce, g('dc_ct') - exp, 'Tallies'); ce.insertAdjacentHTML('beforeend', '<div class="tiny mute">expected ' + rs(exp) + '</div>'); }
       const ks = a.card + g('dc_qk'), ke = $('#dc_ke', m); if ($('#dc_cs', m).value === '') ke.innerHTML = '<span class="mute small">Card sales ' + rs(ks) + '</span>'; else { res(ke, g('dc_cs') - ks, 'Tallies'); ke.insertAdjacentHTML('beforeend', '<div class="tiny mute">card sales ' + rs(ks) + '</div>'); }
       const us = a.upi + g('dc_qu'), ue = $('#dc_ue', m); if ($('#dc_ur', m).value === '') ue.innerHTML = '<span class="mute small">UPI sales ' + rs(us) + '</span>'; else { res(ue, g('dc_ur') - us, 'Tallies'); ue.insertAdjacentHTML('beforeend', '<div class="tiny mute">UPI sales ' + rs(us) + '</div>'); }
@@ -3867,14 +3871,20 @@ async function dayCloseSheet(loc, date) {
     $$('input.num, #dc_pn', m).forEach(i => { if (!i.dataset.den) i.addEventListener('input', calc); });
     calc();
     $('#dc_sv', m).onclick = async () => {
+      if (!R.bkAns) { toast('Answer first: was any cash deposited in the bank today?', true); $('#bk_box', m).scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+      if (R.bkAns === 'yes' && !(R.deposits || []).length) { toast('Add the bank deposit and upload the deposit slip', true); bkForm(R.loc, R.date, R.people, R.bkBanks, () => load()); return; }
+      const nos = (R.deposits || []).find(x => !x.slip); if (nos) { toast('Upload the deposit slip for ' + nos.no, true); bkView(nos, { onChange: () => load(), canReplace: true }); return; }
       const dn = {}; $$('[data-den]', m).forEach(i => { if (num(i.value)) dn[i.dataset.den] = num(i.value); });
       const v = id => $('#' + id, m).value.trim();
       const r = await run('Saving the day close…', () => call('dayCloseSave', { date: R.date, loc: R.loc, opening: v('dc_op'), qbCash: v('dc_qc'), qbUpi: v('dc_qu'), qbCard: v('dc_qk'),
-        paidOut: v('dc_po'), paidNote: v('dc_pn'), deposited: v('dc_dp'), collectedBy: v('dc_cb'), counted: v('dc_ct'), denoms: Object.keys(dn).length ? JSON.stringify(dn) : '', cardSettle: v('dc_cs'), upiReceived: v('dc_ur'), notes: v('dc_no') })).catch(() => null);
+        paidOut: v('dc_po'), paidNote: v('dc_pn'), deposited: v('dc_dp'), collectedBy: v('dc_cb'), counted: v('dc_ct'), denoms: Object.keys(dn).length ? JSON.stringify(dn) : '', cardSettle: v('dc_cs'), upiReceived: v('dc_ur'), notes: v('dc_no'), bankAsked: R.bkAns })).catch(() => null);
       if (r) { draw(r); toast((r.saved && r.saved.Status === 'Tallied' ? 'Day closed – everything tallies ✓' : 'Day closed – difference recorded') + (/^sent to (\d+)/.test(r.mailed || '') ? ' · emailed ' + RegExp.$1 : '')); }
     };
     $('#dc_pk', m).onclick = () => cashPickupForm(R.loc, R.date, R.people, () => load());
     if ($('#dc_pv', m)) $('#dc_pv', m).onclick = () => pvForm(R.loc, R.date, R.people, () => load());
+    $$('[data-bka]', m).forEach(b => b.onclick = () => { if (b.dataset.bka === 'no' && (R.deposits || []).length) { toast('A deposit is entered for today – cancel it first if it is wrong', true); return; } R.bkAns = b.dataset.bka; draw(R); if (R.bkAns === 'yes' && !(R.deposits || []).length) bkForm(R.loc, R.date, R.people, R.bkBanks, () => load()); });
+    if ($('#bk_add', m)) $('#bk_add', m).onclick = () => bkForm(R.loc, R.date, R.people, R.bkBanks, () => load());
+    $$('[data-bkno]', m).forEach(el => el.onclick = () => bkView((R.deposits || []).find(x => x.no === el.dataset.bkno), { onChange: () => load(), canCancel: R.canCheck, canReplace: R.canCheck, canCheck: isOwner() }));
     $$('[data-acct]', m).forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); acctView(a.dataset.acct); });
     $$('[data-pvno]', m).forEach(el => el.onclick = () => pvView((R.vouchers || []).find(x => x.no === el.dataset.pvno), { onChange: () => load(), canCancel: R.canCheck, canReplace: R.canCheck }));
     if ($('#dc_ck', m)) $('#dc_ck', m).onclick = async () => { const x = await run('Saving…', () => call('dayCloseCheck', { date: R.date, loc: R.loc, reopen: sv.Status === 'Checked' })).catch(() => null); if (x) load(); };
@@ -4147,6 +4157,117 @@ async function pvListSheet() {
   const load = async () => { const x = q(); if (x.status === 'live') x.status = 'live'; try { draw(await call('pvList', x)); } catch (e) { $('#pl_x', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
   ['pl_st', 'pl_f', 'pl_t', 'pl_l'].forEach(id => $('#' + id, m).onchange = load); load();
 }
+/* ───── cash deposited in the bank from a store: who, how much, which bank + photo of the slip; asked at day close (v18.48, owner 16 Nov 2026) ───── */
+const BK_HOW0 = ['Bank counter', 'Cash deposit machine (CDM)'];
+function bkTot(R) { return Math.round((R.deposits || []).reduce((a, v) => a + v.amount, 0) * 100) / 100; }
+function bkAnsDefault(R) { const sv = R.saved || {}; return (R.deposits || []).length ? 'yes' : (R.saved ? (num(sv['Bank deposits ₹']) ? 'yes' : (sv['Bank deposits ₹'] === 0 || sv['Bank deposits ₹'] === '' ? 'no' : '')) : ''); }
+function bkDayBox(R) {
+  const ds = R.deposits || [], ans = R.bkAns, miss = ds.filter(v => !v.slip).length;
+  const b = (k, t) => '<button class="btn ' + (ans === k ? 'gold' : 'ghost') + ' sm" data-bka="' + k + '">' + t + '</button>';
+  return '<div class="card" style="padding:10px 12px;margin:8px 0 0;border-left:4px solid ' + (ans ? 'var(--ok)' : 'var(--gold)') + '" id="bk_box"><div class="small"><b>🏦 Was any cash deposited in the bank today from this store?</b></div>' +
+    '<div class="row" style="gap:8px;margin:6px 0">' + b('yes', 'Yes') + b('no', 'No') + '</div>' +
+    (ans === 'yes' || ds.length ? (ds.length ? ds.map(v => '<div class="row" data-bkno="' + esc(v.no) + '" style="cursor:pointer;padding:5px 0;border-bottom:1px solid var(--line,#eee);flex-wrap:nowrap"><div class="grow small"><b>' + esc(v.no.split('/').pop()) + '</b> · deposited by <b>' + esc(v.by) + '</b>' +
+        '<div class="tiny mute">' + esc(v.bank) + ' · ' + esc(v.how) + (v.ref ? ' · ref ' + esc(v.ref) : '') + '</div></div><b class="nowrap">' + pvRs(v.amount) + '</b><span class="pill ' + (v.slip ? 'p-ok' : 'p-warn') + '" style="margin-left:6px">' + (v.slip ? 'slip ✓' : 'slip!') + '</span></div>').join('') +
+        '<div class="tiny mute" style="margin-top:4px">Total deposited ' + pvRs(bkTot(R)) + ' – taken off the cash expected in the drawer.</div>'
+      : '<div class="tiny" style="color:var(--bad)">Enter the deposit and upload the photo of the deposit slip.</div>') +
+      (miss ? '<div class="tiny" style="color:var(--bad);margin-top:4px">⚠ Upload the slip – tap the deposit.</div>' : '') +
+      '<button class="btn ghost sm" id="bk_add" style="margin-top:8px">🏦 Add bank deposit + slip</button>' : '') +
+    (ans === 'no' ? '<div class="tiny mute">OK – no bank deposit today.</div>' : '') +
+    '<div class="tiny mute" style="margin-top:4px">Enter bank deposits only here – not again in “Cash handed over” below.</div></div>';
+}
+function bkForm(loc, date, people, banks, done) {
+  people = people || []; banks = (banks && banks.length) ? banks : ['ICICI Bank – current account'];
+  const me = S.user && S.user.name;
+  const m = modal('🏦 Cash deposited in the bank', '<div class="small" style="margin-bottom:8px"><b>' + esc(pvLoc(loc)) + '</b> · ' + esc(pvD(date || today())) + '</div>' +
+    '<div class="grid2"><div><label class="f">Amount deposited ₹</label><input class="i num" id="bk_a" inputmode="decimal" placeholder="0"></div>' +
+    '<div><label class="f">Deposited by</label><select class="i" id="bk_b"><option value="">– who went to the bank? –</option>' + people.map(p => '<option' + (p === me ? ' selected' : '') + '>' + esc(p) + '</option>').join('') + '<option value="__o">Someone else…</option></select><input class="i" id="bk_bo" placeholder="Name" style="display:none;margin-top:6px"></div>' +
+    '<div><label class="f">Bank / account</label><select class="i" id="bk_k">' + banks.map(x => '<option>' + esc(x) + '</option>').join('') + '</select></div>' +
+    '<div><label class="f">How</label><select class="i" id="bk_h">' + BK_HOW0.map(x => '<option>' + esc(x) + '</option>').join('') + '</select></div>' +
+    '<div><label class="f">Slip / reference no. (optional)</label><input class="i" id="bk_r" placeholder="e.g. 004512"></div>' +
+    '<div><label class="f">Note (optional)</label><input class="i" id="bk_n" placeholder="e.g. Saturday + Sunday cash"></div></div>' +
+    '<label class="f" style="margin-top:8px">Photo of the deposit slip (bank-stamped counterfoil or CDM receipt) – required</label>' +
+    '<label class="btn ghost block" style="cursor:pointer" id="bk_pl">📷 Take photo / choose file<input type="file" id="bk_p" accept="image/*,application/pdf" style="display:none"></label><div id="bk_pv" class="tiny" style="margin-top:4px"></div>' +
+    '<button class="btn gold block" id="bk_s" style="margin-top:12px">Save deposit</button>');
+  let slip = null;
+  $('#bk_b', m).onchange = () => { $('#bk_bo', m).style.display = $('#bk_b', m).value === '__o' ? '' : 'none'; };
+  $('#bk_p', m).onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const b = await fileToBase64(f).catch(err => { toast(err.message, true); return null; }); if (!b) return;
+    slip = { b64: b.base64, mime: b.mime || f.type };
+    $('#bk_pv', m).innerHTML = /pdf/.test(slip.mime) ? '✓ ' + esc(f.name) : '<img src="data:' + slip.mime + ';base64,' + slip.b64 + '" style="max-width:100%;max-height:220px;border:1px solid #ddd;border-radius:8px">';
+    $('#bk_pl', m).firstChild.textContent = '📷 Change photo';
+  };
+  $('#bk_s', m).onclick = async () => {
+    const by = $('#bk_b', m).value === '__o' ? $('#bk_bo', m).value.trim() : $('#bk_b', m).value;
+    if (!num($('#bk_a', m).value)) { toast('Type the amount deposited', true); return; }
+    if (!by) { toast('Who deposited the cash?', true); return; }
+    if (!slip) { toast('Upload the photo of the deposit slip', true); return; }
+    const r = await run('Saving the deposit…', () => call('bkCreate', { loc: loc, date: date || today(), amount: $('#bk_a', m).value.trim(), by: by, bank: $('#bk_k', m).value, how: $('#bk_h', m).value, ref: $('#bk_r', m).value.trim(), note: $('#bk_n', m).value.trim(), slip: slip })).catch(() => null);
+    if (r) { m.close ? m.close() : m.remove(); toast('Deposit ' + r.deposit.no + ' saved ✓'); if (done) done(r); }
+  };
+}
+function bkView(v, opts) {
+  opts = opts || {};
+  const m = modal('🏦 ' + v.no, '<div id="bk_vb"></div>', { onClose: () => { if (opts.changed && opts.onChange) opts.onChange(v); } });
+  const draw = () => {
+    $('#bk_vb', m).innerHTML = (v.status === 'Cancelled' ? '<div class="warnbox bad" style="margin-bottom:8px">Cancelled by ' + esc(v.cxBy) + ' – ' + esc(v.cxReason) + '</div>' : v.slip ? '' : '<div class="warnbox" style="margin-bottom:8px">⚠ Deposit slip not uploaded yet.</div>') +
+      '<table class="t"><tr><td>Deposit no.</td><td><b>' + esc(v.no) + '</b></td></tr><tr><td>Store</td><td>' + esc(v.loc) + '</td></tr><tr><td>Date</td><td>' + esc(pvD(v.date)) + ' ' + esc(v.time) + '</td></tr>' +
+      '<tr><td>Amount</td><td><b style="font-size:17px">' + pvRs(v.amount) + '</b><div class="tiny">' + esc(v.words) + '</div></td></tr><tr><td>Deposited by</td><td><b>' + esc(v.by) + '</b></td></tr>' +
+      '<tr><td>Bank</td><td>' + esc(v.bank) + ' · ' + esc(v.how) + (v.ref ? '<div class="tiny">Slip / ref no. ' + esc(v.ref) + '</div>' : '') + '</td></tr>' + (v.note ? '<tr><td>Note</td><td>' + esc(v.note) + '</td></tr>' : '') +
+      '<tr><td>Entered</td><td class="small">' + esc(v.enteredBy) + (v.slip ? ' · slip by ' + esc(v.slipBy) : '') + '</td></tr>' +
+      '<tr><td>In bank statement</td><td>' + (v.checkedBy ? '✓ checked by ' + esc(v.checkedBy) + ' ' + new Date(v.checkedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '<span class="tiny mute">not checked yet</span>') + '</td></tr></table>' +
+      (v.status !== 'Cancelled' ? '<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">' + (v.slip ? '<button class="btn ghost" id="bk_vw">👁 See deposit slip</button>' : '') +
+        (!v.slip || opts.canReplace ? '<label class="btn ' + (v.slip ? 'ghost' : 'gold') + '" style="cursor:pointer">📷 ' + (v.slip ? 'Replace slip' : 'Upload slip') + '<input type="file" id="bk_up" accept="image/*,application/pdf" style="display:none"></label>' : '') +
+        (opts.canCheck ? '<button class="btn ghost" id="bk_ck">' + (v.checkedBy ? 'Undo “seen in bank”' : '✓ Seen in bank statement') + '</button>' : '') +
+        (opts.canCancel ? '<button class="btn ghost" id="bk_cx" style="color:var(--bad)">Cancel entry</button>' : '') + '</div>' : '') +
+      '<div id="bk_img" style="margin-top:10px"></div>';
+    if ($('#bk_vw', m)) $('#bk_vw', m).onclick = async () => {
+      const r = await run('Loading…', () => call('bkSlip', { no: v.no })).catch(() => null); if (!r) return;
+      const url = 'data:' + r.mime + ';base64,' + r.b64;
+      $('#bk_img', m).innerHTML = /pdf/.test(r.mime) ? '<a class="btn ghost" download="' + esc(r.name) + '" href="' + url + '">⬇ Download slip (PDF)</a>' : '<img src="' + url + '" style="max-width:100%;border:1px solid #ddd;border-radius:8px">';
+    };
+    if ($('#bk_up', m)) $('#bk_up', m).onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      const b = await fileToBase64(f).catch(err => { toast(err.message, true); return null; }); if (!b) return;
+      const r = await run('Saving the slip…', () => call('bkAttach', { no: v.no, b64: b.base64, mime: b.mime || f.type })).catch(() => null); if (r) { v = r.deposit; opts.changed = true; draw(); toast('Slip saved ✓'); }
+    };
+    if ($('#bk_ck', m)) $('#bk_ck', m).onclick = async () => { const r = await run('Saving…', () => call('bkCheck', { no: v.no, undo: !!v.checkedBy })).catch(() => null); if (r) { v = r.deposit; opts.changed = true; draw(); } };
+    if ($('#bk_cx', m)) $('#bk_cx', m).onclick = async () => {
+      const why = prompt('Why is deposit ' + v.no + ' cancelled?') || ''; if (!why.trim()) return;
+      const r = await run('Cancelling…', () => call('bkCancel', { no: v.no, reason: why })).catch(() => null); if (r) { v = r.deposit; opts.changed = true; draw(); toast('Entry cancelled'); }
+    };
+  };
+  draw();
+}
+async function bkListSheet() {
+  const L = ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120', 'Event'];
+  const m = modal('🏦 Cash deposited in the bank', '<div class="row" style="gap:6px;flex-wrap:wrap"><select class="i" id="bl_st" style="max-width:190px"><option value="live">All deposits</option><option value="unchecked">Not yet seen in bank</option><option value="cancelled">Cancelled</option></select>' +
+    '<input class="i" type="date" id="bl_f" style="max-width:150px"><input class="i" type="date" id="bl_t" max="' + today() + '" style="max-width:150px"><select class="i" id="bl_l" style="max-width:170px"><option value="">All stores</option>' +
+    L.map(l => '<option value="' + esc(l) + '">' + esc(pvLoc(l)) + '</option>').join('') + '</select></div><div id="bl_x" style="margin-top:10px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
+  $('#bl_f', m).value = today().slice(0, 8) + '01'; $('#bl_t', m).value = today();
+  const q = () => ({ status: $('#bl_st', m).value, from: $('#bl_f', m).value, to: $('#bl_t', m).value, loc: $('#bl_l', m).value });
+  let R = null;
+  const draw = r => {
+    R = r; const t = r.totals;
+    $('#bl_x', m).innerHTML = '<div class="bigp"><div><span>Deposited</span><b>' + pvRs(t.all) + '</b><span>' + t.count + ' deposit' + (t.count === 1 ? '' : 's') + '</span></div><div><span>Seen in bank</span><b>' + pvRs(t.checked) + '</b><span>&nbsp;</span></div><div><span>Not checked yet</span><b>' + pvRs(t.unchecked) + '</b><span>&nbsp;</span></div></div>' +
+      (r.byPerson.length ? '<div class="tiny mute" style="margin:6px 0">By person: ' + r.byPerson.map(c => esc(c.by) + ' ' + pvRs(c.amount)).join(' · ') + (r.byLoc.length > 1 ? '<br>By store: ' + r.byLoc.map(c => esc(pvLoc(c.loc)) + ' ' + pvRs(c.amount)).join(' · ') : '') + '</div>' : '') +
+      (r.list.length ? '<div class="tscroll"><table class="t"><tr><th>Deposit</th><th>Date</th><th>Store</th><th>Deposited by</th><th>Bank</th><th class="n">Amount</th><th>Slip</th><th>Bank stmt</th></tr>' + r.list.map(v => '<tr data-bk="' + esc(v.no) + '" style="cursor:pointer' + (v.status === 'Cancelled' ? ';opacity:.5;text-decoration:line-through' : '') + '"><td class="nowrap">' + esc(v.no) + '</td><td class="nowrap">' + esc(pvD(v.date)) + '</td><td>' + esc(pvLoc(v.loc)) + '</td><td>' + esc(v.by) + '</td><td class="small">' + esc(v.bank) + '<div class="tiny mute">' + esc(v.how) + (v.ref ? ' · ' + esc(v.ref) : '') + '</div></td><td class="n">' + pvRs(v.amount) + '</td><td>' + (v.slip ? '✓' : '<span style="color:var(--bad)">missing</span>') + '</td><td>' + (v.checkedBy ? '✓' : '<span class="tiny mute">–</span>') + '</td></tr>').join('') + '</table></div>' : '<div class="empty small">No deposits.</div>') +
+      '<div class="row" style="margin-top:10px;gap:8px"><button class="btn ghost sm" id="bl_new">+ Record a deposit</button><button class="btn ghost sm" id="bl_csv">⬇ Download (Excel / CSV)</button></div>';
+    $$('[data-bk]', m).forEach(tr => tr.onclick = () => { const v = R.list.find(x => x.no === tr.dataset.bk); bkView(v, { canCancel: R.canCancel && v.status !== 'Cancelled', canReplace: R.canCancel, canCheck: R.canCheck, onChange: () => load() }); });
+    $('#bl_new', m).onclick = () => {
+      const mine = L.filter(l => !B.boot || !B.boot.locs || B.boot.locs.some(x => x.name === l));
+      const lm = modal('Which store’s cash?', mine.map(l => '<button class="btn ghost block" data-bl="' + esc(l) + '" style="margin-bottom:6px">' + esc(l === 'Event' ? 'Event stalls' : l) + '</button>').join(''));
+      $$('[data-bl]', lm).forEach(b => b.onclick = () => { lm.close ? lm.close() : lm.remove(); bkForm(b.dataset.bl, today(), R.people, R.banks, () => load()); });
+    };
+    $('#bl_csv', m).onclick = () => {
+      const rows = [['Deposit no.', 'Date', 'Time', 'Store', 'Amount', 'Deposited by', 'Bank / account', 'How', 'Slip / ref no.', 'Note', 'Status', 'Entered by', 'Seen in bank by']].concat(R.list.map(v => [v.no, v.date, v.time, v.loc, v.amount, v.by, v.bank, v.how, v.ref, v.note, v.status, v.enteredBy, v.checkedBy]));
+      const csv = '﻿' + rows.map(r => r.map(x => '"' + String(x == null ? '' : x).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'Bank-deposits-' + R.from + '-to-' + R.to + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+    };
+  };
+  const load = async () => { try { draw(await call('bkList', q())); } catch (e) { $('#bl_x', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
+  ['bl_st', 'bl_f', 'bl_t', 'bl_l'].forEach(id => $('#' + id, m).onchange = load); load();
+}
 /* ───── next-day bank tally: UPI & card sold vs what ICICI / Paytm paid in (v18.24) ───── */
 async function bankTallySheet() {
   const m = modal('🏦 Bank tally – UPI & card', '<div class="row" style="gap:6px;flex-wrap:wrap"><input class="i" type="date" id="bt_f" style="max-width:150px"><input class="i" type="date" id="bt_t" max="' + today() + '" style="max-width:150px"><button class="btn ghost sm" id="bt_s">↻ Read bank emails now</button></div>' +
@@ -4220,7 +4341,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '6d0a0b84f2';
+<script>window.NV_BUILD = '6c9ccc8866';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
