@@ -3450,6 +3450,22 @@ function srRange(p) {
    QueueBuster + event memos), two calls: the chosen day and the 30 days ending on it. Refreshes itself every 2 minutes on today. */
 const SD = { day: '', today: null, month: null, busy: false, timer: null, at: null, sel: '' };
 const SD_TARGET = 12000, SD_OPEN = 10, SD_CLOSE = 22;
+/* Who sees how far back (v19.1): the owner sees everything; everyone else from 16 Nov 2026, unless the owner gives a person
+   "last N days", "last N weeks" (never before 16 Nov) or "all data". Kept in Bill Setup → "Dashboard history" (JSON by name). */
+const SD_START = '2026-11-16', SD_ACC_KEY = 'Dashboard history';
+const sdIsOwner = () => !!(S.user && S.user.role === 'Owner');
+function sdAccMap(setup) { try { return JSON.parse((setup || {})[SD_ACC_KEY] || '{}') || {}; } catch (e) { return {}; } }
+function sdAccText(a) { return !a ? 'From 16 Nov 2026 (standard)' : a.k === 'all' ? 'All data' : 'Last ' + a.n + ' ' + (a.k === 'w' ? 'week' : 'day') + (a.n > 1 ? 's' : '') + ' (not before 16 Nov 2026)'; }
+async function sdFloor() {
+  if (sdIsOwner()) { SD.floor = ''; return; }
+  let setup = null;
+  try { const r = await call('billBoot', {}); setup = r.setup; } catch (e) { setup = B && B.boot && B.boot.setup; }
+  const a = sdAccMap(setup)[S.user && S.user.name];
+  let f = SD_START;
+  if (a && a.k === 'all') f = '';
+  else if (a && (a.k === 'd' || a.k === 'w') && a.n > 0) { const back = sdAdd(today(), -(a.n * (a.k === 'w' ? 7 : 1) - 1)); if (back > f) f = back; }
+  SD.floor = f; SD.acc = a || null;
+}
 const SD_STORES = [
   { loc: 'Gulshan One29 Mall', short: 'Gulshan One29', col: '#C9A24A' },
   { loc: 'City Galleria – Gaur City-2', short: 'City Galleria', col: '#3B7DB8' },
@@ -3526,15 +3542,50 @@ function sdTip(e, html) {
   const w = t.offsetWidth, h = t.offsetHeight, x = Math.min(window.innerWidth - w - 8, Math.max(8, e.clientX - w / 2)), y = e.clientY - h - 12 < 8 ? e.clientY + 16 : e.clientY - h - 12;
   t.style.left = x + 'px'; t.style.top = y + 'px';
 }
+const sdDmy = d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+/* owner: per person, how far back the dashboard goes */
+async function sdAccSheet() {
+  const m = modal('Dashboard – who sees what', '<div id="sda_b"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
+  let users, map;
+  try { const [u, b] = await Promise.all([call('listUsers'), call('billBoot', {})]); users = u.users.filter(x => x.active && x.role !== 'Owner'); map = sdAccMap(b.setup); }
+  catch (e) { $('#sda_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+  const opt = (v, t, a) => '<option value="' + v + '"' + (a ? ' selected' : '') + '>' + t + '</option>';
+  $('#sda_b', m).innerHTML = '<div class="small mute" style="margin-bottom:10px">You always see all data. Everyone else sees the dashboard from <b>16 Nov 2026</b> unless you choose otherwise here. ' +
+    '"Last days / weeks" counts back from today and never goes before 16 Nov 2026; "All data" shows everything, like you.</div>' +
+    users.map((u, i) => { const a = map[u.name]; const k = a ? a.k : 'std';
+      return '<div class="li" style="gap:8px;flex-wrap:wrap" data-i="' + i + '"><div class="grow" style="min-width:150px"><b>' + esc(u.name) + '</b> <span class="tiny mute">' + esc(u.role) + ((u.rights || []).indexOf('sales') < 0 ? ' · no Sales right' : '') + '</span>' +
+        '<div class="tiny mute">' + esc(sdAccText(a)) + '</div></div>' +
+        '<select class="i" data-k style="width:auto">' + opt('std', 'From 16 Nov', k === 'std') + opt('d', 'Last … days', k === 'd') + opt('w', 'Last … weeks', k === 'w') + opt('all', 'All data', k === 'all') + '</select>' +
+        '<input class="i" type="number" min="1" max="365" data-n value="' + (a && a.n ? a.n : '') + '" placeholder="no." style="width:80px;' + (k === 'd' || k === 'w' ? '' : 'display:none') + '"></div>'; }).join('') +
+    '<button class="btn block" id="sda_go" style="margin-top:14px">Save</button><div class="tiny mute" style="margin-top:8px">People without the Sales right cannot open Sales at all – give that right in People first.</div>';
+  $$('[data-k]', m).forEach(s => s.onchange = () => { const n = $('[data-n]', s.parentNode); n.style.display = s.value === 'd' || s.value === 'w' ? '' : 'none'; if (n.style.display === '' && !n.value) n.focus(); });
+  $('#sda_go', m).onclick = async () => {
+    const out = {};
+    for (const row of $$('[data-i]', m)) {
+      const u = users[Number(row.dataset.i)], k = $('[data-k]', row).value, n = Math.round(Number($('[data-n]', row).value));
+      if (k === 'all') out[u.name] = { k: 'all' };
+      else if (k === 'd' || k === 'w') { if (!(n >= 1 && n <= 365)) return toast('Type how many ' + (k === 'w' ? 'weeks' : 'days') + ' for ' + u.name + '.', true); out[u.name] = { k: k, n: n }; }
+    }
+    Object.keys(map).forEach(nm => { if (!users.some(u => u.name === nm) && map[nm]) out[nm] = map[nm]; });
+    const r = await run('Saving…', () => call('saveBillSetup', { [SD_ACC_KEY]: JSON.stringify(out) })).catch(() => null);
+    if (r) { if (B.boot) B.boot = Object.assign(B.boot, r); toast('Saved – applies the next time they open Sales'); m.close(); }
+  };
+}
 async function viewDash() {
   sdCss();
   if (!can('sales')) { $('#view').innerHTML = '<div class="warnbox">You do not have the right to see sales. Ask the owner.</div>'; return; }
   if (!SD.day) SD.day = today();
+  $('#view').innerHTML = '<div class="sd"><div class="empty"><span class="spin dk"></span></div></div>';
+  await sdFloor();
+  if (S.view !== 'sales' || SR.mode === 'report') return;
+  if (SD.floor && SD.day < SD.floor) SD.day = SD.floor > today() ? today() : SD.floor;
   $('#view').innerHTML = '<div class="sd"><div class="sd-top"><h2>Sales</h2><div class="sd-seg" id="sd_mode"><button class="on">📊 Dashboard</button><button data-m="report">Report</button></div>' +
-    '<input class="i" type="date" id="sd_day" max="' + today() + '" value="' + SD.day + '" style="width:auto;max-width:160px"></div>' +
+    (sdIsOwner() ? '<button class="btn ghost sm" id="sd_acc">🔐 Who sees what</button>' : '') +
+    '<input class="i" type="date" id="sd_day" max="' + today() + '"' + (SD.floor ? ' min="' + SD.floor + '"' : '') + ' value="' + SD.day + '" style="width:auto;max-width:160px"></div>' +
     '<div id="sd_body"><div class="empty"><span class="spin dk"></span><div>Adding up today\'s sales…</div></div></div></div>';
   $('#sd_mode [data-m]').onclick = () => { SR.mode = 'report'; viewSales(); };
-  $('#sd_day').onchange = e => { if (!e.target.value) return; SD.day = e.target.value; SD.sel = ''; sdLoad(false); };
+  $('#sd_day').onchange = e => { if (!e.target.value) return; if (SD.floor && e.target.value < SD.floor) { e.target.value = SD.day; return toast('You can see the dashboard from ' + sdDmy(SD.floor) + ' only.', true); } SD.day = e.target.value; SD.sel = ''; sdLoad(false); };
+  if ($('#sd_acc')) $('#sd_acc').onclick = sdAccSheet;
   sdLoad(false);
   if (!SD.rs) { SD.rs = 1; let to; window.addEventListener('resize', () => { clearTimeout(to); to = setTimeout(() => { if ($('#sd_race_c') && SD.today && SR.mode !== 'report') sdDraw(); }, 250); }); }
   if (!SD.timer) SD.timer = setInterval(() => {
@@ -3545,7 +3596,7 @@ async function sdLoad(quiet) {
   if (SD.busy) return; SD.busy = true;
   const day = SD.day;
   try {
-    const [t, m] = await Promise.all([call('salesReport', { from: day, to: day, loc: 'All' }), call('salesReport', { from: sdAdd(day, -29), to: day, loc: 'All' })]);
+    const [t, m] = await Promise.all([call('salesReport', { from: day, to: day, loc: 'All' }), call('salesReport', { from: SD.floor && sdAdd(day, -29) < SD.floor ? SD.floor : sdAdd(day, -29), to: day, loc: 'All' })]);
     if (day !== SD.day) return;
     SD.today = t; SD.month = m; SD.at = new Date();
     if (S.view === 'sales' && SR.mode !== 'report' && $('#sd_body')) sdDraw();
@@ -3573,8 +3624,9 @@ function sdDraw() {
   const lwDay = sdAdd(day, -7), hCut = day === today() ? new Date().getHours() + new Date().getMinutes() / 60 : 99;
   (m.bills || []).forEach(b => { const p = P[b[3]]; if (!p || !ok(b[5])) return; p.days[b[1]] = (p.days[b[1]] || 0) + (Number(b[14]) || 0);
     if (b[1] === lwDay && (sdHr(b[2]) == null || sdHr(b[2]) <= hCut)) p.lwSame = (p.lwSame || 0) + (Number(b[14]) || 0); });
-  const days = []; for (let i = 29; i >= 0; i--) days.push(sdAdd(day, -i));
-  const mStart = day.slice(0, 8) + '01', mDays = days.filter(d => d >= mStart);
+  const days = []; for (let i = 29; i >= 0; i--) { const d = sdAdd(day, -i); if (!SD.floor || d >= SD.floor) days.push(d); }
+  const lwSeen = !SD.floor || lwDay >= SD.floor;
+  const mStart = SD.floor && SD.floor > day.slice(0, 8) + '01' ? SD.floor : day.slice(0, 8) + '01', mDays = days.filter(d => d >= mStart);
   // trading-day clock
   const now = new Date(), hNow = now.getHours() + now.getMinutes() / 60;
   const frac = isToday ? Math.max(0, Math.min(1, (hNow - SD_OPEN) / (SD_CLOSE - SD_OPEN))) : 1;
@@ -3585,7 +3637,7 @@ function sdDraw() {
     p.proj = isToday && frac > 0.08 ? p.total / frac : p.total;
     p.status = p.total >= SD_TARGET ? ['hit', '🏆 Target hit'] : !isToday ? (p.pct >= 0.75 ? ['beh', 'Missed – ' + Math.round(p.pct * 100) + '%'] : ['low', 'Missed – ' + Math.round(p.pct * 100) + '%'])
       : frac < 0.08 ? (p.total ? ['on', 'Off to a start'] : ['idle', 'Opening soon']) : p.proj >= SD_TARGET ? ['on', 'On pace'] : p.proj >= SD_TARGET * 0.75 ? ['beh', 'Slightly behind'] : ['low', 'Needs a push'];
-    const lw = p.lwSame || 0; p.lw = lw; p.vsLw = lw ? (p.total - lw) / lw : null;
+    const lw = lwSeen ? p.lwSame || 0 : 0; p.lw = lw; p.vsLw = lw ? (p.total - lw) / lw : null;
     let st = 0; for (let i = days.length - (p.total >= SD_TARGET ? 1 : 2); i >= 0; i--) { if ((p.days[days[i]] || 0) >= SD_TARGET) st++; else break; }
     p.streak = st;
     p.mtd = mDays.reduce((a, d) => a + (p.days[d] || 0), 0); p.mtdT = SD_TARGET * mDays.length;
@@ -3635,8 +3687,8 @@ function sdDraw() {
     '<span><i style="background:repeating-linear-gradient(90deg,#9aa0ab 0 3px,transparent 3px 5px)"></i>Even pace to ₹12,000</span></div><div id="sd_race_c"></div></div>';
 
   // ── 30-day calendar
-  h += '<div class="sd-h"><h3>Target calendar</h3><span>last 30 days · ✓ = ₹12,000 reached · tap a day</span></div>' +
-    '<div class="sd-card" id="sd_cal"><div class="sd-scroll"><div class="sd-cal" style="grid-template-columns:auto repeat(30,minmax(24px,1fr));min-width:820px">' +
+  h += '<div class="sd-h"><h3>Target calendar</h3><span>' + (days.length < 30 ? 'from ' + sdDmy(days[0]) : 'last 30 days') + ' · ✓ = ₹12,000 reached · tap a day</span></div>' +
+    '<div class="sd-card" id="sd_cal"><div class="sd-scroll"><div class="sd-cal" style="justify-content:start;grid-template-columns:max-content repeat(' + days.length + ',minmax(24px,' + (days.length < 15 ? '56px' : '1fr') + '));min-width:' + Math.min(820, 130 + days.length * 27) + 'px">' +
     '<div></div>' + days.map(d => { const x = new Date(d + 'T00:00:00'); return '<div class="sd-dh">' + (x.getDate() === 1 || d === days[0] ? x.toLocaleDateString('en-IN', { month: 'short' }) + '<br>' : '<br>') + x.getDate() + '</div>'; }).join('') +
     stores.map(s => '<div class="nm"><span style="color:' + s.col + '">●</span> ' + esc(s.short) + '</div>' + days.map(d => {
       const v = P[s.loc].days[d] || 0, q = v / SD_TARGET;
@@ -3644,7 +3696,7 @@ function sdDraw() {
       const fg = v >= SD_TARGET ? '#E4C46E' : q > 0.6 ? '#1d2433' : '#6b7280';
       return '<div class="sd-cell' + (d === day ? ' sel' : '') + '" data-d="' + d + '" data-s="' + esc(s.short) + '" data-v="' + v + '" style="background:' + bg + ';color:' + fg + '">' + (v >= SD_TARGET ? '✓' : v ? sdK(v) : '') + '</div>';
     }).join('')).join('') + '</div></div><div class="sd-tip" id="sd_cal_tip">' +
-    stores.map(s => '<b>' + esc(s.short) + '</b> hit target on ' + P[s.loc].hits + ' of ' + mDays.length + ' day' + (mDays.length > 1 ? 's' : '') + ' this month so far').join(' · ') + '</div></div>';
+    stores.map(s => '<b>' + esc(s.short) + '</b> hit target on ' + P[s.loc].hits + ' of ' + mDays.length + ' day' + (mDays.length > 1 ? 's' : '') + ' this month so far').join(' · ') + (SD.floor ? '<div class="tiny mute" style="margin-top:4px">Your dashboard shows data from ' + esc(sdDmy(SD.floor)) + '.</div>' : '') + '</div></div>';
 
   // ── payment mix + top items + staff
   const tot = x => x.cash + x.upi + x.card || 1;
@@ -3832,7 +3884,7 @@ async function billSetupSheet() {
     } else if (t === 'wa') {
       waSetup(body);
     } else {
-      const keys = Object.keys(st);
+      const keys = Object.keys(st).filter(k => k !== SD_ACC_KEY);
       body.innerHTML = '<div class="mute small" style="margin-bottom:8px">Printed on every new bill. Old bills keep the details they were saved with. Also editable in the “Bill Setup” tab of the sheet.</div>' +
         keys.map(k => '<label class="f" style="margin-top:8px">' + esc(k) + '</label>' + (String(st[k]).length > 60 ? '<textarea class="i" rows="2" data-k="' + esc(k) + '">' + esc(st[k]) + '</textarea>' : '<input class="i" data-k="' + esc(k) + '" value="' + esc(st[k]) + '">')).join('') +
         '<button class="btn block" id="bs_go" style="margin-top:14px">Save bill details</button>';
