@@ -4007,6 +4007,7 @@ function pvForm(loc, date, people, done) {
     const g = await run('Checking ' + no + '…', () => rotaCall('voucherView', { no: no })).catch(() => null); if (!g) return false;
     const v = g.voucher; acct = v;
     if (v.status === 'Cancelled') { $('#pv_vi', m).innerHTML = '<span style="color:var(--bad)">' + esc(no) + ' is cancelled</span>'; acct = null; return false; }
+    if (v.claim && v.store && v.store !== loc) { $('#pv_vi', m).innerHTML = '<span style="color:var(--bad)">' + esc(no) + ' is ' + esc(v.name) + '’s travel voucher – ' + esc(v.name) + ' works at ' + esc(pvLoc(v.store)) + ', so pay it from that store’s cash and enter it there</span>'; acct = null; return false; }
     $('#pv_vi', m).innerHTML = '✓ <b>' + esc(v.no) + '</b> · ' + esc(v.name) + ' · ' + esc(v.head) + ' · <b>₹' + money(v.amount) + '</b> · ' + esc(v.status);
     if (!$('#pv_a', m).value.trim()) $('#pv_a', m).value = v.amount;
     if (!$('#pv_t', m).value.trim()) $('#pv_t', m).value = v.name;
@@ -4061,6 +4062,7 @@ function pvView(v, opts) {
       if (!ACCT_RX.test(no)) { toast('Type the number like TV/26-27/0002', true); return; }
       const g = await run('Checking ' + no + '…', () => rotaCall('voucherView', { no: no })).catch(() => null); if (!g) return;
       if (g.voucher.status === 'Cancelled') { toast(no + ' is cancelled', true); return; }
+      if (g.voucher.claim && g.voucher.store && g.voucher.store !== v.loc) { toast(no + ' is a travel voucher of ' + g.voucher.name + ' (' + pvLoc(g.voucher.store) + ') – it can only be paid from ' + pvLoc(g.voucher.store), true); return; }
       if (Math.abs(g.voucher.amount - v.amount) >= 1) { toast(no + ' is for ₹' + money(g.voucher.amount) + ' (' + g.voucher.name + '), this payout is ₹' + money(v.amount) + ' – they must match', true); return; }
       const r = await run('Linking…', () => call('pvSetAcct', { no: v.no, acct: no })).catch(() => null); if (!r) return;
       await rotaCall('voucherStorePay', { no: no, pv: v.no, store: v.loc, paidOn: v.date, amount: v.amount }).catch(e => toast('Linked, but the Staff Rota app said: ' + e.message, true));
@@ -4218,7 +4220,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '8773b09ff8';
+<script>window.NV_BUILD = '6d0a0b84f2';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
