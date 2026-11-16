@@ -1019,7 +1019,8 @@ async function viewVouchers() {
 function fmtD(ymd) { return ymd ? ymd.slice(8, 10) + '-' + MON[Number(ymd.slice(5, 7)) - 1] + '-' + ymd.slice(0, 4) : ''; }
 async function printVoucher(no) {
   const g = await run('Preparing voucher…', () => call('voucherGet', { no: no }));
-  const v = g.voucher, c = g.company, t = g.claim;
+  const v = Object.assign({}, g.voucher), c = g.company, t = g.claim;
+  ['approvedBy', 'issuedBy', 'paidBy'].forEach(k => { if (v[k] === 'Owner') v[k] = 'Pankaj Verma (Owner)'; });
   let img = '';
   if (t && t.receipt) { try { const p = await call('photo', { trip: t.id }); img = 'data:' + p.mime + ';base64,' + p.b64; } catch (e) { } }
   const e = esc, amt = '₹ ' + Number(v.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
