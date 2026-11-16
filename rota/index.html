@@ -365,7 +365,8 @@ function viewToday(m) {
   const btns = {
     OUT_NONE: '<button class="btn gold huge" data-p="IN">⏱ Clock in</button>',
     OUT: '<button class="btn gold huge" data-p="IN">⏱ Clock in again</button>',
-    IN: '<button class="btn huge" data-p="BO" style="background:#fff;color:var(--navy);border:2px solid var(--navy)">☕ Start break</button><div style="height:10px"></div><button class="btn bad huge" data-p="OUT">🏁 Clock out</button>',
+    IN: '<button class="btn huge" data-p="BO" style="background:#fff;color:var(--navy);border:2px solid var(--navy)">☕ Start break</button><div style="height:10px"></div><button class="btn bad huge" data-p="OUT">🏁 Clock out</button>' +
+      '<p class="tiny mute" style="margin-top:8px">Clock out at the store before you leave. If you leave without clocking out, your day is counted only up to the last time the app saw you at work.</p>',
     BREAK: '<button class="btn ok huge" data-p="BI">↩ Back from break</button><div style="height:10px"></div><button class="btn ghost full" data-p="OUT">Clock out (end of day)</button>'
   }[st];
   const nightShift = d.date && d.date !== today();
@@ -1237,6 +1238,15 @@ function editLoc(l, redraw, eventOnly) {
 
 /* ───────────── start ───────────── */
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.b && S.tab === 'today') refreshBoot().then(() => go('today')).catch(() => { }); });
+/* While someone is clocked in and the app is open, it tells the server every ~10 min where the phone is ("last seen at work"). */
+let SEEN_T = 0;
+function seenPing() {
+  const d = S.b && S.b.day; if (!d || !(d.state === 'IN' || d.state === 'BREAK') || !navigator.geolocation) return;
+  if (Date.now() - SEEN_T < 9 * 60000) return; SEEN_T = Date.now();
+  navigator.geolocation.getCurrentPosition(p => call('seen', { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), phone: phoneId() }).catch(() => { }), () => { }, { enableHighAccuracy: true, maximumAge: 60000, timeout: 20000 });
+}
+setInterval(() => { if (document.visibilityState === 'visible') seenPing(); }, 60000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(seenPing, 4000); });
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => { }));
 
 /* ───────────── install as a real app ───────────── */
