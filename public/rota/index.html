@@ -1158,7 +1158,7 @@ async function viewFormer() {
     '<div class="tiny mute">Billing app: ' + esc(f.billing) + ' · Rights before: ' + esc(f.rights || '–') + ' · Future rota rows removed: ' + f.rotaRemoved + '</div>' +
     '<div class="tiny mute">Recorded by ' + esc(f.by) + '</div></div>';
   const leaveForm = () => {
-    const f = sheet('Mark as left', '<label class="f">Person</label><select class="i" id="lfn"><option value="">Choose…</option>' + r.active.map(p => '<option>' + esc(p.name) + '</option>').join('') + '</select>' +
+    const f = sheet('Mark as left', '<label class="f">Person</label><select class="i" id="lfn"><option value="">Choose…</option>' + r.active.map(p => '<option value="' + esc(p.name) + '">' + esc(p.name) + (p.inactive ? ' (already inactive – record only)' : '') + '</option>').join('') + '</select>' +
       '<label class="f">Last working day</label><input class="i" type="date" id="lfd" value="' + today() + '">' +
       '<label class="f">Reason</label><select class="i" id="lfr">' + r.reasons.map(x => '<option>' + esc(x) + '</option>').join('') + '</select>' +
       '<label class="f">What happened (needed unless resigned)</label><textarea class="i" id="lfx" rows="3" placeholder="e.g. Terminated – left the shop unattended"></textarea>' +

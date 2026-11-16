@@ -1825,12 +1825,12 @@ function formerRows_() {
 }
 function formerStaff_(d, me) {
   return { former: formerRows_().reverse(), reasons: LEAVE_REASONS, canLeave: !!me.owner,
-    active: staffAll_().filter(s => s.active).map(s => ({ name: s.name, role: s.role, loc: s.loc })) };
+    active: (fs => staffAll_().filter(s => !fs[norm_(s.name)] && norm_(s.name) !== norm_('Pankaj Verma')).map(s => ({ name: s.name, role: s.role, loc: s.loc, inactive: !s.active })))(formerRows_().reduce((o, f) => (o[norm_(f.name)] = 1, o), {})) };
 }
 /** d = {name, lastDay, reason, details, settlement, settledOn} */
 function staffLeave_(d, me, token) {
   const s = staffByName_(d.name); if (!s) throw new Error('Person not found.');
-  if (!s.active) throw new Error(s.name + ' is already marked as left.');
+  if (formerRows_().some(f => norm_(f.name) === norm_(s.name))) throw new Error(s.name + ' is already in Former staff.');
   const lastDay = /^\d{4}-\d{2}-\d{2}$/.test(d.lastDay || '') ? d.lastDay : '';
   if (!lastDay) throw new Error('Pick the last working day.');
   const reason = LEAVE_REASONS.indexOf(d.reason) >= 0 ? d.reason : '';
