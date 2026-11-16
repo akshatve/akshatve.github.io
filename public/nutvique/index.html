@@ -4773,12 +4773,16 @@ async function otBadge() {
 function otTimeOf(t) {
   let x = ' ' + String(t || '').toLowerCase().replace(/[०-९]/g, d => '०१२३४५६७८९'.indexOf(d)) + ' ';
   const W = { 'बजे': ' baje ', 'बज': ' baje ', 'साढ़े': ' saade ', 'साढे': ' saade ', 'सवा': ' sava ', 'पौने': ' paune ', 'डेढ़': ' 1:30 ', 'डेढ': ' 1:30 ', 'ढाई': ' 2:30 ',
-    'सुबह': ' am ', 'शाम': ' pm ', 'दोपहर': ' pm ', 'रात': ' pm ', 'morning': ' am ', 'evening': ' pm ', 'afternoon': ' pm ', 'night': ' pm ', 'noon': ' 12:00 pm ', 'midnight': ' 12:00 am ',
-    'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9', 'ten': '10', 'eleven': '11', 'twelve': '12' };
+    'सुबह': ' morn ', 'शाम': ' eve ', 'दोपहर': ' eve ', 'रात': ' eve ', 'morning': ' morn ', 'evening': ' eve ', 'afternoon': ' eve ', 'night': ' eve ', 'noon': ' 12:00 pm ', 'midnight': ' 12:00 am ',
+  };
   Object.keys(W).forEach(k => { x = x.split(k).join(W[k]); });
   x = x.replace(/\s+/g, ' ');
+  const NW = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 }, nw = '(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)';
+  x = x.replace(new RegExp('\\b(at|by|around|till|before|past|to) ' + nw + '\\b', 'g'), (z, p, w) => p + ' ' + NW[w])
+       .replace(new RegExp('\\b' + nw + '(?= ?(?:am|pm|baje|o\'? ?clock|thirty|fifteen|forty))', 'g'), w => NW[w])
+       .replace(/\b(\d{1,2}) thirty\b/g, '$1:30').replace(/\b(\d{1,2}) fifteen\b/g, '$1:15').replace(/\b(\d{1,2}) forty[- ]five\b/g, '$1:45');
   x = x.replace(/\b(\d{1,2})\s*(?:o'?\s?clock)\b/g, '$1:00').replace(/a\.\s?m\.?/g, 'am').replace(/p\.\s?m\.?/g, 'pm');
-  const ap = /\bpm\b/.test(x) ? 'pm' : /\bam\b/.test(x) ? 'am' : '';
+  const ap = /\b(pm|eve)\b/.test(x) ? 'pm' : /\b(am|morn)\b/.test(x) ? 'am' : '';
   let h = null, mi = 0, m;
   if ((m = x.match(/\bhalf past (\d{1,2})\b/))) { h = +m[1]; mi = 30; }
   else if ((m = x.match(/\bquarter past (\d{1,2})\b/))) { h = +m[1]; mi = 15; }
@@ -4787,7 +4791,7 @@ function otTimeOf(t) {
   else if ((m = x.match(/\bsava (\d{1,2})\b/))) { h = +m[1]; mi = 15; }
   else if ((m = x.match(/\bpaune (\d{1,2})\b/))) { h = +m[1] - 1; mi = 45; }
   else if ((m = x.match(/\b(\d{1,2})[:.](\d{2})\b/))) { h = +m[1]; mi = +m[2]; }
-  else if ((m = x.match(/\b(\d{1,2})\s*(am|pm|baje)\b/))) h = +m[1];
+  else if ((m = x.match(/\b(\d{1,2})\s*baje\b/)) || (m = x.match(/\b(\d{1,2})\s*(am|pm)\b/))) h = +m[1];
   else if ((m = x.match(/\b(?:at|by|around|till|before)\s+(\d{1,2})\b(?!\s*(?:kg|g|gm|grams?|pcs?|pieces?|boxes?|rs|rupees|%|days?|hours?|minutes?|mins?|lakh|k)\b)/))) h = +m[1];
   if (h == null || h > 23 || mi > 59) return '';
   if (ap === 'pm' && h < 12) h += 12; else if (ap === 'am' && h === 12) h = 0; else if (!ap && h >= 1 && h <= 7) h += 12;
@@ -4853,21 +4857,24 @@ async function myTasks(startDate) {
   const nextDay = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 1); return x.toISOString().slice(0, 10); };
   const otDictate = (inp, btn) => {
     if (!SR) { toast('Voice typing is not available here – use the 🎤 on your phone keyboard', true); inp.focus(); return; }
-    const r = new SR(); r.lang = lang; r.interimResults = true; const base = inp.value.trim(); let fin = '';
-    btn.textContent = '⏹'; btn.onclick = () => { try { r.stop(); } catch (e) { } };
-    r.onresult = e => { let im = ''; for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) fin += e.results[i][0].transcript; else im += e.results[i][0].transcript; } inp.value = (base ? base + ' ' : '') + (fin + ' ' + im).trim(); };
-    r.onerror = e => toast(e.error === 'not-allowed' ? 'Allow the microphone for this app' : 'Voice: ' + e.error, true);
-    r.onend = () => { btn.textContent = '🎤'; btn.onclick = () => otDictate(inp, btn); };
-    try { r.start(); } catch (e) { btn.textContent = '🎤'; }
+    if (sess) finish(false);
+    const r = new SR(); r.lang = lang; r.interimResults = true; r.continuous = false; const base = inp.value.trim(); let done = false, q = null;
+    const end = () => { if (done) return; done = true; clearTimeout(q); try { r.stop(); } catch (e) { } btn.textContent = '🎤'; btn.onclick = () => otDictate(inp, btn); };
+    btn.textContent = '⏹'; btn.onclick = end;
+    r.onresult = e => { let t = ''; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; inp.value = (base ? base + ' ' : '') + t.trim(); clearTimeout(q); q = setTimeout(end, 1500); };
+    r.onerror = e => { if (e.error !== 'aborted' && e.error !== 'no-speech') toast(micMsg(e.error), true); end(); };
+    r.onend = end; setTimeout(end, 20000);
+    try { r.start(); } catch (e) { end(); toast('Could not start the microphone – try again', true); }
   };
-  const save = async x => { if (busy) return; busy = true; try { x.view = dateOf(); R = await call('otSave', x); draw(); otBadge(); if ($('#ot_q', m).value.trim().length >= 2) $('#ot_q', m).oninput(); return true; } catch (e) { toast(e.message, true); return false; } finally { busy = false; } };
+  // v18.56: changes are queued one after another – a task spoken while the previous one is still saving is no longer dropped
+  let chain = Promise.resolve();
+  const save = x => (chain = chain.then(async () => { try { x.view = dateOf(); R = await call('otSave', x); draw(); otBadge(); if ($('#ot_q', m).value.trim().length >= 2) $('#ot_q', m).oninput(); return true; } catch (e) { toast(e.message, true); return false; } }));
   const add = async (txt, viaVoice) => {
     const t = (txt != null ? txt : $('#ot_t', m).value).trim(); if (!t) { toast('Type or say the task', true); return; }
-    const time = $('#ot_tm', m).value || otTimeOf(t);
-    if (await save({ act: 'add', task: t.charAt(0).toUpperCase() + t.slice(1), date: dateOf(), time: time, pri: $('#ot_p', m).checked })) {
-      $('#ot_t', m).value = ''; $('#ot_tm', m).value = ''; $('#ot_tm', m).style.outline = ''; tmAuto = true; $('#ot_p', m).checked = false; $('#ot_live', m).textContent = '';
-      toast((viaVoice ? '🎤 ' : '') + 'Task added for ' + OT_D(dateOf()));
-    }
+    const time = $('#ot_tm', m).value || otTimeOf(t), pri = $('#ot_p', m).checked, day = dateOf();
+    $('#ot_t', m).value = ''; $('#ot_tm', m).value = ''; $('#ot_tm', m).style.outline = ''; tmAuto = true; $('#ot_p', m).checked = false; $('#ot_live', m).textContent = '';
+    if (await save({ act: 'add', task: t.charAt(0).toUpperCase() + t.slice(1), date: day, time: time, pri: pri })) toast((viaVoice ? '🎤 ' : '') + 'Task added for ' + OT_D(day) + ': ' + t.slice(0, 40));
+    else if (!$('#ot_t', m).value) { $('#ot_t', m).value = t; $('#ot_tm', m).value = time; }
   };
   let tmAuto = true;   // the time box follows the words until you change it yourself
   const autoTime = () => { if (!tmAuto) return; const tm = otTimeOf($('#ot_t', m).value); $('#ot_tm', m).value = tm; $('#ot_tm', m).style.outline = tm ? '2px solid #39ff14' : ''; };
@@ -4883,16 +4890,37 @@ async function myTasks(startDate) {
       bind();
     } catch (e) { toast(e.message, true); } }, 400); };
   $('#ot_t', m).onkeydown = e => { if (e.key === 'Enter') add(); };
-  $('#ot_mic', m).onclick = () => {
+  // v18.55: every recording uses its own recogniser and ignores events from older ones (phones send a late "end" from the
+  // previous recording); a recording ends by itself after ~1.5 s of silence, because phones often never send "final" or "end".
+  let sess = null, sid = 0;
+  const mic = $('#ot_mic', m), live = $('#ot_live', m);
+  const micMsg = er => er === 'not-allowed' || er === 'service-not-allowed' ? '⚠ Microphone blocked – allow it for this app in the phone settings, then try again.' : er === 'no-speech' ? 'Did not hear anything – tap 🎤 and speak.' : er === 'audio-capture' ? '⚠ The microphone is busy – close other apps using it and try again.' : er === 'network' ? '⚠ Voice needs internet – check the connection.' : '⚠ Voice: ' + er;
+  const finish = keep => {
+    const ss = sess; if (!ss) return; sess = null; clearTimeout(ss.quiet); clearTimeout(ss.cap);
+    try { ss.r.abort(); } catch (e) { try { ss.r.stop(); } catch (x) { } }
+    rec = null; mic.textContent = '🎤';
+    const t = (ss.txt || '').trim();
+    if (keep && t) { live.textContent = ''; add(t, true); } else live.textContent = ss.err ? micMsg(ss.err) : (t ? '' : 'Did not hear anything – tap 🎤 and speak.');
+  };
+  mic.onclick = () => {
     if (!SR) { toast('Voice typing is not available in this browser – tap the text box and use the 🎤 on your phone keyboard', true); $('#ot_t', m).focus(); return; }
-    if (rec) { try { rec.stop(); } catch (e) { } return; }
-    rec = new SR(); rec.lang = lang; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
-    let finalTxt = '';
-    $('#ot_mic', m).textContent = '⏹'; $('#ot_live', m).textContent = '🎙 Listening… speak your task';
-    rec.onresult = e => { let interim = ''; for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) finalTxt += e.results[i][0].transcript; else interim += e.results[i][0].transcript; } $('#ot_t', m).value = (finalTxt + ' ' + interim).trim(); autoTime(); };
-    rec.onerror = e => { $('#ot_live', m).textContent = e.error === 'not-allowed' ? '⚠ Allow the microphone for this app (browser / phone settings) and try again.' : e.error === 'no-speech' ? 'Did not hear anything – tap 🎤 and speak.' : '⚠ ' + e.error; };
-    rec.onend = () => { rec = null; $('#ot_mic', m).textContent = '🎤'; const t = finalTxt.trim() || $('#ot_t', m).value.trim(); if (finalTxt.trim()) add(t, true); else if (!/⚠|Did not/.test($('#ot_live', m).textContent)) $('#ot_live', m).textContent = ''; };
-    try { rec.start(); } catch (e) { rec = null; $('#ot_mic', m).textContent = '🎤'; toast('Could not start the microphone: ' + e.message, true); }
+    if (sess) { finish(true); return; }          // tap again = done speaking
+    let r; try { r = new SR(); } catch (e) { toast('Could not start voice: ' + e.message, true); return; }
+    r.lang = lang; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
+    const ss = sess = { id: ++sid, r: r, txt: '', err: '' }; rec = r;
+    const mine = () => sess === ss;
+    r.onresult = e => {
+      if (!mine()) return; let txt = '', allFinal = true;
+      for (let i = 0; i < e.results.length; i++) { txt += e.results[i][0].transcript; if (!e.results[i].isFinal) allFinal = false; }
+      ss.txt = txt.trim(); $('#ot_t', m).value = ss.txt; autoTime();
+      clearTimeout(ss.quiet); ss.quiet = setTimeout(() => { if (mine()) finish(true); }, allFinal ? 400 : 1500);
+    };
+    r.onerror = e => { if (!mine() || e.error === 'aborted') return; ss.err = e.error; if (!ss.txt) finish(false); };
+    r.onend = () => { if (mine()) finish(true); };
+    $('#ot_t', m).value = ''; mic.textContent = '⏹'; live.textContent = '🎙 Listening… speak your task (tap ⏹ when done)';
+    ss.cap = setTimeout(() => { if (mine()) finish(true); }, 20000);
+    const go = n => { if (!mine()) return; try { r.start(); } catch (e) { if (n < 4) setTimeout(() => go(n + 1), 400); else { ss.err = 'start'; finish(false); live.textContent = '⚠ Could not start the microphone – tap 🎤 again.'; } } };
+    go(0);
   };
   const load = async () => { try { const x = {}; R = await call('otList', x); if (view !== 'today') { R = await call('otList', { date: dateOf() }); } draw(); } catch (e) { $('#ot_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
   load();
@@ -4970,7 +4998,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '29d25bde98';
+<script>window.NV_BUILD = 'bb42251c6d';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
