@@ -4786,6 +4786,7 @@ async function myTasks(startDate) {
     '<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center"><label class="tiny">⏰ <input class="i" type="time" id="ot_tm" style="max-width:120px;display:inline-block"></label>' +
     '<label class="tiny"><input type="checkbox" id="ot_p"> ⭐ Important</label><select class="i" id="ot_lang" style="max-width:130px"><option value="en-IN">🎤 English</option><option value="hi-IN">🎤 हिंदी</option></select>' +
     '<div class="grow"></div><button class="btn ghost" id="ot_add">+ Add</button></div><div class="tiny" id="ot_live" style="margin-top:6px;color:var(--gold)"></div></div>' +
+    '<input class="i" id="ot_q" placeholder="🔍 Search all my tasks (old ones too) – see when something was done" style="margin-bottom:6px">' +
     '<div id="ot_b"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true, onClose: () => { try { rec && rec.abort(); } catch (e) { } otBadge(); } });
   $('#ot_lang', m).value = lang;
   $('#ot_lang', m).onchange = () => { lang = $('#ot_lang', m).value; try { localStorage.setItem('nv_ot_lang', lang); } catch (e) { } };
@@ -4798,10 +4799,11 @@ async function myTasks(startDate) {
     $$('[data-otv]', m).forEach(b => b.onclick = () => { view = b.dataset.otv; load(); });
     $('#ot_d', m).onchange = () => { const v = $('#ot_d', m).value; if (v) { view = v === R.today ? 'today' : v === R.tomorrow ? 'tomorrow' : v; load(); } };
   };
-  const item = (t, old) => '<div class="card" style="padding:9px 12px;margin:6px 0;border-left:4px solid ' + (t.status === 'Done' ? 'var(--ok)' : t.pri ? 'var(--bad)' : 'var(--gold)') + '"><div class="row" style="flex-wrap:nowrap;gap:10px;align-items:flex-start">' +
+  const item = (t, old, showDate) => '<div class="card" style="padding:9px 12px;margin:6px 0;' + (t.status === 'Done' ? 'background:#39ff14;color:#062b05;border:1px solid #1fbf00;border-left:6px solid #128a00' : 'border-left:4px solid ' + (t.pri ? 'var(--bad)' : 'var(--gold)')) + '"><div class="row" style="flex-wrap:nowrap;gap:10px;align-items:flex-start">' +
     '<button class="btn sm ' + (t.status === 'Done' ? 'gold' : 'ghost') + '" data-otk="' + esc(t.id) + '" style="min-width:42px;font-size:17px">' + (t.status === 'Done' ? '✓' : '☐') + '</button>' +
-    '<div class="grow" data-ote="' + esc(t.id) + '" style="cursor:pointer"><div style="' + (t.status === 'Done' ? 'text-decoration:line-through;color:var(--mute,#777)' : '') + '">' + (t.pri ? '⭐ ' : '') + esc(t.task) + '</div>' +
-    '<div class="tiny mute">' + [t.time ? '⏰ ' + esc(t.time) : '', old ? '<span style="color:var(--bad)">from ' + esc(OT_D(t.date)) + '</span>' : '', t.moved ? 'moved from ' + esc(OT_D(t.moved)) : '', t.status === 'Done' && t.doneAt ? 'done ' + esc(new Date(t.doneAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) : '', t.note ? '💬 ' + esc(t.note) : ''].filter(String).join(' · ') + '</div></div>' +
+    '<div class="grow" data-ote="' + esc(t.id) + '" style="cursor:pointer"><div style="' + (t.status === 'Done' ? 'font-weight:600' : '') + '">' + (t.pri ? '⭐ ' : '') + esc(t.task) + '</div>' +
+    (t.status === 'Done' && t.doneAt ? '<div class="tiny" style="font-weight:700">✓ Done ' + esc(new Date(t.doneAt).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })) + '</div>' : '') +
+    '<div class="tiny" style="opacity:.75">' + [showDate ? '📅 ' + esc(OT_D(t.date)) : '', t.time ? '⏰ ' + esc(t.time) : '', old ? '<span style="color:var(--bad)">from ' + esc(OT_D(t.date)) + '</span>' : '', t.moved ? 'moved from ' + esc(OT_D(t.moved)) : ''].filter(String).join(' · ') + '</div>' + (t.note ? '<div class="small" style="margin-top:4px;padding:4px 8px;border-radius:6px;background:rgba(255,255,255,.55);white-space:pre-wrap">💬 ' + esc(t.note) + '</div>' : '') + '</div>' +
     (old ? '<button class="btn sm ghost" data-otm="' + esc(t.id) + '" title="Move to today">→ Today</button>' : '') + '</div><div data-oti="' + esc(t.id) + '"></div></div>';
   const draw = () => {
     tabs();
@@ -4809,23 +4811,38 @@ async function myTasks(startDate) {
     $('#ot_b', m).innerHTML = '<h3 style="margin-top:0">' + (view === 'today' ? 'Today' : view === 'tomorrow' ? 'Tomorrow' : '') + ' ' + esc(OT_D(d)) + ' <span class="tiny mute">' + open + ' to do · ' + (R.list.length - open) + ' done</span></h3>' +
       (R.list.length ? R.list.map(t => item(t)).join('') : '<div class="empty small">No tasks for this day yet – type one above or tap 🎤.</div>') +
       (R.earlier.length ? '<h3>⏳ Not done from earlier days</h3>' + R.earlier.map(t => item(t, true)).join('') : '');
-    $$('[data-otk]', m).forEach(b => b.onclick = () => { const t = R.list.concat(R.earlier).find(x => x.id === b.dataset.otk); save({ act: t.status === 'Done' ? 'undo' : 'done', id: t.id }); });
+    bind();
+  };
+  const bind = () => {
+    $$('[data-otk]', m).forEach(b => b.onclick = () => { const t = R.list.concat(R.earlier, R.found || []).find(x => x.id === b.dataset.otk); save({ act: t.status === 'Done' ? 'undo' : 'done', id: t.id }); });
     $$('[data-otm]', m).forEach(b => b.onclick = () => save({ act: 'move', id: b.dataset.otm, date: R.today }));
     $$('[data-ote]', m).forEach(el => el.onclick = () => {
-      const t = R.list.concat(R.earlier).find(x => x.id === el.dataset.ote), box = $('[data-oti="' + t.id + '"]', m);
+      const t = R.list.concat(R.earlier, R.found || []).find(x => x.id === el.dataset.ote), box = $('[data-oti="' + t.id + '"]', m);
       if (box.innerHTML) { box.innerHTML = ''; return; }
       box.innerHTML = '<div style="margin-top:8px"><input class="i" data-f="task" value="' + esc(t.task) + '"><div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center"><input class="i" type="time" data-f="time" value="' + esc(t.time) + '" style="max-width:120px">' +
-        '<label class="tiny"><input type="checkbox" data-f="pri"' + (t.pri ? ' checked' : '') + '> ⭐</label><input class="i" data-f="note" value="' + esc(t.note) + '" placeholder="Note" style="flex:1;min-width:120px"></div>' +
-        '<div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn sm gold" data-x="edit">Save</button><button class="btn sm ghost" data-x="tm">→ Tomorrow</button><label class="tiny">Move to <input class="i" type="date" data-f="mv" style="max-width:150px;display:inline-block"></label><div class="grow"></div><button class="btn sm ghost" data-x="del" style="color:var(--bad)">🗑 Delete</button></div></div>';
+        '<label class="tiny"><input type="checkbox" data-f="pri"' + (t.pri ? ' checked' : '') + '> ⭐</label></div>' +
+        '<label class="f" style="margin-top:6px">💬 ' + (t.status === 'Done' ? 'Comment on this done task' : 'Comment / note') + ' (optional)</label><div class="row" style="gap:6px;flex-wrap:nowrap"><textarea class="i" data-f="note" rows="2" placeholder="e.g. Done – paid ₹5,000 by UPI, CA will send the receipt" style="min-width:0">' + esc(t.note) + '</textarea><button class="btn ghost" data-x="nmic" title="Speak the comment" style="font-size:18px">🎤</button></div>' +
+        '<div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn sm gold" data-x="edit">Save</button><button class="btn sm ghost" data-x="tm">→ Tomorrow</button><label class="tiny">Move to <input class="i" type="date" data-f="mv" style="max-width:150px;display:inline-block"></label><div class="grow"></div>' + (t.status === 'Done' ? '<span class="tiny mute">Done tasks are kept for your record</span>' : '<button class="btn sm ghost" data-x="del" style="color:var(--bad)">🗑 Delete</button>') + '</div></div>';
       const f = k => $('[data-f="' + k + '"]', box);
       $('[data-x="edit"]', box).onclick = () => save({ act: 'edit', id: t.id, task: f('task').value.trim(), time: f('time').value, pri: f('pri').checked, note: f('note').value.trim() });
       $('[data-x="tm"]', box).onclick = () => save({ act: 'move', id: t.id, date: t.date < R.tomorrow ? R.tomorrow : nextDay(t.date) });
       f('mv').onchange = () => { if (f('mv').value) save({ act: 'move', id: t.id, date: f('mv').value }); };
-      $('[data-x="del"]', box).onclick = () => save({ act: 'del', id: t.id });
+      if ($('[data-x="del"]', box)) $('[data-x="del"]', box).onclick = () => save({ act: 'del', id: t.id });
+      $('[data-x="nmic"]', box).onclick = () => otDictate(f('note'), $('[data-x="nmic"]', box));
+      if (t.status === 'Done') f('note').focus();
     });
   };
   const nextDay = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 1); return x.toISOString().slice(0, 10); };
-  const save = async x => { if (busy) return; busy = true; try { x.view = dateOf(); R = await call('otSave', x); draw(); otBadge(); return true; } catch (e) { toast(e.message, true); return false; } finally { busy = false; } };
+  const otDictate = (inp, btn) => {
+    if (!SR) { toast('Voice typing is not available here – use the 🎤 on your phone keyboard', true); inp.focus(); return; }
+    const r = new SR(); r.lang = lang; r.interimResults = true; const base = inp.value.trim(); let fin = '';
+    btn.textContent = '⏹'; btn.onclick = () => { try { r.stop(); } catch (e) { } };
+    r.onresult = e => { let im = ''; for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) fin += e.results[i][0].transcript; else im += e.results[i][0].transcript; } inp.value = (base ? base + ' ' : '') + (fin + ' ' + im).trim(); };
+    r.onerror = e => toast(e.error === 'not-allowed' ? 'Allow the microphone for this app' : 'Voice: ' + e.error, true);
+    r.onend = () => { btn.textContent = '🎤'; btn.onclick = () => otDictate(inp, btn); };
+    try { r.start(); } catch (e) { btn.textContent = '🎤'; }
+  };
+  const save = async x => { if (busy) return; busy = true; try { x.view = dateOf(); R = await call('otSave', x); draw(); otBadge(); if ($('#ot_q', m).value.trim().length >= 2) $('#ot_q', m).oninput(); return true; } catch (e) { toast(e.message, true); return false; } finally { busy = false; } };
   const add = async (txt, viaVoice) => {
     const t = (txt != null ? txt : $('#ot_t', m).value).trim(); if (!t) { toast('Type or say the task', true); return; }
     const time = $('#ot_tm', m).value || otTimeOf(t);
@@ -4835,6 +4852,14 @@ async function myTasks(startDate) {
     }
   };
   $('#ot_add', m).onclick = () => add();
+  let qT = null;
+  $('#ot_q', m).oninput = () => { clearTimeout(qT); qT = setTimeout(async () => {
+    const q = $('#ot_q', m).value.trim(); if (q.length < 2) { draw(); return; }
+    try { const r = await call('otList', { q: q }); const f = r.found || []; R.found = f;
+      $('#ot_b', m).innerHTML = '<h3 style="margin-top:0">🔍 ' + f.length + ' task' + (f.length === 1 ? '' : 's') + ' matching “' + esc(q) + '”</h3>' + (f.length ? f.map(t => item(t, false, true)).join('') : '<div class="empty small">Nothing found.</div>') + '<button class="btn ghost sm" id="ot_qx">✕ Clear search</button>';
+      $('#ot_qx', m).onclick = () => { $('#ot_q', m).value = ''; R.found = null; draw(); };
+      bind();
+    } catch (e) { toast(e.message, true); } }, 400); };
   $('#ot_t', m).onkeydown = e => { if (e.key === 'Enter') add(); };
   $('#ot_mic', m).onclick = () => {
     if (!SR) { toast('Voice typing is not available in this browser – tap the text box and use the 🎤 on your phone keyboard', true); $('#ot_t', m).focus(); return; }
@@ -4923,7 +4948,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = 'fd7e657f07';
+<script>window.NV_BUILD = '76ad5a3769';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
