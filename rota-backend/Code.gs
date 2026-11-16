@@ -88,6 +88,7 @@ const T = {
     'Extra break (min)', 'Short (min)', 'OT approved (h)', 'Day rate ₹', 'Salary earned ₹', 'Overtime ₹', 'Travel ₹', 'Total payable ₹',
     'Flags', 'Built at']],
   set: ['Settings', ['Setting', 'Value', 'Note']],
+  presence: ['Presence', ['Time', 'Date', 'Name', 'Latitude', 'Longitude', 'Accuracy (m)', 'Nearest', 'Distance (m)', 'At store', 'Phone']],
   log: ['Log', ['At', 'What', 'Result']]
 };
 const C = {}; Object.keys(T).forEach(k => { C[k] = {}; T[k][1].forEach((h, i) => C[k][h] = i); });
@@ -119,6 +120,8 @@ const DEFAULT_SETTINGS = [
   ['Company CIN', 'U47219UW2026PTC256062', ''],
   ['Summary email', 'nutzyfoods@gmail.com', 'Nightly summary (late, absent, missed clock-out, flags, trips to approve). Blank = off.'],
   ['Owner approval email', 'nutzyfoods@gmail.com', 'Who is emailed when a manager asks for a Saturday / Sunday weekly off (only the owner can approve it).'],
+  ['No clock-out counts to', 'Last seen', '"Last seen" = a day with no clock-out is counted only up to the last time the app saw the person at the store (last punch or location check while the app was open). "Rota end" = old rule.'],
+  ['Clock-out alert email', '', 'Emailed when someone is still not clocked out 30 min after their rota end (with where the app last saw them). Blank = the Summary email.'],
   ['Approval email', '', 'Who is emailed at once when a clock-in / clock-out needs approval (comma separated). Blank = the Summary email.'],
   ['Approval needed after (min)', 30, 'Clock-in this many minutes or more before the rota start, or clock-out this many minutes or more after the rota end, waits for a manager. Not approved = paid only the rota shift.'],
   ['Photo folder ID', '', 'Drive folder for selfies and receipts (created automatically).'],
@@ -185,6 +188,7 @@ function api_(req) {
   switch (action) {
     case 'boot': return boot_(me, req.token);
     case 'punch': return punch_(d, me);
+    case 'seen': return ping_(d, me);
     case 'myDay': return myDay_(me);
     case 'myMonth': return myMonth_(d, me);
     case 'myRota': return { weeks: myRota_(me) };
@@ -298,7 +302,7 @@ function tab_(k) {
     sh = ss.insertSheet(name);
     sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground('#1F2A44').setFontColor('#F7F1DE').setWrap(true);
     sh.setFrozenRows(1);
-    const textCols = { vouchers: ['Voucher No', 'Issued on', 'Claim date', 'Paid on', 'Emp ID'], offreq: ['ID', 'Date'], rota: ['Week (Mon)', 'Date', 'Start', 'End'], punch: ['ID', 'Date'], fix: ['Date', 'In', 'Out'], trips: ['Trip ID', 'Date'],
+    const textCols = { presence: ['Date'], vouchers: ['Voucher No', 'Issued on', 'Claim date', 'Paid on', 'Emp ID'], offreq: ['ID', 'Date'], rota: ['Week (Mon)', 'Date', 'Start', 'End'], punch: ['ID', 'Date'], fix: ['Date', 'In', 'Out'], trips: ['Trip ID', 'Date'],
       att: ['Date', 'Sched start', 'Sched end', 'In', 'Out'], pay: ['Month'], staff: ['Emp ID', 'Joined on', 'Phone ID'], set: ['Value'] }[k] || [];
     textCols.forEach(h => { const i = head.indexOf(h); if (i >= 0) sh.getRange(1, i + 1, sh.getMaxRows(), 1).setNumberFormat('@'); });
     if (k === 'trips') sh.hideColumns(head.length);
@@ -359,6 +363,15 @@ function ensureSetup_() {
       append_('locs', [['Event stall', 'Event', '', '', 300, 'Yes', 'General event stall – rename it for each event or add events with their own dates', '', '', '11:00', '22:00']]);
     dirty_();
     log_('v5: event stalls, after-midnight clock-outs, clock-out approval', 'system');
+  }
+  if (!p.getProperty('V20_SEEN') && rows_('staff').length) {   // 16 Nov 2026: last-seen rule, clock-out watch, Veer on the summary
+    p.setProperty('V20_SEEN', '1');
+    tab_('presence');
+    try { ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'clockOutWatch').forEach(t => ScriptApp.deleteTrigger(t));
+      ScriptApp.newTrigger('clockOutWatch').timeBased().everyMinutes(30).create(); } catch (e) { log_('clockOutWatch trigger: ' + e, 'system'); }
+    const keys = rows_('set').map(r => s_(r[0])), i = keys.indexOf('Summary email');
+    if (i >= 0) { const cur = s_(rows_('set')[i][1]); if (!/veer@nutzyfoods\.com/i.test(cur)) { tab_('set').getRange(i + 2, 2).setValue(cur ? cur + ', veer@nutzyfoods.com' : 'veer@nutzyfoods.com'); dirty_('set'); CacheService.getScriptCache().remove('settings'); } }
+    log_('v20: no clock-out counted to last seen; clock-out watch every 30 min; Veer added to Summary email', 'system');
   }
   if (!p.getProperty('V16_ESIGN') && rows_('staff').length) {   // 16 Nov 2026: digital signature columns on Travel Vouchers
     p.setProperty('V16_ESIGN', '1');
@@ -980,7 +993,14 @@ function dayCalc_(date, s, ro, ps, fx, live) {
   if (outMin == null && inMin != null) {
     if (heldOut) outMin = Math.max(inMin, Math.min(minsOn_(date, heldOut.time), sE));
     else if (liveNow) outMin = nowRel;
-    else { outMin = Math.max(sE, inMin); out.flags.push('No clock-out (counted to rota end)'); }
+    else if (/rota/i.test(String(setv_('No clock-out counts to') || 'Last seen'))) { outMin = Math.max(sE, inMin); out.flags.push('No clock-out (counted to rota end)'); }
+    else {
+      // 16 Nov 2026 (owner): people leaving without clocking out – count only to the last time the app saw them at work
+      const seen = lastSeen_(s ? s.name : '', date, valid);
+      outMin = Math.max(inMin, Math.min(seen, sE));
+      out.lastSeen = minTxt_(seen);
+      out.flags.push('No clock-out – counted to last seen ' + minTxt_(outMin) + ' (owner can correct)');
+    }
   }
   if (bo != null) { openBreak = true; breakMin += Math.max(0, (heldOut || !liveNow ? outMin : nowRel) - bo); }
   if (fx && fx.brk !== '' && fx.brk != null) breakMin = n_(fx.brk);
@@ -1787,24 +1807,92 @@ function boot_(me, token) {
 }
 
 // ───────────────────────────── nightly summary ─────────────────────────────
+// ───────────────────────────── presence (last seen) ─────────────────────────────
+let PRES_ = null;
+function presenceRows_() {
+  if (PRES_) return PRES_;
+  PRES_ = rows_('presence').map(r => ({ t: r[0] instanceof Date ? r[0] : new Date(r[0]), name: norm_(r[2]), at: s_(r[8]) === 'Yes', loc: s_(r[6]), dist: n_(r[7]) }));
+  return PRES_;
+}
+/** Minutes (from the working date's midnight) when the app last saw the person at work: last punch, or last location check at a store. */
+function lastSeen_(name, date, punches) {
+  let m = -1;
+  (punches || []).forEach(p => { if (p.approved !== 'No') m = Math.max(m, minsOn_(date, p.time)); });
+  const lo = parse_(date).getTime() - 12 * 3600e3, hi = lo + (36 + 8) * 3600e3, nm = norm_(name);
+  presenceRows_().forEach(x => { if (x.at && x.name === nm && x.t.getTime() > lo && x.t.getTime() < hi) { const k = minsOn_(date, x.t); if (k >= 0 && k <= 1440 + NIGHT_CUTOFF) m = Math.max(m, k); } });
+  return m;
+}
+/** The app sends the phone's location every ~10 min while it is open and the person is clocked in. */
+function ping_(d, me) {
+  const s = myStaff_(me); if (!s) return { ok: false };
+  const lat = Number(d.lat), lng = Number(d.lng), acc = Math.round(n_(d.acc));
+  if (!isFinite(lat) || !isFinite(lng)) return { ok: false };
+  const c = CacheService.getScriptCache(), k = 'ping_' + norm_(s.name).replace(/\W/g, '');
+  if (c.get(k)) return { ok: true, skipped: true };
+  c.put(k, '1', 420);
+  const near = nearest_(lat, lng, today_()), lim = setn_('Clock-in distance (m)', 200);
+  const at = !!(near && near.dist != null && near.dist <= lim && acc <= 150);
+  append_('presence', [[new Date(), today_(), s.name, lat, lng, acc, near ? near.name : '', near && near.dist != null ? Math.round(near.dist) : '', at ? 'Yes' : 'No', txt_(d.phone, 64)]]);
+  return { ok: true, at: at };
+}
+/** Every 30 min: who is still not clocked out 30+ min after their rota end → email (once per person per day). */
+function clockOutWatch() {
+  const to = String(setv_('Clock-out alert email') || setv_('Summary email') || '').trim(); if (!to) return;
+  const now = new Date(), p = PropertiesService.getScriptProperties();
+  const dates = [today_()]; if (mins_(now) < NIGHT_CUTOFF) dates.unshift(addDays_(today_(), -1));
+  const staff = staffAll_().filter(x => tracked_(x)), lines = [];
+  dates.forEach(date => {
+    daysFor_(staff.map(x => x.name), date, date, true).forEach(x => {
+      if (!x.in) return;
+      const ps = punchesOn_(date, x.name), st = stateOf_(ps);
+      if (st !== 'IN' && st !== 'BREAK') return;
+      const ro = rotaFor_(x.name, date); if (!ro || !ro.end) return;
+      const endRel = endMin_(ro.start, ro.end), nowRel = minsOn_(date, now);
+      if (nowRel < endRel + 30) return;
+      const key = 'COW_' + date + '_' + norm_(x.name).replace(/\W/g, '');
+      if (p.getProperty(key)) return; p.setProperty(key, '1');
+      const seen = lastSeen_(x.name, date, ps);
+      const lastPing = presenceRows_().filter(y => y.name === norm_(x.name)).pop();
+      lines.push('• ' + x.name + ' (' + (ro.loc || x.loc) + ') – rota ended ' + minTxt_(endRel) + ', clocked in ' + x.in + ', NOT clocked out. Last seen at work ' + (seen >= 0 ? minTxt_(seen) : '—') +
+        (lastPing ? ' · last location ' + Utilities.formatDate(lastPing.t, tz_(), 'HH:mm') + (lastPing.at ? ' at ' + lastPing.loc : ' – ' + Math.round(lastPing.dist) + ' m from ' + lastPing.loc) : ''));
+    });
+  });
+  if (!lines.length) return;
+  MailApp.sendEmail(to, 'Not clocked out: ' + lines.length + ' (' + Utilities.formatDate(now, tz_(), 'HH:mm') + ')',
+    'Still clocked in 30 min after their rota end:\n\n' + lines.join('\n') + '\n\nIf they have left, their day is counted only up to the last time the app saw them at work. To confirm a later time: app → Team → tap the person → change the clock-out time.\nhttps://vermakshat.com/rota/');
+}
+function cleanPresence_() {
+  const sh = tab_('presence'), rs = rows_('presence'), cut = Date.now() - 62 * 864e5;
+  let n = 0; while (n < rs.length && (rs[n][0] instanceof Date ? rs[n][0] : new Date(rs[n][0])).getTime() < cut) n++;
+  if (n > 0) { sh.deleteRows(2, n); dirty_('presence'); }
+}
 function installTriggers() {
   ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'nightlySummary').forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('nightlySummary').timeBased().atHour(22).nearMinute(45).everyDays(1).inTimezone('Asia/Kolkata').create();
-  return 'Nightly summary at about 10:45 pm.';
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'clockOutWatch').forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('clockOutWatch').timeBased().everyMinutes(30).create();
+  return 'Nightly summary at about 10:45 pm; clock-out watch every 30 min.';
 }
 function nightlySummary() {
   const to = String(setv_('Summary email') || '').trim(); if (!to) return;
-  const date = today_(), staff = staffAll_().filter(s => tracked_(s));
-  const days = daysFor_(staff.map(s => s.name), date, date, true);
-  const line = x => '• ' + x.name + (x.loc ? ' (' + x.loc + ')' : '') + ' – ' + x.status + (x.in ? ', in ' + x.in + (x.out ? ' out ' + x.out : '') : '') + (x.flags.length ? ' – ' + x.flags.join('; ') : '');
-  const absent = days.filter(x => x.status === 'Absent'), flagged = days.filter(x => x.status !== 'Absent' && x.flags.length);
-  const present = days.filter(x => /^Present|Short|Half|Worked/.test(x.status));
+  const date = today_(), dayP = punchesOn_(null, null).filter(p => p.date === date);
+  // everyone on the rota + anyone who clocked in today (managers included)
+  const staff = staffAll_().filter(s => s.active && (s.onRota || dayP.some(p => norm_(p.name) === norm_(s.name))));
+  const days = daysFor_(staff.map(s => s.name), date, date, false);   // final view: an open day = not clocked out
+  const role = {}; staff.forEach(s => role[norm_(s.name)] = s.role);
+  const hm = m => Math.floor(m / 60) + 'h ' + String(m % 60).padStart(2, '0') + 'm';
+  const line = x => '• ' + x.name + (x.loc ? ' (' + x.loc + ')' : '') + ' – ' + (x.in ? 'IN ' + x.in + ' · OUT ' + (x.flags.some(f => /No clock-out/.test(f)) ? 'NOT CLOCKED OUT' + (x.lastSeen ? ' (last seen ' + x.lastSeen + ')' : '') : (x.out || '—')) + (x.worked ? ' · worked ' + hm(x.worked) : '') + (x.breakMin ? ' · break ' + x.breakMin + 'm' : '') : x.status) +
+    (x.in && x.status && !/^Present/.test(x.status) ? ' · ' + x.status : '') + (x.flags.length ? '\n    ⚠ ' + x.flags.join('; ') : '');
+  const mg = days.filter(x => role[norm_(x.name)] === 'Manager'), st = days.filter(x => role[norm_(x.name)] !== 'Manager');
+  const absent = days.filter(x => x.status === 'Absent'), present = days.filter(x => !!x.in);
+  const noOut = days.filter(x => x.flags.some(f => /No clock-out/.test(f)));
   const trips = tripRows_().filter(t => t.status === 'Submitted'), pend = punchesOn_(null, null).filter(p => p.approved === 'Pending');
-  const body = ['Staff summary for ' + date, '', 'Present: ' + present.length + ' · Absent: ' + absent.length + ' · Flags: ' + flagged.length, '',
-    absent.length ? 'ABSENT\n' + absent.map(line).join('\n') + '\n' : '', flagged.length ? 'CHECK\n' + flagged.map(line).join('\n') + '\n' : '',
-    trips.length ? 'TRIPS TO APPROVE: ' + trips.length + ' (₹' + trips.reduce((a, t) => a + t.claimed, 0) + ')\n' + trips.map(t => '• ' + t.name + ' – ' + t.purpose + ' – ₹' + t.claimed).join('\n') + '\n' : '',
-    pend.length ? 'ENTRIES OUTSIDE A STORE TO APPROVE: ' + pend.length + '\n' : '', 'Open the app: https://vermakshat.com/rota/'].filter(x => x !== '').join('\n');
-  MailApp.sendEmail(to, 'Nutvique staff ' + date + ': ' + present.length + ' present, ' + absent.length + ' absent' + (trips.length ? ', ' + trips.length + ' trips to approve' : ''), body);
+  const body = ['Staff in / out for ' + date, '', 'In today: ' + present.length + ' · Absent: ' + absent.length + ' · Not clocked out: ' + noOut.length, '',
+    'MANAGERS\n' + (mg.map(line).join('\n') || '—') + '\n', 'STAFF\n' + (st.map(line).join('\n') || '—') + '\n',
+    trips.length ? 'TRAVEL CLAIMS TO APPROVE: ' + trips.length + ' (₹' + trips.reduce((a, t) => a + t.claimed, 0) + ')\n' + trips.map(t => '• ' + t.name + ' – ' + t.purpose + ' – ₹' + t.claimed).join('\n') + '\n' : '',
+    pend.length ? 'ENTRIES TO APPROVE: ' + pend.length + '\n' : '', 'Open the app: https://vermakshat.com/rota/'].filter(x => x !== '').join('\n');
+  MailApp.sendEmail(to, 'Nutvique staff ' + date + ': ' + present.length + ' in, ' + absent.length + ' absent' + (noOut.length ? ', ' + noOut.length + ' not clocked out' : '') + (trips.length ? ', ' + trips.length + ' claims to approve' : ''), body);
+  try { cleanPresence_(); } catch (e) { }
 }
 function testInventoryLink() {
   const res = UrlFetchApp.fetch(INV_API, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, payload: JSON.stringify({ action: 'loginNames' }) });
