@@ -973,7 +973,7 @@ function viewMore(m) {
   m.innerHTML = '<h1 class="pg">More</h1>' + installBox() + '<div class="card">' +
     (b.day ? item('mh', '📊', 'My hours', 'This month: days, late, breaks, travel, pay estimate') : '') +
     (can('trips') ? item('mt', '🛵', 'Travel claims', 'Check the route / screenshot and approve', b.pendingTrips) : '') +
-    (can('vouchers') ? item('mv', '🧾', 'Travel cash vouchers', 'Print, pay in cash, signed copies') : '') +
+    (can('vouchers') ? item('mv', '🧾', 'Cash vouchers', 'Travel + cash / cleaning / sundry expenses – issue, print, pay, sign') : '') +
     (can('pay') ? item('mp', '₹', 'Payroll', 'Monthly salary from attendance + overtime (travel is paid by cash voucher)') : '') +
     (can('staff') || can('pay') ? item('ms', '👥', 'Staff', 'Store, shifts, weekly-off choice' + (can('pay') ? ', salary' : '') + ', on rota, phone reset') : '') +
     (can('settings') ? item('mloc', '📍', 'Stores & event stalls', 'Add a store or an event stall, set its position, dates and hours') : '') +
@@ -1019,18 +1019,18 @@ async function viewTripClaims() {
 /* ───────────── travel cash vouchers (Veer / owner) ───────────── */
 async function viewVouchers() {
   let r = await run('Loading vouchers…', () => call('vouchers', {}));
-  const sh = sheet('Travel cash vouchers', '<div id="vcl"></div>');
+  const sh = sheet('Cash vouchers', '<div id="vcl"></div>');
   const draw = () => {
     const chip = s => '<span class="chip ' + ({ Unpaid: 'warn', Paid: 'ok', Cancelled: 'bad' }[s] || '') + '">' + esc(s) + '</span>';
-    sh.el.querySelector('#vcl').innerHTML = '<div class="kpis" style="grid-template-columns:1fr 1fr;margin-bottom:10px"><div class="kpi"><b>' + rs(r.unpaid) + '</b><span>to pay in cash</span></div><div class="kpi"><b>' + rs(r.paid) + '</b><span>paid (last 60 days)</span></div></div>' +
+    sh.el.querySelector('#vcl').innerHTML = '<button class="btn full" id="vnew" style="margin-bottom:10px">＋ New expense voucher (cash / cleaning / sundry)</button><div class="kpis" style="grid-template-columns:1fr 1fr;margin-bottom:10px"><div class="kpi"><b>' + rs(r.unpaid) + '</b><span>to pay in cash</span></div><div class="kpi"><b>' + rs(r.paid) + '</b><span>paid (last 60 days)</span></div></div>' +
       (r.unvouchered.length ? '<div class="card"><h2>Approved claims without a voucher</h2><div class="list">' + r.unvouchered.map(t => '<div class="row"><div class="grow"><b>' + esc(t.name) + '</b> · ' + rs(t.approved) + '<div class="tiny mute">' + esc(dLabel(t.date)) + ' · ' + esc(t.purpose) + '</div></div><button class="btn sm" data-iss="' + esc(t.id) + '">Issue voucher</button></div>').join('') + '</div><p class="tiny mute">Only for money not already paid in a salary.</p></div>' : '') +
       '<div class="card"><div class="list">' + (r.vouchers.map(v => '<div><div class="row"><div class="grow"><b>' + esc(v.no) + '</b> ' + chip(v.status) + (v.esig ? ' <span class="chip ok">✍️ signed</span>' : v.copy ? ' <span class="chip ok">signed copy</span>' : '') + '<div class="small">' + esc(v.name) + ' · <b>' + rs(v.amount) + '</b></div>' +
-        '<div class="tiny mute">' + esc(dLabel(v.claimDate)) + ' · ' + esc(v.mode) + ' · ' + esc(v.from) + ' → ' + esc(v.to) + '</div><div class="tiny mute">Issued ' + esc(dLabel(v.issued)) + ' by ' + esc(v.approvedBy) + (v.paidOn ? ' · paid ' + esc(dLabel(v.paidOn)) + ' by ' + esc(v.paidBy) : '') + (v.cancelReason ? ' · cancelled: ' + esc(v.cancelReason) : '') + '</div>' + (v.esig ? '<div class="tiny" style="color:var(--ok)">Digitally signed by ' + esc(v.name) + ' on ' + esc(v.signedAt) + ' · ' + esc(v.signedOn) + '</div>' : v.status === 'Paid' ? '<div class="tiny" style="color:var(--warn)">Receipt not signed yet</div>' : '') + '</div></div>' +
+        (v.claim ? '<div class="tiny mute">' + esc(dLabel(v.claimDate)) + ' · ' + esc(v.mode) + ' · ' + esc(v.from) + ' → ' + esc(v.to) + '</div>' : '<div class="tiny mute">' + esc(dLabel(v.claimDate)) + ' · <b>' + esc(v.head) + '</b> · ' + esc(v.purpose) + (v.store ? ' · ' + esc(v.store) : '') + '</div>') + '<div class="tiny mute">Issued ' + esc(dLabel(v.issued)) + ' by ' + esc(v.approvedBy) + (v.paidOn ? ' · paid ' + esc(dLabel(v.paidOn)) + ' by ' + esc(v.paidBy) : '') + (v.cancelReason ? ' · cancelled: ' + esc(v.cancelReason) : '') + '</div>' + (v.esig ? '<div class="tiny" style="color:var(--ok)">Digitally signed by ' + esc(v.name) + ' on ' + esc(v.signedAt) + ' · ' + esc(v.signedOn) + '</div>' : v.status === 'Paid' ? '<div class="tiny" style="color:var(--warn)">Receipt not signed yet</div>' : '') + '</div></div>' +
         '<div class="row wrap" style="gap:6px;margin-top:6px"><button class="btn ghost sm" data-pr="' + esc(v.no) + '">🖨 Print</button>' + (v.status === 'Unpaid' ? '<button class="btn ok sm" data-pay="' + esc(v.no) + '">✓ Paid in cash</button>' : '') + (v.status === 'Paid' && !v.esig ? '<button class="btn sm" data-esg="' + esc(v.no) + '">✍️ Sign on this screen</button>' : '') + (v.esig ? '<button class="btn ghost sm" data-ess="' + esc(v.no) + '">See signature</button>' : '') +
         (v.status !== 'Cancelled' ? '<button class="btn ghost sm" data-up="' + esc(v.no) + '">📷 ' + (v.copy ? 'Replace' : 'Upload') + ' signed paper copy</button>' : '') + (v.copy ? '<button class="btn ghost sm" data-see="' + esc(v.no) + '">See signed copy</button>' : '') +
         (r.canCancel && v.status !== 'Cancelled' ? '<button class="btn ghost sm" data-can="' + esc(v.no) + '" style="color:var(--bad)">Cancel</button>' : '') + '</div></div>').join('') || '<p class="small mute">No vouchers yet.</p>') + '</div></div>' +
       '<button class="btn ghost full sm" id="vcsv">⬇ Download list (Excel)</button>' +
-      '<p class="tiny mute">Each approved claim gets the next number (TV/26-27/0001…). Pay the cash, tap “Paid in cash” (the paid date is the date in the books), then the person signs the receipt digitally – on their own phone (Trips → My cash vouchers) or here with “Sign on this screen”. Date, time, login and device are recorded. Print and file the signed voucher. Cash to one person in one day must stay within ' + rs(10000) + ' (income-tax s.40A(3)).</p>';
+      '<p class="tiny mute">Travel: each approved claim gets the next number (TV/26-27/0001…). Cash / cleaning / sundry expenses: “New expense voucher” (EV/26-27/0001…) – when a store pays it from its drawer, the store types this number on its payout in the billing app and the voucher is marked paid automatically. Pay the cash, tap “Paid in cash” (the paid date is the date in the books), then the person signs the receipt digitally – on their own phone (Trips → My cash vouchers) or here with “Sign on this screen”. Date, time, login and device are recorded. Print and file the signed voucher. Cash to one person in one day must stay within ' + rs(10000) + ' (income-tax s.40A(3)).</p>';
     const on = (sel, f) => sh.el.querySelectorAll(sel).forEach(b => b.onclick = () => f(b));
     on('[data-pr]', b => printVoucher(b.dataset.pr));
     on('[data-see]', b => showPhoto({ voucher: b.dataset.see }));
@@ -1041,14 +1041,34 @@ async function viewVouchers() {
       p.el.querySelector('#pgo').onclick = async () => { r = await run('Saving…', () => call('voucherPay', { no: b.dataset.pay, paidOn: p.el.querySelector('#pdt').value })); p.close(); toast('Marked paid'); draw(); }; });
     on('[data-up]', b => pickPhoto(async d => { r = await run('Uploading…', () => call('voucherAttach', { no: b.dataset.up, file: d })); toast('Signed copy saved'); draw(); }));
     on('[data-can]', async b => { const why = prompt('Why cancel voucher ' + b.dataset.can + '? (the number stays used; the claim goes back to “waiting”)'); if (!why) return; r = await run('Cancelling…', () => call('voucherCancel', { no: b.dataset.can, reason: why })); draw(); });
+    sh.el.querySelector('#vnew').onclick = () => newExpenseVoucher(r, async x => { r = x; draw(); });
     sh.el.querySelector('#vcsv').onclick = () => {
       const H = ['Voucher No', 'Issued on', 'Status', 'Paid on', 'Paid by', 'Paid to', 'Emp ID', 'Store', 'Head', 'Amount', 'Journey date', 'Mode', 'From', 'To', 'Km', 'Rate', 'Purpose', 'Claim ID', 'Approved by', 'Signed'];
       const rows = r.vouchers.map(v => [v.no, v.issued, v.status, v.paidOn, v.paidBy, v.name, v.empId, v.store, v.head, v.amount, v.claimDate, v.mode, v.from, v.to, v.km || '', v.rate || '', v.purpose, v.claim, v.approvedBy, v.signed ? 'Yes' : 'No']);
       const csv = [H].concat(rows).map(rw => rw.map(x => '"' + String(x == null ? '' : x).replace(/"/g, '""') + '"').join(',')).join('\r\n');
-      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'Nutzy_Travel_Vouchers_' + today() + '.csv'; a.click();
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'Nutzy_Cash_Vouchers_' + today() + '.csv'; a.click();
     };
   };
   draw();
+}
+/* expense voucher (cash / cleaning / sundry) – owner 16 Nov 2026 */
+function newExpenseVoucher(r, done) {
+  let bill = '';
+  const p = sheet('New expense voucher',
+    '<label class="f">Expense head</label><select class="i" id="xh">' + (r.heads || ['Cash Expenses', 'Cleaning Expenses', 'Sundry Expenses']).map(h => '<option>' + esc(h) + '</option>').join('') + '</select>' +
+    '<label class="f">Paid to (staff name or outside person, e.g. cleaner)</label><input class="i" id="xt" list="xtl" autocomplete="off"><datalist id="xtl">' + (r.people || []).map(n => '<option value="' + esc(n) + '">').join('') + '</datalist>' +
+    '<label class="f">Paid from (store)</label><select class="i" id="xs"><option value="">Head office cash</option>' + (r.stores || []).map(n => '<option>' + esc(n) + '</option>').join('') + '</select>' +
+    '<div class="row" style="gap:8px"><div class="grow"><label class="f">Expense date</label><input class="i" type="date" id="xd" value="' + today() + '" max="' + today() + '"></div><div class="grow"><label class="f">Amount ₹</label><input class="i" id="xa" inputmode="numeric" placeholder="0"></div></div>' +
+    '<label class="f">What for</label><input class="i" id="xp" placeholder="e.g. floor cleaning at Gulshan, tea and water for staff">' +
+    '<label class="f">More details (optional)</label><input class="i" id="xm" placeholder="e.g. 2 hours, 6 teas, shop name">' +
+    '<button class="btn ghost full sm" id="xb" style="margin-top:8px">📷 Add bill / cash memo photo (optional)</button><div class="tiny mute" id="xbi"></div>' +
+    '<button class="btn full" id="xgo" style="margin-top:12px">Issue voucher</button><p class="tiny mute">The voucher gets the next EV number. Pay the cash (here: “Paid in cash”, or at a store: the store types the number on its payout) and get it signed.</p>');
+  const q = id => p.el.querySelector('#' + id);
+  q('xb').onclick = () => pickPhoto(d => { bill = d; q('xbi').textContent = '✓ bill photo added'; });
+  q('xgo').onclick = async () => {
+    const x = await run('Issuing…', () => call('expenseVoucher', { head: q('xh').value, paidTo: q('xt').value.trim(), store: q('xs').value, date: q('xd').value, amount: q('xa').value, purpose: q('xp').value.trim(), details: q('xm').value.trim(), bill: bill }));
+    p.close(); toast('Voucher ' + x.made + ' issued'); done(x);
+  };
 }
 function fmtD(ymd) { return ymd ? ymd.slice(8, 10) + '-' + MON[Number(ymd.slice(5, 7)) - 1] + '-' + ymd.slice(0, 4) : ''; }
 async function printVoucher(no) {
@@ -1060,6 +1080,7 @@ async function printVoucher(no) {
   let sigImg = '';
   if (g.voucher.esig) { try { const p = await call('photo', { esig: g.voucher.no }); sigImg = 'data:' + p.mime + ';base64,' + p.b64; } catch (e) { } }
   const e = esc, amt = '₹ ' + Number(v.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const ex = !v.claim, cashAc = /drawer/.test(v.payMode || '') ? 'Cash-in-hand A/c (' + (v.payMode.match(/Cash – (.*?) drawer/) || [, 'store'])[1] + ' store cash)' : 'Cash-in-hand A/c (Head office cash)';
   const kmRow = v.km ? v.km + ' km' : '—', rateRow = v.rate ? '₹' + v.rate + '/km' : (t && t.fare ? 'Actual fare' : '—');
   const html = '<!doctype html><html><head><meta charset="utf-8"><title>' + e(v.no) + '</title><style>' +
     '@page{size:A4;margin:12mm}body{font:12px/1.4 Arial,Helvetica,sans-serif;color:#111;margin:0}.v{border:1.5px solid #111;padding:12px 14px;position:relative}' +
@@ -1070,18 +1091,18 @@ async function printVoucher(no) {
     '.wm{position:absolute;top:40%;left:0;right:0;text-align:center;font-size:60px;color:rgba(200,0,0,.25);transform:rotate(-18deg);font-weight:bold}.att{page-break-before:always;text-align:center}.att img{max-width:100%;max-height:230mm;border:1px solid #999}</style></head><body>' +
     '<div class="v">' + (v.status === 'Cancelled' ? '<div class="wm">CANCELLED</div>' : '') +
     '<h1>' + e(c.name) + '</h1><div class="c">' + e(c.addr) + '<br>GSTIN: ' + e(c.gstin) + ' · CIN: ' + e(c.cin) + '</div>' +
-    '<div class="t">CASH PAYMENT VOUCHER</div><div class="st">(Travelling / Local Conveyance Expenses – reimbursement to employee)</div>' +
+    '<div class="t">CASH PAYMENT VOUCHER</div><div class="st">' + (ex ? '(' + e(v.head) + ')' : '(Travelling / Local Conveyance Expenses – reimbursement to employee)') + '</div>' +
     '<div class="g"><div><span class="lb">Voucher No.</span><br><b style="font-size:14px">' + e(v.no) + '</b></div><div class="n"><span class="lb">Voucher date (cash paid on)</span><br><b>' + e(fmtD(v.paidOn) || '__________') + '</b><br><span class="lb">Issued / approved on ' + e(fmtD(v.issued)) + '</span></div></div>' +
-    '<table><tr><th style="width:12%">Dr / Cr</th><th>Account</th><th class="n" style="width:22%">Amount</th></tr><tr><td>Debit</td><td><b>' + e(v.head) + '</b> A/c</td><td class="n">' + amt + '</td></tr><tr><td>Credit</td><td>Cash-in-hand A/c (Head office cash)</td><td class="n">' + amt + '</td></tr></table>' +
+    '<table><tr><th style="width:12%">Dr / Cr</th><th>Account</th><th class="n" style="width:22%">Amount</th></tr><tr><td>Debit</td><td><b>' + e(v.head) + '</b> A/c</td><td class="n">' + amt + '</td></tr><tr><td>Credit</td><td>' + e(cashAc) + '</td><td class="n">' + amt + '</td></tr></table>' +
     '<div class="g"><div><span class="lb">Paid to</span><br><b>' + e(v.name) + '</b> (' + e(v.empId || '—') + ')</div><div><span class="lb">Designation / store</span><br>' + e(v.desig) + (v.store ? ' · ' + e(v.store) : '') + '</div></div>' +
-    '<table><tr><th>Date of journey</th><th>From → To</th><th>Mode</th><th class="n">Distance</th><th class="n">Rate</th><th class="n">Amount</th></tr>' +
+    (ex ? '<table><tr><th style="width:16%">Date</th><th>Particulars</th><th class="n" style="width:20%">Amount</th></tr><tr><td>' + e(fmtD(v.claimDate)) + '</td><td>' + e(v.particulars) + '</td><td class="n">' + amt + '</td></tr><tr><td colspan="2" class="n"><b>Total</b></td><td class="n"><b>' + amt + '</b></td></tr></table>' : '<table><tr><th>Date of journey</th><th>From → To</th><th>Mode</th><th class="n">Distance</th><th class="n">Rate</th><th class="n">Amount</th></tr>' +
     ((g.claims || []).length > 1 ? g.claims.map(x => '<tr><td>' + e(fmtD(x.date)) + '</td><td>' + e(x.startPlace) + ' → ' + e(x.endPlace) + (x.ret ? ' → back' : '') + '</td><td>' + e(x.modeLabel) + '</td><td class="n">' + (x.km ? x.km + ' km' : '—') + '</td><td class="n">' + (x.rate ? '₹' + x.rate + '/km' : 'Actual fare') + '</td><td class="n">₹ ' + Number(x.approved).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</td></tr>').join('') +
       (Math.abs(g.claims.reduce((a, x) => a + Number(x.approved), 0) - v.amount) >= 0.005 ? '<tr><td colspan="5" class="n">Rounded off</td><td class="n">₹ ' + (v.amount - g.claims.reduce((a, x) => a + Number(x.approved), 0)).toFixed(2) + '</td></tr>' : '') :
     '<tr><td>' + e(fmtD(v.claimDate)) + '</td><td>' + e(v.from) + ' → ' + e(v.to) + (t && t.ret ? ' → back' : '') + '</td><td>' + e(v.mode) + '</td><td class="n">' + e(kmRow) + '</td><td class="n">' + e(rateRow) + '</td><td class="n">' + amt + '</td></tr>') +
-    '<tr><td colspan="5" class="n"><b>Total</b></td><td class="n"><b>' + amt + '</b></td></tr></table>' +
+    '<tr><td colspan="5" class="n"><b>Total</b></td><td class="n"><b>' + amt + '</b></td></tr></table>') +
     '<div><span class="lb">Amount in words:</span> <b>' + e(v.words) + '</b></div><div style="margin-top:4px"><span class="lb">Purpose (business):</span> ' + e(v.purpose) + '</div>' +
-    '<div style="margin-top:4px"><span class="lb">Supporting document:</span> ' + e(v.support) + ((g.claims || []).length < 2 && t && t.map ? ' · Route: ' + e(t.map) : '') + '</div><div style="margin-top:4px"><span class="lb">Claim ref.:</span> ' + e(v.claim) + ' (Nutvique Staff Rota app) · <span class="lb">Payment mode:</span> Cash</div>' +
-    '<div class="note">Reimbursement of actual expenses incurred wholly and exclusively for the company\'s business (not salary). No GST input tax credit is claimed on this expense. Cash paid to one person in a day is kept within ' + e('₹' + Number(g.cashLimit).toLocaleString('en-IN')) + ' (Income-tax Act s.40A(3)).' + (v.amount > 5000 ? ' Receipt above ₹5,000: affix a ₹1 revenue stamp and sign across it.' : '') + '</div>' +
+    '<div style="margin-top:4px"><span class="lb">Supporting document:</span> ' + e(v.support) + ((g.claims || []).length < 2 && t && t.map ? ' · Route: ' + e(t.map) : '') + '</div>' + (ex ? '<div style="margin-top:4px"><span class="lb">Payment mode:</span> ' + e(v.payMode || 'Cash') + '</div>' : '<div style="margin-top:4px"><span class="lb">Claim ref.:</span> ' + e(v.claim) + ' (Nutvique Staff Rota app) · <span class="lb">Payment mode:</span> ' + e(v.payMode || 'Cash') + '</div>') +
+    '<div class="note">' + (ex ? 'Expense incurred wholly and exclusively for the company\'s business.' : 'Reimbursement of actual expenses incurred wholly and exclusively for the company\'s business (not salary).') + ' No GST input tax credit is claimed on this expense. Cash paid to one person in a day is kept within ' + e('₹' + Number(g.cashLimit).toLocaleString('en-IN')) + ' (Income-tax Act s.40A(3)).' + (v.amount > 5000 ? ' Receipt above ₹5,000: affix a ₹1 revenue stamp and sign across it.' : '') + '</div>' +
     (v.amount > 5000 ? '<div class="stamp">Revenue stamp ₹1</div>' : '') +
     '<div class="sig"><div>Prepared by<br><b>' + e(v.issuedBy) + '</b></div><div>Checked &amp; approved by<br><b>' + e(v.approvedBy) + '</b></div><div>Paid by (cashier)<br><b>' + e(v.paidBy || '') + '</b></div>' + (sigImg ? '<div style="border-top:0;padding-top:0"><img src="' + sigImg + '" style="height:56px;max-width:100%;display:block;margin:0 auto 2px"><div style="border-top:1px solid #111;padding-top:4px">Received the above amount in cash<br>Signature of ' + e(v.name) + '<br>Digitally signed ' + e(v.signedAt) + '<br><span style="font-size:9px">' + e(v.signedOn) + '</span></div></div>' : '<div>Received the above amount in cash<br>Signature of ' + e(v.name) + '<br>Date: __________</div>') + '</div></div>' +
     (img ? '<div class="att"><p><b>Attachment to ' + e(v.no) + '</b> – ' + e(v.mode) + ' fare screenshot submitted by ' + e(v.name) + ' (claim ' + e(v.claim) + ')</p><img src="' + img + '"></div>' : '') +
