@@ -4768,12 +4768,30 @@ async function otBadge() {
   if (!isOwner() || !$('#myt_n')) return;
   try { const r = await call('otList', {}); const n = r.counts.today + r.counts.pending; $('#myt_n').textContent = n || ''; $('#myt_n').style.display = n ? '' : 'none'; } catch (e) { }
 }
-/** "call the CA at 4:30 pm" → {time:'16:30'}; leaves the words as they are */
+/** Time from spoken / typed words → "HH:MM" (v18.54): "at 4:30 pm", "4 p.m.", "16:30", "4 o'clock", "half past 4", "quarter to 5",
+ *  "4 in the evening", Hindi "शाम 4 बजे", "साढ़े 4 बजे", "सवा 11", "पौने 5", "डेढ़ बजे", "ढाई बजे". Hours 1–7 with no am/pm count as afternoon. */
 function otTimeOf(t) {
-  const m = String(t).match(/\b(?:at|by|@)?\s*(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?|baje)\b/i); if (!m) return '';
-  let h = +m[1]; const mi = m[2] ? +m[2] : 0, ap = m[3].toLowerCase().replace(/[.\s]/g, '');
-  if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0; if (ap === 'baje' && h < 8) h += 12;
-  return h < 24 && mi < 60 ? ('0' + h).slice(-2) + ':' + ('0' + mi).slice(-2) : '';
+  let x = ' ' + String(t || '').toLowerCase().replace(/[०-९]/g, d => '०१२३४५६७८९'.indexOf(d)) + ' ';
+  const W = { 'बजे': ' baje ', 'बज': ' baje ', 'साढ़े': ' saade ', 'साढे': ' saade ', 'सवा': ' sava ', 'पौने': ' paune ', 'डेढ़': ' 1:30 ', 'डेढ': ' 1:30 ', 'ढाई': ' 2:30 ',
+    'सुबह': ' am ', 'शाम': ' pm ', 'दोपहर': ' pm ', 'रात': ' pm ', 'morning': ' am ', 'evening': ' pm ', 'afternoon': ' pm ', 'night': ' pm ', 'noon': ' 12:00 pm ', 'midnight': ' 12:00 am ',
+    'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9', 'ten': '10', 'eleven': '11', 'twelve': '12' };
+  Object.keys(W).forEach(k => { x = x.split(k).join(W[k]); });
+  x = x.replace(/\s+/g, ' ');
+  x = x.replace(/\b(\d{1,2})\s*(?:o'?\s?clock)\b/g, '$1:00').replace(/a\.\s?m\.?/g, 'am').replace(/p\.\s?m\.?/g, 'pm');
+  const ap = /\bpm\b/.test(x) ? 'pm' : /\bam\b/.test(x) ? 'am' : '';
+  let h = null, mi = 0, m;
+  if ((m = x.match(/\bhalf past (\d{1,2})\b/))) { h = +m[1]; mi = 30; }
+  else if ((m = x.match(/\bquarter past (\d{1,2})\b/))) { h = +m[1]; mi = 15; }
+  else if ((m = x.match(/\bquarter to (\d{1,2})\b/))) { h = +m[1] - 1; mi = 45; }
+  else if ((m = x.match(/\bsaade (\d{1,2})\b/))) { h = +m[1]; mi = 30; }
+  else if ((m = x.match(/\bsava (\d{1,2})\b/))) { h = +m[1]; mi = 15; }
+  else if ((m = x.match(/\bpaune (\d{1,2})\b/))) { h = +m[1] - 1; mi = 45; }
+  else if ((m = x.match(/\b(\d{1,2})[:.](\d{2})\b/))) { h = +m[1]; mi = +m[2]; }
+  else if ((m = x.match(/\b(\d{1,2})\s*(am|pm|baje)\b/))) h = +m[1];
+  else if ((m = x.match(/\b(?:at|by|around|till|before)\s+(\d{1,2})\b(?!\s*(?:kg|g|gm|grams?|pcs?|pieces?|boxes?|rs|rupees|%|days?|hours?|minutes?|mins?|lakh|k)\b)/))) h = +m[1];
+  if (h == null || h > 23 || mi > 59) return '';
+  if (ap === 'pm' && h < 12) h += 12; else if (ap === 'am' && h === 12) h = 0; else if (!ap && h >= 1 && h <= 7) h += 12;
+  return ('0' + h).slice(-2) + ':' + ('0' + mi).slice(-2);
 }
 async function myTasks(startDate) {
   if (!isOwner()) { toast('This list is only for the owner', true); return; }
@@ -4847,10 +4865,14 @@ async function myTasks(startDate) {
     const t = (txt != null ? txt : $('#ot_t', m).value).trim(); if (!t) { toast('Type or say the task', true); return; }
     const time = $('#ot_tm', m).value || otTimeOf(t);
     if (await save({ act: 'add', task: t.charAt(0).toUpperCase() + t.slice(1), date: dateOf(), time: time, pri: $('#ot_p', m).checked })) {
-      $('#ot_t', m).value = ''; $('#ot_tm', m).value = ''; $('#ot_p', m).checked = false; $('#ot_live', m).textContent = '';
+      $('#ot_t', m).value = ''; $('#ot_tm', m).value = ''; $('#ot_tm', m).style.outline = ''; tmAuto = true; $('#ot_p', m).checked = false; $('#ot_live', m).textContent = '';
       toast((viaVoice ? '🎤 ' : '') + 'Task added for ' + OT_D(dateOf()));
     }
   };
+  let tmAuto = true;   // the time box follows the words until you change it yourself
+  const autoTime = () => { if (!tmAuto) return; const tm = otTimeOf($('#ot_t', m).value); $('#ot_tm', m).value = tm; $('#ot_tm', m).style.outline = tm ? '2px solid #39ff14' : ''; };
+  $('#ot_tm', m).oninput = () => { tmAuto = !$('#ot_tm', m).value; $('#ot_tm', m).style.outline = ''; };
+  $('#ot_t', m).addEventListener('input', autoTime);
   $('#ot_add', m).onclick = () => add();
   let qT = null;
   $('#ot_q', m).oninput = () => { clearTimeout(qT); qT = setTimeout(async () => {
@@ -4867,7 +4889,7 @@ async function myTasks(startDate) {
     rec = new SR(); rec.lang = lang; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
     let finalTxt = '';
     $('#ot_mic', m).textContent = '⏹'; $('#ot_live', m).textContent = '🎙 Listening… speak your task';
-    rec.onresult = e => { let interim = ''; for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) finalTxt += e.results[i][0].transcript; else interim += e.results[i][0].transcript; } $('#ot_t', m).value = (finalTxt + ' ' + interim).trim(); };
+    rec.onresult = e => { let interim = ''; for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) finalTxt += e.results[i][0].transcript; else interim += e.results[i][0].transcript; } $('#ot_t', m).value = (finalTxt + ' ' + interim).trim(); autoTime(); };
     rec.onerror = e => { $('#ot_live', m).textContent = e.error === 'not-allowed' ? '⚠ Allow the microphone for this app (browser / phone settings) and try again.' : e.error === 'no-speech' ? 'Did not hear anything – tap 🎤 and speak.' : '⚠ ' + e.error; };
     rec.onend = () => { rec = null; $('#ot_mic', m).textContent = '🎤'; const t = finalTxt.trim() || $('#ot_t', m).value.trim(); if (finalTxt.trim()) add(t, true); else if (!/⚠|Did not/.test($('#ot_live', m).textContent)) $('#ot_live', m).textContent = ''; };
     try { rec.start(); } catch (e) { rec = null; $('#ot_mic', m).textContent = '🎤'; toast('Could not start the microphone: ' + e.message, true); }
@@ -4948,7 +4970,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '76ad5a3769';
+<script>window.NV_BUILD = '29d25bde98';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
