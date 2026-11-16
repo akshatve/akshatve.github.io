@@ -164,7 +164,7 @@ const RRIGHTS = [
 const RRIGHT_LABEL = {}; RRIGHTS.forEach(r => RRIGHT_LABEL[r[0]] = r[1]);
 const DEFAULT_RIGHTS = { Manager: ['rota'], Staff: [] };
 const ACTION_NEED = { board: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], attendance: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], fixDay: ['times', 'payAdj', 'pastTimes'], approvePunch: 'approve', pending: 'approve', offReqDecide: 'owner',
-  photo: ['team', 'approve', 'times', 'trips', 'vouchers'], trips: ['trips', 'vouchers'], tripDecide: 'trips', vouchers: 'vouchers', voucherGet: ['vouchers', 'trips'], voucherPay: 'vouchers', voucherAttach: 'vouchers', voucherIssue: ['vouchers', 'trips'], voucherCancel: 'owner', expenseVoucher: 'vouchers', claimSheet: 'owner', voucherAmend: 'owner', staffList: ['staff', 'pay', 'rota'], staffSave: ['staff', 'pay'], resetPhone: 'staff',
+  photo: ['team', 'approve', 'times', 'trips', 'vouchers'], trips: ['trips', 'vouchers'], tripDecide: 'trips', vouchers: 'vouchers', voucherGet: ['vouchers', 'trips'], voucherPay: 'vouchers', voucherAttach: 'vouchers', voucherIssue: ['vouchers', 'trips'], voucherCancel: 'owner', expenseVoucher: 'vouchers', voucherPayFrom: 'vouchers', claimSheet: 'owner', voucherAmend: 'owner', staffList: ['staff', 'pay', 'rota'], staffSave: ['staff', 'pay'], resetPhone: 'staff',
   syncStaff: 'staff', rotaGet: 'rota', rotaAuto: 'rota', rotaSave: 'rota', payroll: 'pay', locSave: ['settings', 'rota'], settingsGet: 'settings', settingsSave: 'settings',
   rightsList: 'owner', rightsSave: 'owner', offDaysSave: ['settings', 'offDays'] };
 function can_(me, need) {
@@ -205,6 +205,7 @@ function api_(req) {
     case 'voucherView': return voucherGet_(d, me);
     case 'voucherStorePay': return voucherStorePay_(d, me);
     case 'storeVouchers': return storeVouchers_(d, me);
+    case 'voucherPayFrom': return voucherPayFrom_(d, me);
     case 'tripEnd': return tripEnd_(d, me);
     case 'tripCancel': return tripCancel_(d, me);
     case 'myTrips': return { trips: tripsFor_(me.name, 60) };
@@ -1573,7 +1574,7 @@ function voucherPay_(d, me) {
     const sameDay = voucherRows_().filter(x => x.status === 'Paid' && x.paidOn === on && norm_(x.name) === norm_(v.name)).reduce((a, x) => a + x.amount, 0);
     if (lim > 0 && sameDay + v.amount > lim) throw new Error('Cash to ' + v.name + ' on ' + fmtDate_(on) + ' would be ₹' + (sameDay + v.amount) + ' – above ₹' + lim + ' (income-tax s.40A(3)). Pay this one by bank transfer.');
     tab_('vouchers').getRange(v.row, C.vouchers['Status'] + 1).setValue('Paid');
-    const from = txt_(d.from, 80), pmode = !from ? 'Cash' : from === 'Head office' ? 'Cash – Head office' : 'Cash – ' + from + ' drawer';   // v17: which cash paid it (a store drawer shows up in that store's day close)
+    const from = v.claim && v.store ? v.store : txt_(d.from, 80), pmode =   /* v19 (owner 16 Nov): a travel voucher is always paid from the employee's own store */ !from ? 'Cash' : from === 'Head office' ? 'Cash – Head office' : 'Cash – ' + from + ' drawer';   // v17: which cash paid it (a store drawer shows up in that store's day close)
     tab_('vouchers').getRange(v.row, C.vouchers['Paid on'] + 1, 1, 3).setValues([[on, me.name, pmode]]); dirty_('vouchers');
     log_('Voucher ' + v.no + ' paid in cash ₹' + v.amount + ' to ' + v.name + ' on ' + on, me.name);
     return vouchersList_({}, me);
@@ -1662,6 +1663,19 @@ function expenseVoucher_(d, me) {
     return Object.assign(vouchersList_({}, me), { made: no });
   });
 }
+/** Correct which cash paid a voucher. d = {no, from (store or 'Head office'), reason} */
+function voucherPayFrom_(d, me) {
+  const why = txt_(d.reason, 200); if (why.length < 5) throw new Error('Write why it is corrected.');
+  return lock_(() => {
+    const v = voucherRows_().find(x => x.no === String(d.no || '').trim().toUpperCase()); if (!v) throw new Error('Voucher not found.');
+    if (v.status !== 'Paid') throw new Error('Only a paid voucher can be corrected.');
+    const from = txt_(d.from, 80); if (!from) throw new Error('Pick the store.');
+    const pm = from === 'Head office' ? 'Cash – Head office' : 'Cash – ' + from + ' drawer';
+    tab_('vouchers').getRange(v.row, C.vouchers['Payment mode'] + 1).setValue(pm); dirty_('vouchers');
+    log_('Voucher ' + v.no + ' paid-from corrected: "' + v.payMode + '" → "' + pm + '" – ' + why, me.name);
+    return { ok: true, no: v.no, payMode: pm };
+  });
+}
 /** Billing app day close: vouchers paid in cash from this store's drawer on this date. d = {date, store} */
 function storeVouchers_(d, me) {
   const date = String(d.date || ''), st = txt_(d.store, 80); if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !st) throw new Error('Date and store needed.');
@@ -1673,6 +1687,7 @@ function voucherStorePay_(d, me) {
     const v = voucherRows_().find(x => x.no === String(d.no || '').trim().toUpperCase()); if (!v) throw new Error('Voucher ' + d.no + ' not found in the Staff Rota app.');
     if (v.status === 'Cancelled') throw new Error('Voucher ' + v.no + ' is cancelled.');
     if (Math.abs(n_(d.amount) - v.amount) >= 1) throw new Error('Voucher ' + v.no + ' is for ₹' + v.amount + ', not ₹' + n_(d.amount) + '.');
+    if (v.claim && v.store && txt_(d.store, 80) !== v.store) throw new Error('Travel voucher ' + v.no + ' of ' + v.name + ' is paid from ' + v.store + ' (the employee\'s store) – enter it there.');
     const pv = txt_(d.pv, 40), pm = 'Cash – ' + txt_(d.store, 60) + ' drawer (store payout ' + pv + ')', sh = tab_('vouchers');
     if (v.status === 'Paid') {
       if (v.payMode.indexOf(pv) < 0) { sh.getRange(v.row, C.vouchers['Payment mode'] + 1).setValue((v.payMode ? v.payMode + ' · ' : '') + pm); dirty_('vouchers'); }
