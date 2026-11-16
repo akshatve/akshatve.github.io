@@ -347,8 +347,10 @@ const ICONS = {
 };
 function shell() {
   $('#app').innerHTML = '<header><div class="brand">NUTVIQUE<small>' + esc(S.user ? S.user.name + (S.user.role !== 'Owner' ? ' · ' + S.user.role : '') : '') + '</small></div><div class="sp"></div>' +
+    (isOwner() ? '<button class="hbtn" id="myt" title="My tasks – only you see these" style="margin-right:6px;white-space:nowrap">📝 My tasks<span id="myt_n" style="display:none;margin-left:5px;background:#e5484d;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;font-weight:700"></span></button>' : '') +
     '<button class="hbtn" id="rf" title="Refresh">↻ <span id="at"></span></button></header><nav class="tabs" id="nav"></nav><main id="view"></main>';
   $('#rf').onclick = () => refresh();
+  if ($('#myt')) { $('#myt').onclick = () => myTasks(); otBadge(); }
   renderNav(); go(S.view);
   if (!S.timers) {
     S.timers = true;
@@ -4760,6 +4762,94 @@ function hoDcLine(m, R) {
     el.onclick = () => hoSheet(R.loc, R.date, 'Closing');
   }).catch(() => { });
 }
+/* ───── owner's private task list – only the Owner login sees it; type or speak a task (v18.51, owner 17 Nov 2026) ───── */
+const OT_D = d => { const x = new Date(d + 'T12:00:00'); return x.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }); };
+async function otBadge() {
+  if (!isOwner() || !$('#myt_n')) return;
+  try { const r = await call('otList', {}); const n = r.counts.today + r.counts.pending; $('#myt_n').textContent = n || ''; $('#myt_n').style.display = n ? '' : 'none'; } catch (e) { }
+}
+/** "call the CA at 4:30 pm" → {time:'16:30'}; leaves the words as they are */
+function otTimeOf(t) {
+  const m = String(t).match(/\b(?:at|by|@)?\s*(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?|baje)\b/i); if (!m) return '';
+  let h = +m[1]; const mi = m[2] ? +m[2] : 0, ap = m[3].toLowerCase().replace(/[.\s]/g, '');
+  if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0; if (ap === 'baje' && h < 8) h += 12;
+  return h < 24 && mi < 60 ? ('0' + h).slice(-2) + ':' + ('0' + mi).slice(-2) : '';
+}
+async function myTasks(startDate) {
+  if (!isOwner()) { toast('This list is only for the owner', true); return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let R = null, view = startDate || (new Date().getHours() >= 18 ? 'tomorrow' : 'today'), lang = 'en-IN', rec = null, busy = false;
+  try { lang = localStorage.getItem('nv_ot_lang') || 'en-IN'; } catch (e) { }
+  const m = modal('📝 My tasks', '<div class="tiny mute" style="margin-bottom:8px">🔒 Only you can see this list.</div><div class="row" style="gap:6px;flex-wrap:wrap" id="ot_tabs"></div>' +
+    '<div class="card" style="padding:10px;margin:10px 0"><div class="row" style="gap:6px;flex-wrap:nowrap"><input class="i" id="ot_t" placeholder="Type a task, or tap 🎤 and speak" style="min-width:0">' +
+    '<button class="btn gold" id="ot_mic" title="Speak the task" style="font-size:20px;min-width:52px">🎤</button></div>' +
+    '<div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center"><label class="tiny">⏰ <input class="i" type="time" id="ot_tm" style="max-width:120px;display:inline-block"></label>' +
+    '<label class="tiny"><input type="checkbox" id="ot_p"> ⭐ Important</label><select class="i" id="ot_lang" style="max-width:130px"><option value="en-IN">🎤 English</option><option value="hi-IN">🎤 हिंदी</option></select>' +
+    '<div class="grow"></div><button class="btn ghost" id="ot_add">+ Add</button></div><div class="tiny" id="ot_live" style="margin-top:6px;color:var(--gold)"></div></div>' +
+    '<div id="ot_b"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true, onClose: () => { try { rec && rec.abort(); } catch (e) { } otBadge(); } });
+  $('#ot_lang', m).value = lang;
+  $('#ot_lang', m).onchange = () => { lang = $('#ot_lang', m).value; try { localStorage.setItem('nv_ot_lang', lang); } catch (e) { } };
+  const dateOf = () => view === 'today' ? R.today : view === 'tomorrow' ? R.tomorrow : view;
+  const tabs = () => {
+    const c = R.counts;
+    $('#ot_tabs', m).innerHTML = '<button class="btn sm ' + (view === 'today' ? 'gold' : 'ghost') + '" data-otv="today">Today' + (c.today + c.pending ? ' · ' + (c.today + c.pending) : '') + '</button>' +
+      '<button class="btn sm ' + (view === 'tomorrow' ? 'gold' : 'ghost') + '" data-otv="tomorrow">Tomorrow' + (c.tomorrow ? ' · ' + c.tomorrow : '') + '</button>' +
+      '<input class="i" type="date" id="ot_d" value="' + esc(/^\d/.test(view) ? view : '') + '" style="max-width:160px" title="Any day">';
+    $$('[data-otv]', m).forEach(b => b.onclick = () => { view = b.dataset.otv; load(); });
+    $('#ot_d', m).onchange = () => { const v = $('#ot_d', m).value; if (v) { view = v === R.today ? 'today' : v === R.tomorrow ? 'tomorrow' : v; load(); } };
+  };
+  const item = (t, old) => '<div class="card" style="padding:9px 12px;margin:6px 0;border-left:4px solid ' + (t.status === 'Done' ? 'var(--ok)' : t.pri ? 'var(--bad)' : 'var(--gold)') + '"><div class="row" style="flex-wrap:nowrap;gap:10px;align-items:flex-start">' +
+    '<button class="btn sm ' + (t.status === 'Done' ? 'gold' : 'ghost') + '" data-otk="' + esc(t.id) + '" style="min-width:42px;font-size:17px">' + (t.status === 'Done' ? '✓' : '☐') + '</button>' +
+    '<div class="grow" data-ote="' + esc(t.id) + '" style="cursor:pointer"><div style="' + (t.status === 'Done' ? 'text-decoration:line-through;color:var(--mute,#777)' : '') + '">' + (t.pri ? '⭐ ' : '') + esc(t.task) + '</div>' +
+    '<div class="tiny mute">' + [t.time ? '⏰ ' + esc(t.time) : '', old ? '<span style="color:var(--bad)">from ' + esc(OT_D(t.date)) + '</span>' : '', t.moved ? 'moved from ' + esc(OT_D(t.moved)) : '', t.status === 'Done' && t.doneAt ? 'done ' + esc(new Date(t.doneAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) : '', t.note ? '💬 ' + esc(t.note) : ''].filter(String).join(' · ') + '</div></div>' +
+    (old ? '<button class="btn sm ghost" data-otm="' + esc(t.id) + '" title="Move to today">→ Today</button>' : '') + '</div><div data-oti="' + esc(t.id) + '"></div></div>';
+  const draw = () => {
+    tabs();
+    const d = dateOf(), open = R.list.filter(t => t.status === 'Open').length;
+    $('#ot_b', m).innerHTML = '<h3 style="margin-top:0">' + (view === 'today' ? 'Today' : view === 'tomorrow' ? 'Tomorrow' : '') + ' ' + esc(OT_D(d)) + ' <span class="tiny mute">' + open + ' to do · ' + (R.list.length - open) + ' done</span></h3>' +
+      (R.list.length ? R.list.map(t => item(t)).join('') : '<div class="empty small">No tasks for this day yet – type one above or tap 🎤.</div>') +
+      (R.earlier.length ? '<h3>⏳ Not done from earlier days</h3>' + R.earlier.map(t => item(t, true)).join('') : '');
+    $$('[data-otk]', m).forEach(b => b.onclick = () => { const t = R.list.concat(R.earlier).find(x => x.id === b.dataset.otk); save({ act: t.status === 'Done' ? 'undo' : 'done', id: t.id }); });
+    $$('[data-otm]', m).forEach(b => b.onclick = () => save({ act: 'move', id: b.dataset.otm, date: R.today }));
+    $$('[data-ote]', m).forEach(el => el.onclick = () => {
+      const t = R.list.concat(R.earlier).find(x => x.id === el.dataset.ote), box = $('[data-oti="' + t.id + '"]', m);
+      if (box.innerHTML) { box.innerHTML = ''; return; }
+      box.innerHTML = '<div style="margin-top:8px"><input class="i" data-f="task" value="' + esc(t.task) + '"><div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center"><input class="i" type="time" data-f="time" value="' + esc(t.time) + '" style="max-width:120px">' +
+        '<label class="tiny"><input type="checkbox" data-f="pri"' + (t.pri ? ' checked' : '') + '> ⭐</label><input class="i" data-f="note" value="' + esc(t.note) + '" placeholder="Note" style="flex:1;min-width:120px"></div>' +
+        '<div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap"><button class="btn sm gold" data-x="edit">Save</button><button class="btn sm ghost" data-x="tm">→ Tomorrow</button><label class="tiny">Move to <input class="i" type="date" data-f="mv" style="max-width:150px;display:inline-block"></label><div class="grow"></div><button class="btn sm ghost" data-x="del" style="color:var(--bad)">🗑 Delete</button></div></div>';
+      const f = k => $('[data-f="' + k + '"]', box);
+      $('[data-x="edit"]', box).onclick = () => save({ act: 'edit', id: t.id, task: f('task').value.trim(), time: f('time').value, pri: f('pri').checked, note: f('note').value.trim() });
+      $('[data-x="tm"]', box).onclick = () => save({ act: 'move', id: t.id, date: t.date < R.tomorrow ? R.tomorrow : nextDay(t.date) });
+      f('mv').onchange = () => { if (f('mv').value) save({ act: 'move', id: t.id, date: f('mv').value }); };
+      $('[data-x="del"]', box).onclick = () => save({ act: 'del', id: t.id });
+    });
+  };
+  const nextDay = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 1); return x.toISOString().slice(0, 10); };
+  const save = async x => { if (busy) return; busy = true; try { x.view = dateOf(); R = await call('otSave', x); draw(); otBadge(); return true; } catch (e) { toast(e.message, true); return false; } finally { busy = false; } };
+  const add = async (txt, viaVoice) => {
+    const t = (txt != null ? txt : $('#ot_t', m).value).trim(); if (!t) { toast('Type or say the task', true); return; }
+    const time = $('#ot_tm', m).value || otTimeOf(t);
+    if (await save({ act: 'add', task: t.charAt(0).toUpperCase() + t.slice(1), date: dateOf(), time: time, pri: $('#ot_p', m).checked })) {
+      $('#ot_t', m).value = ''; $('#ot_tm', m).value = ''; $('#ot_p', m).checked = false; $('#ot_live', m).textContent = '';
+      toast((viaVoice ? '🎤 ' : '') + 'Task added for ' + OT_D(dateOf()));
+    }
+  };
+  $('#ot_add', m).onclick = () => add();
+  $('#ot_t', m).onkeydown = e => { if (e.key === 'Enter') add(); };
+  $('#ot_mic', m).onclick = () => {
+    if (!SR) { toast('Voice typing is not available in this browser – tap the text box and use the 🎤 on your phone keyboard', true); $('#ot_t', m).focus(); return; }
+    if (rec) { try { rec.stop(); } catch (e) { } return; }
+    rec = new SR(); rec.lang = lang; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+    let finalTxt = '';
+    $('#ot_mic', m).textContent = '⏹'; $('#ot_live', m).textContent = '🎙 Listening… speak your task';
+    rec.onresult = e => { let interim = ''; for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) finalTxt += e.results[i][0].transcript; else interim += e.results[i][0].transcript; } $('#ot_t', m).value = (finalTxt + ' ' + interim).trim(); };
+    rec.onerror = e => { $('#ot_live', m).textContent = e.error === 'not-allowed' ? '⚠ Allow the microphone for this app (browser / phone settings) and try again.' : e.error === 'no-speech' ? 'Did not hear anything – tap 🎤 and speak.' : '⚠ ' + e.error; };
+    rec.onend = () => { rec = null; $('#ot_mic', m).textContent = '🎤'; const t = finalTxt.trim() || $('#ot_t', m).value.trim(); if (finalTxt.trim()) add(t, true); else if (!/⚠|Did not/.test($('#ot_live', m).textContent)) $('#ot_live', m).textContent = ''; };
+    try { rec.start(); } catch (e) { rec = null; $('#ot_mic', m).textContent = '🎤'; toast('Could not start the microphone: ' + e.message, true); }
+  };
+  const load = async () => { try { const x = {}; R = await call('otList', x); if (view !== 'today') { R = await call('otList', { date: dateOf() }); } draw(); } catch (e) { $('#ot_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
+  load();
+}
 /* ───── next-day bank tally: UPI & card sold vs what ICICI / Paytm paid in (v18.24) ───── */
 async function bankTallySheet() {
   const m = modal('🏦 Bank tally – UPI & card', '<div class="row" style="gap:6px;flex-wrap:wrap"><input class="i" type="date" id="bt_f" style="max-width:150px"><input class="i" type="date" id="bt_t" max="' + today() + '" style="max-width:150px"><button class="btn ghost sm" id="bt_s">↻ Read bank emails now</button></div>' +
@@ -4833,7 +4923,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = 'd9aa3902bb';
+<script>window.NV_BUILD = 'fd7e657f07';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
