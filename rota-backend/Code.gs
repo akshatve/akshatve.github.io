@@ -163,7 +163,7 @@ const RRIGHTS = [
 const RRIGHT_LABEL = {}; RRIGHTS.forEach(r => RRIGHT_LABEL[r[0]] = r[1]);
 const DEFAULT_RIGHTS = { Manager: ['rota'], Staff: [] };
 const ACTION_NEED = { board: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], attendance: ['team', 'approve', 'times', 'payAdj', 'pastTimes'], fixDay: ['times', 'payAdj', 'pastTimes'], approvePunch: 'approve', pending: 'approve', offReqDecide: 'owner',
-  photo: ['team', 'approve', 'times', 'trips', 'vouchers'], trips: ['trips', 'vouchers'], tripDecide: 'trips', vouchers: 'vouchers', voucherGet: ['vouchers', 'trips'], voucherPay: 'vouchers', voucherAttach: 'vouchers', voucherIssue: ['vouchers', 'trips'], voucherCancel: 'owner', claimSheet: 'owner', staffList: ['staff', 'pay', 'rota'], staffSave: ['staff', 'pay'], resetPhone: 'staff',
+  photo: ['team', 'approve', 'times', 'trips', 'vouchers'], trips: ['trips', 'vouchers'], tripDecide: 'trips', vouchers: 'vouchers', voucherGet: ['vouchers', 'trips'], voucherPay: 'vouchers', voucherAttach: 'vouchers', voucherIssue: ['vouchers', 'trips'], voucherCancel: 'owner', claimSheet: 'owner', voucherAmend: 'owner', staffList: ['staff', 'pay', 'rota'], staffSave: ['staff', 'pay'], resetPhone: 'staff',
   syncStaff: 'staff', rotaGet: 'rota', rotaAuto: 'rota', rotaSave: 'rota', payroll: 'pay', locSave: ['settings', 'rota'], settingsGet: 'settings', settingsSave: 'settings',
   rightsList: 'owner', rightsSave: 'owner', offDaysSave: ['settings', 'offDays'] };
 function can_(me, need) {
@@ -191,6 +191,7 @@ function api_(req) {
     case 'tripQuote': return tripQuote_(d, me);
     case 'tripClaim': return tripClaim_(d, me);
     case 'claimSheet': return claimSheet_(d, me);
+    case 'voucherAmend': return voucherAmend_(d, me);
     case 'vouchers': return vouchersList_(d, me);
     case 'voucherGet': return voucherGet_(d, me);
     case 'voucherPay': return voucherPay_(d, me);
@@ -1453,6 +1454,48 @@ function voucherForMany_(list, me, extra) {
     '', '', '', '', '', '', '', me.name]]);
   const sh = tab_('trips'); list.forEach(x => sh.getRange(x.t.row, C.trips['Voucher No'] + 1).setValue(no)); dirty_('trips');
   return no;
+}
+/** Owner: correct an UNPAID voucher – same number, new journey lines with the km the owner approved.
+ *  d = {no, reason, purpose, lines:[{date, from, to, km, mode}]} (from / to = place names as written). Old claims are marked "Replaced". */
+function voucherAmend_(d, me) {
+  if (!me.owner) throw new Error('Only the owner can amend a voucher.');
+  const why = txt_(d.reason, 200); if (why.length < 8) throw new Error('Write why the voucher is amended.');
+  const lines = (Array.isArray(d.lines) ? d.lines : []).slice(0, 60); if (!lines.length) throw new Error('No journeys.');
+  return lock_(() => {
+    const v = voucherRows_().find(x => x.no === String(d.no || '')); if (!v) throw new Error('Voucher not found.');
+    if (v.status !== 'Unpaid') throw new Error('Only an unpaid voucher can be amended (this one is ' + v.status.toLowerCase() + ').');
+    const s = staffByName_(v.name) || { name: v.name }, now = new Date(), sh = tab_('trips');
+    const oldIds = v.claim.split(/,\s*/);
+    tripRows_().filter(t => oldIds.indexOf(t.id) >= 0).forEach(t => { sh.getRange(t.row, C.trips['Status'] + 1).setValue('Replaced'); sh.getRange(t.row, C.trips['Manager note'] + 1).setValue('Replaced by amended voucher ' + v.no + ': ' + why); });
+    const ids = tripRows_().map(t => t.id), rows = [];
+    lines.forEach((l, k) => {
+      const m = TRIP_MODES.find(x => x[0] === (l.mode || 'bike')); if (!m || m[2] !== 'km') throw new Error('Only own bike / car journeys can be amended here.');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(l.date || '') || l.date > today_()) throw new Error('Bad date: ' + l.date);
+      const km = round2_(n_(l.km)); if (!(km > 0) || km > 500) throw new Error('Bad km on line ' + (k + 1));
+      const rate = rateFor_(m[0]), amt = round2_(km * rate);
+      let id = 'TR-' + Utilities.formatDate(now, tz_(), 'yyMMdd-HHmmss') + '-A' + (k + 1); while (ids.indexOf(id) >= 0) id += 'x'; ids.push(id);
+      const row = new Array(T.trips[1].length).fill(''); const put = (h, x) => { row[C.trips[h]] = x; };
+      put('Trip ID', id); put('Date', l.date); put('Name', v.name); put('Purpose', txt_(d.purpose || v.purpose, 200)); put('Mode', m[0]); put('Status', 'Approved');
+      put('Start time', now); put('Start place', txt_(l.from, 120)); put('End time', now); put('End place', txt_(l.to, 120));
+      put('Claimed km', km); put('Rate ₹/km', rate); put('Claimed ₹', amt); put('Approved ₹', amt); put('Decided by', me.name); put('Decided at', now);
+      put('Manager note', 'Amended voucher ' + v.no + ' (owner): ' + why); put('Return trip', 'No'); put('Claim type', 'Written sheet (owner, km approved by owner)');
+      rows.push(row);
+    });
+    append_('trips', rows);
+    const made = tripRows_().filter(t => rows.some(r => r[0] === t.id));
+    const amount = Math.round(made.reduce((a, t) => a + t.approved, 0)), kms = round2_(made.reduce((a, t) => a + t.km, 0));
+    const dates = made.map(t => t.date).sort();
+    const particulars = 'Local conveyance on company work – ' + made.map(t => fmtDate_(t.date) + ': ' + t.startPlace + ' → ' + t.endPlace + ', ' + t.km + ' km × ₹' + t.rate + ' = ₹' + t.approved).join('; ') + '. Claim ' + made.map(t => t.id).join(', ') + '.';
+    const support = 'Written travel sheet handed in by ' + v.name + ' (keep the original attached); ' + made.length + ' trips, distances checked and approved by the owner. Amended ' + fmtDate_(today_()) + ' (was ₹' + v.amount + '): ' + why;
+    const vs = tab_('vouchers'), put = (h, x) => vs.getRange(v.row, C.vouchers[h] + 1).setValue(x);
+    put('Amount ₹', amount); put('Amount in words', words_(amount)); put('Claim ID', made.map(t => t.id).join(', ')); put('Claim date', dates[0]);
+    put('From', 'Several – see particulars'); put('To', made.length + ' journeys, ' + fmtDate_(dates[0]) + ' to ' + fmtDate_(dates[dates.length - 1]));
+    put('Km', kms); put('Rate ₹/km', made[0].rate); put('Particulars', particulars); put('Supporting document', support);
+    if (d.purpose) put('Purpose', txt_(d.purpose, 200));
+    made.forEach(t => sh.getRange(t.row, C.trips['Voucher No'] + 1).setValue(v.no)); dirty_('trips'); dirty_('vouchers');
+    log_('Voucher ' + v.no + ' amended by owner: ₹' + v.amount + ' → ₹' + amount + ' (' + made.length + ' journeys) – ' + why, me.name);
+    return { voucher: v.no, amount: amount, km: kms, trips: made.map(tripPub_) };
+  });
 }
 /** Owner: a written travel sheet handed in before the app rule – entered once, approved on Google Maps distances, ONE voucher.
  *  d = {name, purpose, note, lines:[{date, from, to, mode ('bike'|'car'), ret, purpose}]} */
