@@ -2095,6 +2095,7 @@ async function viewMore() {
   if (S.user && can('corporate')) h += '<div class="card"><h3>🏢 Corporate orders (Tally)</h3><div class="small mute">Upload the Tally invoice PDF – the sale goes into the Sales report and the items (and hamper contents) come out of stock.</div><button class="btn sm" id="col" style="margin-top:10px">Open</button></div>';
   if (can('sales') || isOwnerUi()) h += '<div class="card"><h3>🏦 Bank tally – UPI &amp; card</h3><div class="small mute">Next day: UPI and card sold against what ICICI and Paytm paid into the bank (read from the ICICI emails).</div><button class="btn sm" id="btl" style="margin-top:10px">Open</button></div>';
   if (can('sales') || isOwnerUi()) h += '<div class="card"><h3>💰 Cash pickups</h3><div class="small mute">Every time cash is taken from a store drawer – who took it, how much, and whether the owner has confirmed receiving it.</div><button class="btn sm" id="kpl" style="margin-top:10px">Open</button></div>';
+  h += '<div class="card"><h3>✅ Store checklists</h3><div class="small mute">Morning and night tasks of every store – who did what and when, the night-to-morning handover, comments, and the manager’s check.</div><button class="btn sm" id="hol" style="margin-top:10px">Open</button></div>';
   h += '<div class="card"><h3>🏦 Cash deposited in the bank</h3><div class="small mute">Store cash deposited in the bank – who deposited it, how much, which bank, and the photo of the deposit slip.</div><button class="btn sm" id="bkl" style="margin-top:10px">Open</button></div>';
   h += '<div class="card"><h3>🧾 Payout vouchers</h3><div class="small mute">Cash paid out of the store drawers – voucher no., who took it, what for, and the signed copy.</div><button class="btn sm" id="pvl" style="margin-top:10px">Open</button></div>';
   if (can('sales')) h += '<div class="card"><h3>UPI payments (bank emails)</h3><div class="small mute">Every payment ICICI emails about, and the bill it belongs to. Payments not linked to a bill are flagged.</div><button class="btn sm" id="upil" style="margin-top:10px">Open</button></div>';
@@ -2124,6 +2125,7 @@ async function viewMore() {
   if ($('#col')) $('#col').onclick = () => corpScreen();
   if ($('#kpl')) $('#kpl').onclick = () => cashPickupsSheet(isOwnerUi() ? 'waiting' : 'all');
   if ($('#pvl')) $('#pvl').onclick = () => pvListSheet();
+  if ($('#hol')) $('#hol').onclick = () => hoBoard();
   if ($('#bkl')) $('#bkl').onclick = () => bkListSheet();
   if ($('#apc')) $('#apc').onclick = codesSheet;
   if (!can('settings')) return;
@@ -3193,7 +3195,7 @@ function drawToday() {
   const r = B.today, s = r.sum;
   box.innerHTML = '<div class="row"><h3 class="grow" style="margin:0">' + (r.q ? 'Search: ' + esc(r.q) : (r.date && r.date !== today() ? 'Bills of ' + esc(r.date.split('-').reverse().join('-')) : 'Today\'s bills') + ' · ' + esc(LOC_SHORT[B.loc] || locLabel(B.loc))) + '</h3>' +
     '<input class="i" type="date" id="b_day" style="max-width:150px" value="' + esc(r.q ? '' : (r.date || today())) + '" title="Show bills of another day">' +
-    (B.loc ? '<button class="btn sm ghost" id="b_pvo" title="Cash paid out of the drawer – issue a voucher the person signs">🧾 Pay out</button><button class="btn sm ghost" id="b_dcl" title="Count cash, card and UPI at the end of the day">Close the day</button>' : '') +
+    (B.loc ? '<button class="btn sm ghost" id="b_ho" title="Morning and night store checklist">✅ Tasks</button><button class="btn sm ghost" id="b_pvo" title="Cash paid out of the drawer – issue a voucher the person signs">🧾 Pay out</button><button class="btn sm ghost" id="b_dcl" title="Count cash, card and UPI at the end of the day">Close the day</button>' : '') +
     '<input class="i" id="b_find" style="max-width:220px" placeholder="Find bill no. / mobile" value="' + esc(r.q || '') + '"></div>' +
     (s ? '<div class="bigp"><div><span>' + s.bills + ' bill' + (s.bills === 1 ? '' : 's') + '</span><b>₹' + money(s.total) + '</b></div><div><span>Cash</span><b>₹' + money(s.cash) + '</b></div><div><span>UPI</span><b>₹' + money(s.upi) + '</b></div><div><span>Card</span><b>₹' + money(s.card) + '</b></div></div>' +
       (s.short ? '<div class="tiny" style="color:var(--bad)">Short payments: ₹' + money(s.short) + ' on ' + s.shortBills + ' bill' + (s.shortBills === 1 ? '' : 's') + ' (Cash / UPI / Card show what was actually received)</div>' : '') +
@@ -3204,6 +3206,7 @@ function drawToday() {
   $$('.li', box).forEach(li => li.onclick = () => openBill(li.dataset.no));
   if ($('#b_dcl')) $('#b_dcl').onclick = () => dayCloseSheet(B.loc, ($('#b_day') && $('#b_day').value) || today());
   if ($('#b_pvo')) $('#b_pvo').onclick = () => pvForm(B.loc, today(), null, null);
+  if ($('#b_ho')) $('#b_ho').onclick = () => hoSheet(B.loc, hoDay());
   $('#b_day').onchange = async e => { const v = e.target.value || today(); const res = await run('Loading…', () => call('listBills', { date: v, loc: B.loc })).catch(() => null); if (res) { B.today = res; drawToday(); } };
   const f = $('#b_find');
   f.onkeydown = async e => {
@@ -4154,7 +4157,7 @@ async function dayCloseSheet(loc, date) {
     let den = {}; try { den = JSON.parse(sv['Cash count (notes/coins)'] || '{}'); } catch (e) { }
     $('#dc_b', m).innerHTML =
       (R.saved ? '<div class="' + (sv.Status === 'Tallied' || sv.Status === 'Checked' ? 'okbox' : 'warnbox') + '" style="margin-bottom:10px">' + (sv.Status === 'Checked' ? '✓ Checked by ' + esc(sv['Checked by']) : sv.Status === 'Tallied' ? '✓ Closed and tallied' : '⚠ Closed with a difference') + ' – by ' + esc(sv['Closed by']) + ' at ' + new Date(sv['Closed at']).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '. You can correct and save again.</div>' : '') +
-      '<h3 style="margin-top:0">1 · Sales in this app</h3><div class="bigp"><div><span>Cash</span><b>' + rs(a.cash) + '</b></div><div><span>UPI</span><b>' + rs(a.upi) + '</b></div><div><span>Card</span><b>' + rs(a.card) + '</b></div></div>' +
+      '<div id="dc_ho"></div><h3 style="margin-top:0">1 · Sales in this app</h3><div class="bigp"><div><span>Cash</span><b>' + rs(a.cash) + '</b></div><div><span>UPI</span><b>' + rs(a.upi) + '</b></div><div><span>Card</span><b>' + rs(a.card) + '</b></div></div>' +
       '<div class="tiny mute">' + a.bills + ' bill' + (a.bills === 1 ? '' : 's') + ' · total ' + rs(a.total) + (a.short ? ' · customers paid ' + rs(a.short) + ' less (already taken off)' : '') + (f.bank.n ? ' · UPI confirmed by ICICI emails ' + rs(f.bank.upi) : '') + '</div>' +
       '<h3>2 · QueueBuster sales today</h3><div class="tiny mute" style="margin-bottom:6px">' + (q.bills ? 'Imported from QueueBuster (' + q.bills + ' bills).' : 'If anyone billed in QueueBuster today, type its day totals (QueueBuster → Reports → Daily payment breakup). Leave 0 if not.') + '</div>' +
       '<div class="grid3"><div><label class="f">Cash</label>' + inp('dc_qc', val('Cash sales (QueueBuster) ₹', q.bills ? q.cash : '')) + '</div><div><label class="f">UPI</label>' + inp('dc_qu', val('UPI sales (QueueBuster) ₹', q.bills ? q.upi : '')) + '</div><div><label class="f">Card</label>' + inp('dc_qk', val('Card sales (QueueBuster) ₹', q.bills ? q.card : '')) + '</div></div>' +
@@ -4209,7 +4212,7 @@ async function dayCloseSheet(loc, date) {
     $$('[data-pvno]', m).forEach(el => el.onclick = () => pvView((R.vouchers || []).find(x => x.no === el.dataset.pvno), { onChange: () => load(), canCancel: R.canCheck, canReplace: R.canCheck }));
     if ($('#dc_ck', m)) $('#dc_ck', m).onclick = async () => { const x = await run('Saving…', () => call('dayCloseCheck', { date: R.date, loc: R.loc, reopen: sv.Status === 'Checked' })).catch(() => null); if (x) load(); };
   };
-  const load = async () => { $('#dc_b', m).innerHTML = '<div class="empty"><span class="spin dk"></span></div>'; try { const q = { date: $('#dc_d', m).value, loc: $('#dc_l', m).value }; let R = await call('dayCloseGet', q); if (await acctSync(R)) R = await call('dayCloseGet', q); draw(R); } catch (e) { $('#dc_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
+  const load = async () => { $('#dc_b', m).innerHTML = '<div class="empty"><span class="spin dk"></span></div>'; try { const q = { date: $('#dc_d', m).value, loc: $('#dc_l', m).value }; let R = await call('dayCloseGet', q); if (await acctSync(R)) R = await call('dayCloseGet', q); draw(R); hoDcLine(m, R); } catch (e) { $('#dc_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
   $('#dc_l', m).onchange = load; $('#dc_d', m).onchange = load; load();
 }
 function dcTaker(R) { const p = (R.pickups || []).find(x => x.from === 'Day close'); return p ? p.by : ''; }
@@ -4588,6 +4591,174 @@ async function bkListSheet() {
   const load = async () => { try { draw(await call('bkList', q())); } catch (e) { $('#bl_x', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
   ['bl_st', 'bl_f', 'bl_t', 'bl_l'].forEach(id => $('#' + id, m).onchange = load); load();
 }
+/* ───── store opening / closing checklists + night-to-morning handover; managers check in store or on phone (v18.49, owner 17 Nov 2026) ───── */
+const HO_LOCS = ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120'];
+function hoDay() { const d = new Date(); if (d.getHours() < 5) d.setDate(d.getDate() - 1); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+const hoT = x => x ? new Date(x).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
+const hoDT = x => x ? new Date(x).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+function hoPill(h) {
+  const s = h.status || 'Open';
+  return '<span class="pill ' + (s === 'Checked' ? 'p-ok' : s === 'Needs action' ? 'p-bad' : s === 'Submitted' ? 'p-warn' : 'p-mute') + '">' + esc(s === 'Submitted' ? 'Submitted – to be checked' : s) + '</span>';
+}
+async function hoPhotoPick() {
+  return new Promise(res => {
+    const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.capture = 'environment';
+    i.onchange = async () => { const f = i.files[0]; if (!f) return res(null); const b = await fileToBase64(f).catch(e => { toast(e.message, true); return null; }); res(b ? { b64: b.base64, mime: b.mime || f.type } : null); };
+    i.click();
+  });
+}
+async function hoSheet(loc, date, shift) {
+  const mgrAll = !!(S.user && (S.user.role === 'Owner' || S.user.role === 'Manager' || can('sales')));
+  const locs = mgrAll ? HO_LOCS : HO_LOCS.filter(l => !B.boot || !B.boot.locs || B.boot.locs.some(x => x.name === l));
+  if (locs.indexOf(loc) < 0) loc = locs[0];
+  if (!loc) { toast('No store to show', true); return; }
+  let tab = shift || (new Date().getHours() >= 5 && new Date().getHours() < 16 ? 'Opening' : 'Closing'), R = null, checking = false, bad = {};
+  const m = modal('✅ Store checklist', '<div class="row" style="flex-wrap:nowrap;gap:8px"><select class="i" id="ho_l" style="min-width:0">' + locs.map(l => '<option value="' + esc(l) + '"' + (l === loc ? ' selected' : '') + '>' + esc(LOC_SHORT[l] || l) + '</option>').join('') + '</select>' +
+    '<input class="i" type="date" id="ho_d" value="' + (date || hoDay()) + '" max="' + today() + '" style="max-width:160px"></div>' +
+    '<div class="row" style="gap:6px;margin-top:8px" id="ho_tabs"></div><div id="ho_b" style="margin-top:10px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
+  const tabs = () => { $('#ho_tabs', m).innerHTML = [['Opening', '🌅 Morning'], ['Closing', '🌙 Night'], ['Comments', '💬 Comments']].map(t => {
+    const x = R && R.shifts[t[0]]; const c = t[0] === 'Comments' ? (R ? R.comments.length : '') : x ? x.done + '/' + x.total : '';
+    return '<button class="btn sm ' + (tab === t[0] ? 'gold' : 'ghost') + '" data-hot="' + t[0] + '">' + t[1] + (c !== '' ? ' <span class="tiny">' + c + '</span>' : '') + '</button>'; }).join('');
+    $$('[data-hot]', m).forEach(b => b.onclick = () => { tab = b.dataset.hot; checking = false; bad = {}; draw(); }); };
+  const row = t => {
+    const st = t.status, dn = st === 'Done', mor = st === 'For morning', nn = st === 'Not needed';
+    const col = dn ? 'var(--ok)' : mor ? 'var(--gold)' : nn ? '#999' : t.overdue ? 'var(--bad)' : 'var(--line,#ddd)';
+    return '<div class="card" style="padding:10px 12px;margin:6px 0;border-left:4px solid ' + col + '"><div class="row" style="flex-wrap:nowrap;gap:10px;align-items:flex-start">' +
+      (checking ? '<button class="btn sm ' + (bad[t.id] !== undefined ? 'ghost' : 'gold') + '" data-hok="' + esc(t.id) + '" style="min-width:74px">' + (bad[t.id] !== undefined ? '✗ Not OK' : '✓ OK') + '</button>'
+        : '<button class="btn sm ' + (dn ? 'gold' : 'ghost') + '" data-hod="' + esc(t.id) + '" style="min-width:44px;font-size:18px" title="Done">' + (dn ? '✓' : mor ? '🌅' : nn ? '–' : '☐') + '</button>') +
+      '<div class="grow"><div style="' + (dn || nn ? 'color:var(--mute,#666)' : '') + '">' + esc(t.task) + (t.photo ? ' <span title="Photo needed">📷</span>' : '') + '</div>' +
+      '<div class="tiny" style="margin-top:2px">' + (t.due ? '<span style="color:' + (t.overdue ? 'var(--bad)' : 'inherit') + '">⏰ by ' + esc(t.due) + (t.overdue ? ' – overdue' : '') + '</span>' : '') +
+        (st !== 'To do' ? ' · ' + (dn ? '✓ done' : mor ? '🌅 left for the morning' : 'not needed') + ' by <b>' + esc(t.doneBy) + '</b> at ' + esc(hoT(t.doneAt)) + (t.late ? ' <span style="color:var(--bad)">(late)</span>' : '') : '') + '</div>' +
+      (/^(Left|Added)/.test(t.from) ? '<div class="tiny" style="color:var(--gold)">↪ ' + esc(t.from) + '</div>' : '') +
+      (t.note ? '<div class="tiny">💬 ' + esc(t.note) + '</div>' : '') +
+      (t.checked ? '<div class="tiny" style="color:' + (t.checked === 'OK' ? 'var(--ok)' : 'var(--bad)') + '">' + (t.checked === 'OK' ? '✓ OK' : '✗ Not OK') + ' – ' + esc(t.checkedBy) + (t.checkNote ? ': ' + esc(t.checkNote) : '') + '</div>' : '') +
+      (checking && bad[t.id] !== undefined ? '<input class="i" data-hobn="' + esc(t.id) + '" value="' + esc(bad[t.id]) + '" placeholder="What is wrong?" style="margin-top:4px">' : '') +
+      '</div>' + (!checking ? '<div class="row" style="gap:4px;flex-wrap:nowrap">' + (t.hasPhoto ? '<button class="btn sm ghost" data-hop="' + esc(t.id) + '" title="See photo">🖼</button>' : '') + '<button class="btn sm ghost" data-hom="' + esc(t.id) + '" title="More">⋯</button></div>' : '') + '</div><div data-hoi="' + esc(t.id) + '"></div></div>';
+  };
+  const draw = () => {
+    tabs();
+    const b = $('#ho_b', m);
+    if (tab === 'Comments') {
+      b.innerHTML = (R.comments.length ? R.comments.map(c => '<div class="card" style="padding:8px 12px;margin:6px 0"><div class="tiny mute">' + esc(c.by) + ' · ' + esc(c.role) + (c.shift ? ' · ' + (c.shift === 'Opening' ? 'morning' : 'night') : '') + ' · ' + esc(hoDT(c.at)) + '</div><div class="small" style="white-space:pre-wrap">' + esc(c.text) + '</div></div>').join('') : '<div class="empty small">No comments yet for this day.</div>') +
+        '<label class="f" style="margin-top:8px">Write a comment (staff and managers see it)</label><textarea class="i" id="ho_ct" rows="3" placeholder="e.g. AC not cooling, called the technician / Well done today"></textarea>' +
+        '<button class="btn gold block" id="ho_cs" style="margin-top:8px">Post comment</button>';
+      $('#ho_cs', m).onclick = async () => { const t = $('#ho_ct', m).value.trim(); if (!t) return; const r = await run('Posting…', () => call('hoComment', { date: R.date, loc: R.loc, text: t })).catch(() => null); if (r) { R = r; draw(); } };
+      return;
+    }
+    const X = R.shifts[tab], h = X.hand, sub = h.status !== 'Open', pct = X.total ? Math.round(X.done * 100 / X.total) : 0;
+    b.innerHTML =
+      (tab === 'Opening' && R.lastNight && R.lastNight.note ? '<div class="warnbox" style="margin-bottom:8px"><b>🌙 Last night’s handover</b> – ' + esc(R.lastNight.submittedBy) + ', ' + esc(hoDT(R.lastNight.submittedAt)) + '<div class="small" style="white-space:pre-wrap;margin-top:4px">' + esc(R.lastNight.note) + '</div></div>' : '') +
+      '<div class="row" style="gap:8px;align-items:center"><div class="grow"><div style="height:10px;background:var(--line,#eee);border-radius:6px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:var(--ok)"></div></div>' +
+      '<div class="tiny" style="margin-top:4px"><b>' + X.done + ' of ' + X.total + '</b> ticked' + (X.overdue ? ' · <span style="color:var(--bad)">' + X.overdue + ' overdue</span>' : '') + (X.late ? ' · ' + X.late + ' done late' : '') + (R.isToday ? ' · now ' + esc(R.now) : '') + '</div></div>' + hoPill(h) + '</div>' +
+      (sub ? '<div class="tiny mute" style="margin-top:4px">Submitted by ' + esc(h.submittedBy) + ' at ' + esc(hoDT(h.submittedAt)) + (h.checkedBy ? ' · checked by <b>' + esc(h.checkedBy) + '</b> (' + esc((h.how || '').toLowerCase()) + ') ' + esc(hoDT(h.checkedAt)) + (h.mgrNote ? ' – ' + esc(h.mgrNote) : '') : '') + '</div>' : '') +
+      (checking ? '<div class="okbox" style="margin-top:8px">🔍 Checking: every task is OK unless you tap it to mark <b>Not OK</b>.</div>' : '') +
+      (X.tasks.length ? X.tasks.map(row).join('') : '<div class="empty small">No tasks for this ' + (tab === 'Opening' ? 'morning' : 'night') + (R.isToday ? '' : ' (lists are made only on the day itself)') + '.</div>') +
+      (tab === 'Closing' && !checking ? '<h3>🌅 Tasks for tomorrow morning</h3>' + (R.forMorning.length ? R.forMorning.map(t => '<div class="row small" style="padding:4px 0;flex-wrap:nowrap"><div class="grow">• ' + esc(t.task) + ' <span class="tiny mute">– ' + esc(t.addedBy) + (t.due ? ', by ' + esc(t.due) : '') + '</span></div><button class="btn sm ghost" data-hox="' + esc(t.id) + '">✕</button></div>').join('') : '<div class="tiny mute">Tasks marked “🌅 For the morning” above go there by themselves. Add anything else here.</div>') +
+        '<div class="row" style="gap:6px;margin-top:6px;flex-wrap:nowrap"><input class="i" id="ho_mt" placeholder="e.g. Refill cashew jar – 2 kg box in back store"><input class="i" type="time" id="ho_mdue" value="11:00" style="max-width:110px"><button class="btn ghost" id="ho_ma">Add</button></div>' : '') +
+      (!checking && R.canCheck ? '<div class="row" style="gap:6px;margin-top:8px;flex-wrap:nowrap"><input class="i" id="ho_at" placeholder="Manager: add a task to this list"><input class="i" type="time" id="ho_adue" style="max-width:110px"><button class="btn ghost" id="ho_aa">Add</button></div>' : '') +
+      (!checking ? '<h3>' + (tab === 'Closing' ? '📝 Handover note for the morning' : '📝 Morning note (optional)') + '</h3><textarea class="i" id="ho_n" rows="3" placeholder="' + (tab === 'Closing' ? 'What is low / finished, money or keys, anything the morning person must know' : 'Anything the managers should know') + '">' + esc(h.note || '') + '</textarea>' +
+        '<button class="btn gold block" id="ho_s" style="margin-top:8px">' + (sub ? 'Submit again' : 'Submit ' + (tab === 'Opening' ? 'morning' : 'night') + ' checklist') + '</button>' : '') +
+      (R.canCheck ? (checking ? '<h3>Manager check</h3><div class="row" style="gap:8px"><label class="small"><input type="radio" name="ho_how" value="In store" checked> 🏬 Checked in store (physically)</label><label class="small"><input type="radio" name="ho_how" value="On phone"> 📱 Checked on phone (photos / call)</label></div>' +
+          '<textarea class="i" id="ho_mn" rows="2" placeholder="Manager note (optional)" style="margin-top:6px"></textarea><div class="row" style="gap:8px;margin-top:8px"><button class="btn ghost" id="ho_cc">Cancel</button><div class="grow"></div><button class="btn gold" id="ho_cv">✓ Save check</button></div>'
+        : '<button class="btn ghost block" id="ho_ck" style="margin-top:8px">🔍 Manager: check this list' + (h.checkedBy ? ' again' : '') + '</button>') : '');
+    const upd = r => { if (r) { R = r; draw(); } };
+    $$('[data-hod]', m).forEach(el => el.onclick = async () => {
+      const t = X.tasks.find(x => x.id === el.dataset.hod); let photo = null;
+      if (t.status === 'Done') { upd(await run('Saving…', () => call('hoTick', { id: t.id, status: 'To do' })).catch(() => null)); return; }
+      if (t.photo && !t.hasPhoto) { toast('Take a photo for this task'); photo = await hoPhotoPick(); if (!photo) return; }
+      upd(await run('Saving…', () => call('hoTick', { id: t.id, status: 'Done', photo: photo })).catch(() => null));
+    });
+    $$('[data-hom]', m).forEach(el => el.onclick = () => {
+      const t = X.tasks.find(x => x.id === el.dataset.hom), box = $('[data-hoi="' + t.id + '"]', m);
+      if (box.innerHTML) { box.innerHTML = ''; return; }
+      box.innerHTML = '<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px"><input class="i" id="ho_tn_' + t.id + '" placeholder="Note (needed for “morning” / “not needed”)" value="' + esc(t.note) + '">' +
+        '<button class="btn sm ghost" data-ha="Done">✓ Done</button><button class="btn sm ghost" data-ha="photo">📷 Done + photo</button>' + (tab === 'Closing' ? '<button class="btn sm ghost" data-ha="For morning">🌅 For the morning</button>' : '') +
+        '<button class="btn sm ghost" data-ha="Not needed">– Not needed today</button>' + (t.status !== 'To do' ? '<button class="btn sm ghost" data-ha="To do">↺ Undo</button>' : '') + (/^Added/.test(t.from) && R.canCheck ? '<button class="btn sm ghost" data-ha="remove" style="color:var(--bad)">Remove task</button>' : '') + '</div>';
+      $$('[data-ha]', box).forEach(bt => bt.onclick = async () => {
+        const a = bt.dataset.ha, note = $('#ho_tn_' + t.id, m).value.trim();
+        if (a === 'remove') { upd(await run('Removing…', () => call('hoRemove', { id: t.id, date: R.date, loc: R.loc })).catch(() => null)); return; }
+        let photo = null; if (a === 'photo') { photo = await hoPhotoPick(); if (!photo) return; }
+        if ((a === 'For morning' || a === 'Not needed') && !note) { toast('Write a note first', true); $('#ho_tn_' + t.id, m).focus(); return; }
+        upd(await run('Saving…', () => call('hoTick', { id: t.id, status: a === 'photo' ? 'Done' : a, note: note, photo: photo })).catch(() => null));
+      });
+    });
+    $$('[data-hop]', m).forEach(el => el.onclick = async () => {
+      const box = $('[data-hoi="' + el.dataset.hop + '"]', m);
+      const r = await run('Loading photo…', () => call('hoPhoto', { id: el.dataset.hop })).catch(() => null); if (!r) return;
+      box.innerHTML = '<img src="data:' + r.mime + ';base64,' + r.b64 + '" style="max-width:100%;border-radius:8px;margin-top:8px">';
+    });
+    $$('[data-hox]', m).forEach(el => el.onclick = async () => upd(await run('Removing…', () => call('hoRemove', { id: el.dataset.hox, date: R.date, loc: R.loc })).catch(() => null)));
+    if ($('#ho_ma', m)) $('#ho_ma', m).onclick = async () => { const t = $('#ho_mt', m).value.trim(); if (!t) return; upd(await run('Adding…', () => call('hoAdd', { date: R.date, loc: R.loc, task: t, due: $('#ho_mdue', m).value, forMorning: true })).catch(() => null)); };
+    if ($('#ho_aa', m)) $('#ho_aa', m).onclick = async () => { const t = $('#ho_at', m).value.trim(); if (!t) return; upd(await run('Adding…', () => call('hoAdd', { date: R.date, loc: R.loc, shift: tab, task: t, due: $('#ho_adue', m).value })).catch(() => null)); };
+    if ($('#ho_s', m)) $('#ho_s', m).onclick = async () => upd(await run('Submitting…', () => call('hoSubmit', { date: R.date, loc: R.loc, shift: tab, note: $('#ho_n', m).value.trim() })).catch(() => null));
+    if ($('#ho_ck', m)) $('#ho_ck', m).onclick = () => { checking = true; bad = {}; X.tasks.forEach(t => { if (t.checked === 'Not OK') bad[t.id] = t.checkNote; }); draw(); };
+    if ($('#ho_cc', m)) $('#ho_cc', m).onclick = () => { checking = false; draw(); };
+    $$('[data-hok]', m).forEach(el => el.onclick = () => { const id = el.dataset.hok; $$('[data-hobn]', m).forEach(i => bad[i.dataset.hobn] = i.value); if (bad[id] !== undefined) delete bad[id]; else bad[id] = ''; draw(); });
+    if ($('#ho_cv', m)) $('#ho_cv', m).onclick = async () => {
+      $$('[data-hobn]', m).forEach(i => bad[i.dataset.hobn] = i.value.trim());
+      if (Object.keys(bad).some(k => !bad[k])) { toast('Write what is wrong for each Not OK task', true); return; }
+      const how = ($$('input[name="ho_how"]', m).find(i => i.checked) || {}).value || 'In store';
+      const r = await run('Saving check…', () => call('hoCheck', { date: R.date, loc: R.loc, shift: tab, how: how, note: $('#ho_mn', m).value.trim(), bad: bad })).catch(() => null);
+      if (r) { checking = false; bad = {}; R = r; draw(); toast('Checked ✓'); }
+    };
+  };
+  const load = async () => { $('#ho_b', m).innerHTML = '<div class="empty"><span class="spin dk"></span></div>'; try { R = await call('hoGet', { date: $('#ho_d', m).value, loc: $('#ho_l', m).value }); draw(); } catch (e) { $('#ho_b', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; } };
+  $('#ho_l', m).onchange = load; $('#ho_d', m).onchange = load; load();
+}
+async function hoBoard() {
+  const m = modal('✅ Store checklists – all stores', '<div class="row" style="gap:6px;flex-wrap:wrap"><input class="i" type="date" id="hb_d" value="' + hoDay() + '" max="' + today() + '" style="max-width:160px"><button class="btn ghost sm" id="hb_r">↻</button><div class="grow"></div><button class="btn ghost sm" id="hb_set">⚙ Task list setup</button></div><div id="hb_x" style="margin-top:10px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
+  const cell = (l, s) => {
+    const pct = s.total ? Math.round(s.done * 100 / s.total) : 0;
+    return '<div data-hb="' + esc(l + '|' + s.shift) + '" style="cursor:pointer;padding:8px 0;border-top:1px solid var(--line,#eee)"><div class="row" style="flex-wrap:nowrap;gap:8px"><b class="grow small">' + (s.shift === 'Opening' ? '🌅 Morning' : '🌙 Night') + ' · ' + s.done + '/' + s.total + '</b>' + hoPill(s) + '</div>' +
+      '<div style="height:6px;background:var(--line,#eee);border-radius:4px;overflow:hidden;margin-top:4px"><div style="height:100%;width:' + pct + '%;background:' + (s.overdue ? 'var(--bad)' : 'var(--ok)') + '"></div></div>' +
+      '<div class="tiny" style="margin-top:3px">' + [s.overdue ? '<span style="color:var(--bad)">' + s.overdue + ' overdue</span>' : '', s.late ? s.late + ' done late' : '', s.morning ? s.morning + ' left for morning' : '', s.notOk ? '<span style="color:var(--bad)">' + s.notOk + ' not OK</span>' : '',
+        s.submittedBy ? 'by ' + esc(s.submittedBy) + ' ' + esc(hoT(s.submittedAt)) : '', s.checkedBy ? 'checked by ' + esc(s.checkedBy) + ' (' + esc((s.how || '').toLowerCase()) + ')' : ''].filter(String).join(' · ') + '</div></div>';
+  };
+  const load = async () => {
+    try {
+      const r = await call('hoBoard', { date: $('#hb_d', m).value });
+      $('#hb_x', m).innerHTML = r.list.map(x => '<div class="card" style="padding:10px 12px;margin:6px 0"><b>' + esc(x.loc) + '</b>' + x.shifts.map(s => cell(x.loc, s)).join('') + '</div>').join('') +
+        '<div class="tiny mute">Tap a list to see the tasks, comments and photos, and to check it. Times and who did each task are saved.</div>';
+      $('#hb_set', m).style.display = r.canSetup ? '' : 'none';
+      $$('[data-hb]', m).forEach(el => el.onclick = () => { const p = el.dataset.hb.split('|'); hoSheet(p[0], r.date, p[1]); });
+    } catch (e) { $('#hb_x', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; }
+  };
+  $('#hb_d', m).onchange = load; $('#hb_r', m).onclick = load; $('#hb_set', m).onclick = () => hoSetupSheet(); load();
+}
+async function hoSetupSheet() {
+  const m = modal('⚙ Task list setup', '<div id="hs_x"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
+  let L = [], locs = [];
+  const r0 = await call('hoSetup', {}).catch(e => { $('#hs_x', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return null; }); if (!r0) return;
+  L = r0.list; locs = r0.locs;
+  const read = () => { $$('[data-hsr]', m).forEach(el => { const t = L[+el.dataset.hsr]; t.shift = $('[data-f="shift"]', el).value; t.task = $('[data-f="task"]', el).value; t.due = $('[data-f="due"]', el).value; t.stores = $('[data-f="stores"]', el).value; t.photo = $('[data-f="photo"]', el).checked; t.active = $('[data-f="active"]', el).checked; }); };
+  const draw = () => {
+    const part = sh => L.map((t, i) => [t, i]).filter(x => x[0].shift === sh).map(([t, i]) => '<div class="card" data-hsr="' + i + '" style="padding:8px 10px;margin:6px 0' + (t.active ? '' : ';opacity:.55') + '">' +
+      '<input class="i" data-f="task" value="' + esc(t.task) + '" placeholder="Task">' +
+      '<div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center"><select class="i" data-f="shift" style="max-width:120px"><option value="Opening"' + (t.shift === 'Opening' ? ' selected' : '') + '>Morning</option><option value="Closing"' + (t.shift === 'Closing' ? ' selected' : '') + '>Night</option></select>' +
+      '<label class="tiny">by <input class="i" type="time" data-f="due" value="' + esc(t.due) + '" style="max-width:110px;display:inline-block"></label>' +
+      '<select class="i" data-f="stores" style="max-width:170px"><option value="All">All stores</option>' + locs.map(l => '<option value="' + esc(l) + '"' + (t.stores === l ? ' selected' : '') + '>' + esc(LOC_SHORT[l] || l) + ' only</option>').join('') + '</select>' +
+      '<label class="tiny"><input type="checkbox" data-f="photo"' + (t.photo ? ' checked' : '') + '> 📷 photo</label><label class="tiny"><input type="checkbox" data-f="active"' + (t.active ? ' checked' : '') + '> in use</label>' +
+      '<div class="grow"></div><button class="btn sm ghost" data-up="' + i + '">↑</button><button class="btn sm ghost" data-dn="' + i + '">↓</button><button class="btn sm ghost" data-rm="' + i + '" style="color:var(--bad)">✕</button></div></div>').join('');
+    $('#hs_x', m).innerHTML = '<div class="tiny mute">These tasks are put on every store’s list each day. Changes apply from the next list made (tomorrow’s, or today’s if not made yet). Untick “in use” to pause a task.</div>' +
+      '<h3>🌅 Morning (opening)</h3>' + part('Opening') + '<button class="btn ghost sm" data-add="Opening">+ Add morning task</button>' +
+      '<h3>🌙 Night (closing)</h3>' + part('Closing') + '<button class="btn ghost sm" data-add="Closing">+ Add night task</button>' +
+      '<button class="btn gold block" id="hs_s" style="margin-top:12px">Save task list</button>';
+    $$('[data-add]', m).forEach(b => b.onclick = () => { read(); L.push({ id: '', shift: b.dataset.add, task: '', due: b.dataset.add === 'Opening' ? '11:00' : '22:00', stores: 'All', photo: false, active: true }); draw(); });
+    $$('[data-rm]', m).forEach(b => b.onclick = () => { read(); L.splice(+b.dataset.rm, 1); draw(); });
+    const mv = (i, d) => { read(); const sh = L[i].shift; let j = i + d; while (j >= 0 && j < L.length && L[j].shift !== sh) j += d; if (j < 0 || j >= L.length) return; const x = L[i]; L[i] = L[j]; L[j] = x; draw(); };
+    $$('[data-up]', m).forEach(b => b.onclick = () => mv(+b.dataset.up, -1)); $$('[data-dn]', m).forEach(b => b.onclick = () => mv(+b.dataset.dn, 1));
+    $('#hs_s', m).onclick = async () => { read(); const r = await run('Saving…', () => call('hoSetup', { list: L })).catch(() => null); if (r) { L = r.list; draw(); toast('Task list saved ✓'); } };
+  };
+  draw();
+}
+function hoDcLine(m, R) {
+  const el = $('#dc_ho', m); if (!el || R.loc === 'Event') return;
+  call('hoGet', { date: R.date, loc: R.loc }).then(x => {
+    const c = x.shifts.Closing, h = c.hand, ok = h.status !== 'Open';
+    el.innerHTML = '<div class="' + (ok ? 'okbox' : 'warnbox') + '" style="margin-bottom:10px;cursor:pointer">✅ <b>Night checklist</b> ' + c.done + '/' + c.total + ' ticked' + (c.overdue ? ' · ' + c.overdue + ' overdue' : '') + ' · ' + (ok ? 'submitted by ' + esc(h.submittedBy) : '<b>not submitted yet – tap to open</b>') + '</div>';
+    el.onclick = () => hoSheet(R.loc, R.date, 'Closing');
+  }).catch(() => { });
+}
 /* ───── next-day bank tally: UPI & card sold vs what ICICI / Paytm paid in (v18.24) ───── */
 async function bankTallySheet() {
   const m = modal('🏦 Bank tally – UPI & card', '<div class="row" style="gap:6px;flex-wrap:wrap"><input class="i" type="date" id="bt_f" style="max-width:150px"><input class="i" type="date" id="bt_t" max="' + today() + '" style="max-width:150px"><button class="btn ghost sm" id="bt_s">↻ Read bank emails now</button></div>' +
@@ -4661,7 +4832,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = '6c9ccc8866';
+<script>window.NV_BUILD = 'c7b66c3efa';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
