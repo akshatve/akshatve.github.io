@@ -4742,12 +4742,13 @@ async function hoSetupSheet() {
     $('#hs_x', m).innerHTML = '<div class="tiny mute">These tasks are put on every store’s list each day. Changes apply from the next list made (tomorrow’s, or today’s if not made yet). Untick “in use” to pause a task.</div>' +
       '<h3>🌅 Morning (opening)</h3>' + part('Opening') + '<button class="btn ghost sm" data-add="Opening">+ Add morning task</button>' +
       '<h3>🌙 Night (closing)</h3>' + part('Closing') + '<button class="btn ghost sm" data-add="Closing">+ Add night task</button>' +
-      '<button class="btn gold block" id="hs_s" style="margin-top:12px">Save task list</button>';
+      '<label class="small" style="display:block;margin-top:12px"><input type="checkbox" id="hs_td" checked> Also update today’s lists (only stores where nothing is ticked yet)</label>' +
+      '<button class="btn gold block" id="hs_s" style="margin-top:8px">Save task list</button>';
     $$('[data-add]', m).forEach(b => b.onclick = () => { read(); L.push({ id: '', shift: b.dataset.add, task: '', due: b.dataset.add === 'Opening' ? '11:00' : '22:00', stores: 'All', photo: false, active: true }); draw(); });
     $$('[data-rm]', m).forEach(b => b.onclick = () => { read(); L.splice(+b.dataset.rm, 1); draw(); });
     const mv = (i, d) => { read(); const sh = L[i].shift; let j = i + d; while (j >= 0 && j < L.length && L[j].shift !== sh) j += d; if (j < 0 || j >= L.length) return; const x = L[i]; L[i] = L[j]; L[j] = x; draw(); };
     $$('[data-up]', m).forEach(b => b.onclick = () => mv(+b.dataset.up, -1)); $$('[data-dn]', m).forEach(b => b.onclick = () => mv(+b.dataset.dn, 1));
-    $('#hs_s', m).onclick = async () => { read(); const r = await run('Saving…', () => call('hoSetup', { list: L })).catch(() => null); if (r) { L = r.list; draw(); toast('Task list saved ✓'); } };
+    $('#hs_s', m).onclick = async () => { read(); const r = await run('Saving…', () => call('hoSetup', { list: L, applyToday: $('#hs_td', m).checked })).catch(() => null); if (r) { L = r.list; draw(); toast('Task list saved ✓' + (r.rebuilt && r.rebuilt.length ? ' · today’s list updated for ' + r.rebuilt.length + ' store' + (r.rebuilt.length > 1 ? 's' : '') : '')); } };
   };
   draw();
 }
@@ -4832,7 +4833,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = 'c7b66c3efa';
+<script>window.NV_BUILD = 'd9aa3902bb';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
