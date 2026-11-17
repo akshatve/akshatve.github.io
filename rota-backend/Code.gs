@@ -124,6 +124,9 @@ const DEFAULT_SETTINGS = [
   ['Summary email', 'nutzyfoods@gmail.com', 'Nightly summary (late, absent, missed clock-out, flags, trips to approve). Blank = off.'],
   ['Owner approval email', 'nutzyfoods@gmail.com', 'Who is emailed when a manager asks for a Saturday / Sunday weekly off (only the owner can approve it).'],
   ['No clock-out counts to', 'Last seen', '"Last seen" = a day with no clock-out is counted only up to the last time the app saw the person at the store (last punch or location check while the app was open). "Rota end" = old rule.'],
+  ['Billing app counts for no clock-out', 'Yes', 'Yes = when someone does not clock out, their LAST activity in the Nutvique billing app that day (last bill they saved, or the store cash close they did) is taken as their leaving time instead of the rota app. Only when they did nothing in the billing app does the rota app\'s last seen count. No = rota app only.'],
+  ['Billing app counts from', '2026-11-17', 'Working days from this date use the billing-app rule above (earlier days stay as they were). Change the date to apply it to older days.'],
+  ['Billing data sheet ID', '1fuxs_ZuXSuhGXFqjlMa9ZhbN02zXUjCul4pPZHfR7UU', 'The Nutvique Inventory / billing Google Sheet (tabs Bills and Day Close are read, never changed).'],
   ['Clock-out alert email', '', 'Emailed when someone is still not clocked out 30 min after their rota end (with where the app last saw them). Blank = the Summary email.'],
   ['Approval email', '', 'Who is emailed at once when a clock-in / clock-out needs approval (comma separated). Blank = the Summary email.'],
   ['Approval needed after (min)', 30, 'Clock-in this many minutes or more before the rota start, or clock-out this many minutes or more after the rota end, waits for a manager. Not approved = paid only the rota shift.'],
@@ -1001,10 +1004,13 @@ function dayCalc_(date, s, ro, ps, fx, live) {
     else if (/rota/i.test(String(setv_('No clock-out counts to') || 'Last seen'))) { outMin = Math.max(sE, inMin); out.flags.push('No clock-out (counted to rota end)'); }
     else {
       // 16 Nov 2026 (owner): people leaving without clocking out – count only to the last time the app saw them at work
-      const seen = lastSeen_(s ? s.name : '', date, valid);
+      // 17 Nov 2026 (owner): if they used the billing app that day, their last billing-app activity counts – not the rota app
+      const ba = billLast_(s ? s.name : '', date);
+      const seen = ba ? ba.m : lastSeen_(s ? s.name : '', date, valid);
       outMin = Math.max(inMin, Math.min(seen, sE));
       out.lastSeen = minTxt_(seen);
-      out.flags.push('No clock-out – counted to last seen ' + minTxt_(outMin) + ' (owner can correct)');
+      if (ba) { out.billSeen = ba.what; out.flags.push('No clock-out – counted to last billing-app activity ' + minTxt_(outMin) + ' (' + ba.what + ') (owner can correct)'); }
+      else out.flags.push('No clock-out – counted to last seen ' + minTxt_(outMin) + ' (owner can correct)');
     }
   }
   if (bo != null) { openBreak = true; breakMin += Math.max(0, (heldOut || !liveNow ? outMin : nowRel) - bo); }
@@ -1885,6 +1891,48 @@ function staffLeave_(d, me, token) {
   });
 }
 
+// ───────────────────────────── billing-app activity (17 Nov 2026) ─────────────────────────────
+// Staff keep the Nutvique billing app open all day, the rota app often not. When someone does not clock out, their last
+// activity in the billing app that working day is their leaving time: the last bill they saved (Bills: Billed by + Saved at)
+// or the store cash close they did (Day Close: Closed by + Closed at). Read-only; cached 5 min.
+let BACT_ = {};
+function billActOn_() { return !/^no/i.test(String(setv_('Billing app counts for no clock-out') || 'Yes')); }
+function billActivity_(date) {
+  if (BACT_[date]) return BACT_[date];
+  const c = CacheService.getScriptCache(), ck = 'bact_' + date, hit = c.get(ck);
+  if (hit) return (BACT_[date] = JSON.parse(hit));
+  const out = {}, lo = parse_(date).getTime() - 12 * 3600e3, hi = lo + (36 + 8) * 3600e3;
+  const add = (who, t, what) => {
+    if (!who || Object.prototype.toString.call(t) !== '[object Date]' || t.getTime() <= lo || t.getTime() >= hi) return;
+    const k = minsOn_(date, t); if (k < 0 || k > 1440 + NIGHT_CUTOFF) return;
+    const nm = norm_(who); if (!out[nm] || out[nm].m < k) out[nm] = { m: k, what: what };
+  };
+  try {
+    const bk = SpreadsheetApp.openById(String(setv_('Billing data sheet ID') || '1fuxs_ZuXSuhGXFqjlMa9ZhbN02zXUjCul4pPZHfR7UU').trim());
+    const read = (tab, cols, fn) => {
+      const sh = bk.getSheetByName(tab); if (!sh || sh.getLastRow() < 2) return;
+      const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h).trim()), ix = cols.map(h => head.indexOf(h));
+      if (ix.some(i => i < 0)) return;
+      const n = sh.getLastRow() - 1, from = Math.max(2, sh.getLastRow() - 3999);           // recent rows are enough
+      const vals = sh.getRange(from, 1, sh.getLastRow() - from + 1, Math.max.apply(null, ix) + 1).getValues();
+      vals.forEach(r => fn(ix.map(i => r[i])));
+    };
+    read('Bills', ['Billed by', 'Saved at', 'Status', 'Bill no.', 'Location'], v => { if (v[1] && v[1].getTime) add(v[0], v[1], 'bill ' + v[3] + ' at ' + shortLoc_(v[4]) + ' ' + Utilities.formatDate(v[1], tz_(), 'HH:mm')); });
+    read('Day Close', ['Closed by', 'Closed at', 'Location'], v => { if (v[1] && v[1].getTime) add(v[0], v[1], 'cash close at ' + shortLoc_(v[2]) + ' ' + Utilities.formatDate(v[1], tz_(), 'HH:mm')); });
+  } catch (e) { console.error('billing activity ' + e); }
+  try { c.put(ck, JSON.stringify(out), date < today_() ? 3600 : 300); } catch (e) { }
+  return (BACT_[date] = out);
+}
+function shortLoc_(l) { return String(l || '').replace(/ – .*$/, '').replace(/ One29 Mall$/, ''); }
+/** {m, what} = the person's last billing-app activity on that working day, or null. */
+function billLast_(name, date) {
+  if (!name || !billActOn_()) return null;
+  const from = String(setv_('Billing app counts from') || '2026-11-17');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from) && date < from) return null;
+  const a = billActivity_(date)[norm_(name)];
+  return a && a.m >= 0 ? a : null;
+}
+
 // ───────────────────────────── presence (last seen) ─────────────────────────────
 let PRES_ = null;
 function presenceRows_() {
@@ -1929,9 +1977,9 @@ function clockOutWatch() {
       if (nowRel < endRel + 30) return;
       const key = 'COW_' + date + '_' + norm_(x.name).replace(/\W/g, '');
       if (p.getProperty(key)) return; p.setProperty(key, '1');
-      const seen = lastSeen_(x.name, date, ps);
+      const ba = billLast_(x.name, date), seen = ba ? ba.m : lastSeen_(x.name, date, ps);
       const lastPing = presenceRows_().filter(y => y.name === norm_(x.name)).pop();
-      lines.push('• ' + x.name + ' (' + (ro.loc || x.loc) + ') – rota ended ' + minTxt_(endRel) + ', clocked in ' + x.in + ', NOT clocked out. Last seen at work ' + (seen >= 0 ? minTxt_(seen) : '—') +
+      lines.push('• ' + x.name + ' (' + (ro.loc || x.loc) + ') – rota ended ' + minTxt_(endRel) + ', clocked in ' + x.in + ', NOT clocked out. ' + (ba ? 'Last billing-app activity ' + minTxt_(seen) + ' (' + ba.what + ')' : 'Last seen at work ' + (seen >= 0 ? minTxt_(seen) : '—')) +
         (lastPing ? ' · last location ' + Utilities.formatDate(lastPing.t, tz_(), 'HH:mm') + (lastPing.at ? ' at ' + lastPing.loc : ' – ' + Math.round(lastPing.dist) + ' m from ' + lastPing.loc) : ''));
     });
   });
