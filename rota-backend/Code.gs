@@ -99,7 +99,10 @@ const C = {}; Object.keys(T).forEach(k => { C[k] = {}; T[k][1].forEach((h, i) =>
 const DEFAULT_SETTINGS = [
   ['Morning shift', '10:00-19:00', 'Start-end, 24-hour clock.'],
   ['Evening shift', '13:00-22:00', ''],
-  ['Break allowed (min per shift)', 30, 'Paid break per shift. Extra break minutes are cut from the day (the owner can pay them for a person on a day).'],
+  ['Break allowed (min per shift)', 30, 'Break per shift. Extra break minutes are cut from the day (the owner can pay them for a person on a day).'],
+  ['Unpaid break (min per shift)', 30, 'Owner 18 Nov 2026: every shift has a 30-min break that is NOT paid. It is taken off the hours worked even if the person did not clock the break. 0 = off.'],
+  ['Unpaid break from', '2026-11-01', 'Working days from this date have the unpaid break taken off their hours.'],
+  ['Break clock-out mandatory from', '2026-11-17', 'From this date staff MUST tap "Start break" and "Back from break" for their 30-min break. A day without it is flagged "Break not clocked" (30 min is still taken off). A forgotten punch must be told to the manager the SAME DAY; the manager corrects it in the app that day (earlier days only the owner).'],
   ['Late grace (min)', 5, 'Coming in up to this many minutes late is not counted (the owner can excuse a late day).'],
   ['Geofence radius (m)', 200, 'Default for a location; each location can have its own radius in the Locations tab.'],
   ['Max GPS error (m)', 250, 'Clock-ins with a worse GPS reading are refused (ask the person to wait a few seconds / step near the entrance).'],
@@ -1029,13 +1032,20 @@ function dayCalc_(date, s, ro, ps, fx, live) {
   const shiftLen = sE - sS, allow = setn_('Break allowed (min per shift)', 30), grace = setn_('Late grace (min)', 5);
   out.breakMin = Math.round(breakMin); out.extraBreak = Math.max(0, out.breakMin - allow - (fx ? n_(fx.brkPaid) : 0));
   if (fx && fx.brkPaid && out.breakMin > allow) out.flags.push('Extra break paid ' + Math.min(n_(fx.brkPaid), out.breakMin - allow) + ' min');
-  out.worked = Math.max(0, outMin - inMin - out.breakMin);
+  // 18 Nov 2026 (owner): 30-min break per shift is unpaid and mandatory – taken off the hours even when the break was not clocked
+  const ub = liveNow ? 0 : unpaidBreak_(date);
+  out.unpaidBreak = ub;
+  out.worked = Math.max(0, outMin - inMin - Math.max(out.breakMin, ub));
+  if (ub && out.breakMin < ub && !(fx && fx.brk !== '' && fx.brk != null)) {
+    const must = ymdSet_('Break clock-out mandatory from', '2026-11-17');
+    if (date >= must) out.flags.push('Break not clocked' + (out.breakMin ? ' (only ' + out.breakMin + ' min)' : '') + ' – ' + ub + ' min unpaid break taken off');
+  }
   const late = Math.max(0, inMin - sS), excused = !!(fx && fx.lateOk); out.late = late > grace && !excused ? late : 0;
   if (excused && late > grace) out.flags.push('Late ' + late + ' min – excused');
   out.early = Math.max(0, sE - outMin);
   const effIn = late <= grace || excused ? Math.min(inMin, sS) : inMin;
   const inside = Math.max(0, Math.min(outMin, sE) - Math.max(effIn, sS));
-  out.credited = Math.max(0, inside - out.extraBreak);
+  out.credited = Math.max(0, inside - ub - out.extraBreak);
   const before = setv_('Count early arrival as overtime') === 'Yes' || (earlyIn && earlyIn.approved === 'Yes') ? Math.max(0, sS - inMin) : 0;
   out.ot = Math.max(0, outMin - sE) + before;
   if (nonWork) {
@@ -1045,7 +1055,7 @@ function dayCalc_(date, s, ro, ps, fx, live) {
     out.flags.push('Worked on ' + SHIFT_LABEL[shift].toLowerCase());
     return out;
   }
-  out.credit = round2_(Math.min(1, out.credited / shiftLen));
+  out.credit = round2_(Math.min(1, out.credited / Math.max(1, shiftLen - ub)));
   if (!shift) out.flags.push('Not on the rota');
   if (heldOut && heldOut.approved === 'Pending') out.status = 'Clock-out to approve';
   else if (earlyIn && earlyIn.approved === 'Pending' && !(liveNow && open)) out.status = 'Early start to approve';
@@ -1055,6 +1065,17 @@ function dayCalc_(date, s, ro, ps, fx, live) {
   if (out.late) out.flags.push('Late ' + out.late + ' min');
   if (out.extraBreak) out.flags.push('Extra break ' + out.extraBreak + ' min');
   return out;
+}
+/** Minutes of unpaid break for a working day (0 before "Unpaid break from"). */
+function unpaidBreak_(date) {
+  const m = setn_('Unpaid break (min per shift)', 30);
+  return m > 0 && date >= ymdSet_('Unpaid break from', '2026-11-01') ? m : 0;
+}
+/** A yyyy-mm-dd setting (the sheet may hand it back as a date value). */
+function ymdSet_(k, dflt) {
+  let v = String(setv_(k) || dflt);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { const t = new Date(v); v = isNaN(t) ? dflt : ymd_(t); }
+  return v;
 }
 function fixRows_(from, to) {
   return rows_('fix').map((r, i) => ({ row: i + 2, date: ymd_(r[0]), name: s_(r[1]), status: s_(r[2]), in: hm_(r[3]), out: hm_(r[4]), brk: r[5] === '' ? '' : n_(r[5]),
@@ -1805,7 +1826,7 @@ function boot_(me, token) {
   const s = me.owner ? staffByName_(me.name) : myStaff_(me);
   const out = { me: { name: me.name, role: me.role, home: me.home, admin: me.admin, pay: me.pay, owner: me.owner, rights: me.rights, staffLoc: s ? s.loc : '' },
     shifts: { M: shiftTimes_('M'), E: shiftTimes_('E') }, modes: TRIP_MODES.map(m => ({ key: m[0], label: m[1], kind: m[2], receipt: !!RECEIPT_NEEDED[m[0]] })),
-    selfie: setv_('Selfie required') === 'Yes', breakAllow: setn_('Break allowed (min per shift)', 30), grace: setn_('Late grace (min)', 5), maxAcc: setn_('Max GPS error (m)', 250), rates: { bike: setn_('Bike rate ₹/km', 4), car: setn_('Car rate ₹/km', 10) }, claimDays: setn_('Claim within (days)', 7),
+    selfie: setv_('Selfie required') === 'Yes', breakAllow: setn_('Break allowed (min per shift)', 30), unpaidBreak: setn_('Unpaid break (min per shift)', 30), breakMust: ymdSet_('Break clock-out mandatory from', '2026-11-17'), grace: setn_('Late grace (min)', 5), maxAcc: setn_('Max GPS error (m)', 250), rates: { bike: setn_('Bike rate ₹/km', 4), car: setn_('Car rate ₹/km', 10) }, claimDays: setn_('Claim within (days)', 7),
     locations: locs_(false).map(l => ({ name: l.name, type: l.type, lat: l.lat, lng: l.lng, radius: l.radius })) };
   if (s && tracked_(s)) { out.day = myDay_(me); out.weeks = myRota_(me); }
   if (me.admin) {

@@ -357,7 +357,8 @@ function viewToday(m) {
   const shiftTxt = sh ? (sh.start ? sh.label + ' ' + sh.start + '–' + sh.end : sh.label) + (sh.loc ? ' · ' + sh.loc : '') : 'No shift on the rota today';
   const last = d.punches[d.punches.length - 1];
   let status = 'Not clocked in', sub = shiftTxt;
-  if (st === 'IN') { status = 'Working'; sub = 'Since ' + (d.punches.filter(p => p.type === 'IN').pop() || {}).time + ' · worked ' + hmin(c.worked); }
+  const noBrk = S.b.unpaidBreak && today() >= (S.b.breakMust || '9999') && !d.punches.some(p => p.type === 'BO');
+  if (st === 'IN') { status = 'Working'; sub = 'Since ' + (d.punches.filter(p => p.type === 'IN').pop() || {}).time + ' · worked ' + hmin(c.worked) + (noBrk ? ' · ⚠ take your ' + S.b.unpaidBreak + '-min break: tap Start break and Back from break (unpaid, compulsory)' : ''); }
   if (st === 'BREAK') { status = 'On break'; sub = 'Since ' + last.time; }
   if (st === 'OUT') { status = 'Clocked out at ' + last.time; sub = 'Worked ' + hmin(c.worked) + (c.breakMin ? ' · break ' + c.breakMin + ' min' : ''); }
   const shiftLen = sh && sh.start ? ((toMin(sh.end) - toMin(sh.start) + 1440) % 1440 || 1440) : 540;   // shifts can end after midnight
@@ -391,6 +392,8 @@ function viewToday(m) {
 async function doPunch(type, reason, selfieData) {
   const label = { IN: 'Clock in', BO: 'Start break', BI: 'Back from break', OUT: 'Clock out' }[type];
   const evShift = S.b.day && S.b.day.shift && S.b.day.shift.event, afterMid = S.b.day && S.b.day.date && S.b.day.date !== today();
+  if (type === 'OUT' && !reason && S.b.unpaidBreak && today() >= (S.b.breakMust || '9999') && S.b.day && !(S.b.day.punches || []).some(p => p.type === 'BO') &&
+    !confirm('You have NOT clocked your ' + S.b.unpaidBreak + '-min break today.\n\nThe break is compulsory and unpaid – ' + S.b.unpaidBreak + ' min is taken off your hours anyway, and the day is marked "Break not clocked".\n\nIf you took a break and forgot to tap, tell your manager TODAY so they can correct it.\n\nClock out anyway?')) return;
   if (type === 'OUT' && !reason && !confirm(evShift || afterMid ? 'Clock out now?\n\n' + (evShift ? 'You are at an event stall' : 'It is after midnight') + ' – your clock-out time goes to the owner for approval. Until it is approved you are paid up to your rota end time.' : 'Clock out for the day?')) return;
   // location is found while the selfie is being taken (both at once = no extra waiting)
   let prog = null, lastP = null;
