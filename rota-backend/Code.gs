@@ -1927,8 +1927,9 @@ function shortLoc_(l) { return String(l || '').replace(/ – .*$/, '').replace(/
 /** {m, what} = the person's last billing-app activity on that working day, or null. */
 function billLast_(name, date) {
   if (!name || !billActOn_()) return null;
-  const from = String(setv_('Billing app counts from') || '2026-11-17');
-  if (/^\d{4}-\d{2}-\d{2}$/.test(from) && date < from) return null;
+  let from = String(setv_('Billing app counts from') || '2026-11-17');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) { const t = new Date(from); from = isNaN(t) ? '2026-11-17' : ymd_(t); }   // the sheet turns the date into a date value
+  if (date < from) return null;
   const a = billActivity_(date)[norm_(name)];
   return a && a.m >= 0 ? a : null;
 }
