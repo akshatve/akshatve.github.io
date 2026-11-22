@@ -144,7 +144,7 @@ const store = { get(k) { try { return localStorage.getItem('nvinv_' + k); } catc
 const ymd = d => { const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 10); };
 const today = () => ymd(new Date());
 const isOwner = () => !!(S.user && S.user.role === 'Owner');
-const can = k => !!(S.user && (S.user.role === 'Owner' || ((S.user.rights || []).indexOf(k) >= 0 && (k !== 'transfer' || S.user.role === 'Manager'))));
+const can = k => !!(S.user && (S.user.role === 'Owner' || (k === 'payEdit' && S.user.role === 'Manager') || ((S.user.rights || []).indexOf(k) >= 0 && (k !== 'transfer' || S.user.role === 'Manager'))));   // v18.58: every manager may change payment methods
 const canApprove = () => !!(S.user && (S.user.role === 'Owner' || S.user.role === 'Manager' || (S.user.rights || []).indexOf('approve') >= 0));
 const IN_APP = !!window.NV_APP;   // true in the installed app (camera + Bluetooth work), false inside Google's page
 
@@ -5107,7 +5107,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = 'eb01ca8209';
+<script>window.NV_BUILD = 'cbfbc149e3';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
