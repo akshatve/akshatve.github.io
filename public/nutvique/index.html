@@ -2099,6 +2099,7 @@ async function viewMore() {
   if (can('sales') || isOwnerUi()) h += '<div class="card"><h3>💰 Cash pickups</h3><div class="small mute">Every time cash is taken from a store drawer – who took it, how much, and whether the owner has confirmed receiving it.</div><button class="btn sm" id="kpl" style="margin-top:10px">Open</button></div>';
   h += '<div class="card"><h3>✅ Store checklists</h3><div class="small mute">Morning and night tasks of every store – who did what and when, the night-to-morning handover, comments, and the manager’s check.</div><button class="btn sm" id="hol" style="margin-top:10px">Open</button></div>';
   h += '<div class="card"><h3>🏦 Cash deposited in the bank</h3><div class="small mute">Store cash deposited in the bank – who deposited it, how much, which bank, and the photo of the deposit slip.</div><button class="btn sm" id="bkl" style="margin-top:10px">Open</button></div>';
+  if (can('accounts')) h += '<div class="card"><h3>📒 Accounts – store payouts</h3><div class="small mute">Next day, with each store’s day close: check the bill memo scan, make the accounting voucher with the same CV no., and see which ones the staff have signed.</div><button class="btn sm" id="pal" style="margin-top:10px">Open</button></div>';
   h += '<div class="card"><h3>🧾 Payout vouchers</h3><div class="small mute">Cash paid out of the store drawers – voucher no., who took it, what for, and the signed copy.</div><button class="btn sm" id="pvl" style="margin-top:10px">Open</button></div>';
   if (can('sales')) h += '<div class="card"><h3>UPI payments (bank emails)</h3><div class="small mute">Every payment ICICI emails about, and the bill it belongs to. Payments not linked to a bill are flagged.</div><button class="btn sm" id="upil" style="margin-top:10px">Open</button></div>';
   if (canApprove() && !can('approve')) h += '<div class="card"><h3>Store access requests</h3><div class="small mute">Staff covering a shift at another store ask here for one day.</div><button class="btn sm" id="apv" style="margin-top:10px">Requests</button></div>';
@@ -2127,6 +2128,7 @@ async function viewMore() {
   if ($('#col')) $('#col').onclick = () => corpScreen();
   if ($('#kpl')) $('#kpl').onclick = () => cashPickupsSheet(isOwnerUi() ? 'waiting' : 'all');
   if ($('#pvl')) $('#pvl').onclick = () => pvListSheet();
+  if ($('#pal')) $('#pal').onclick = () => pvAccountsSheet();
   if ($('#hol')) $('#hol').onclick = () => hoBoard();
   if ($('#bkl')) $('#bkl').onclick = () => bkListSheet();
   if ($('#apc')) $('#apc').onclick = codesSheet;
@@ -3197,7 +3199,7 @@ function drawToday() {
   const r = B.today, s = r.sum;
   box.innerHTML = '<div class="row"><h3 class="grow" style="margin:0">' + (r.q ? 'Search: ' + esc(r.q) : (r.date && r.date !== today() ? 'Bills of ' + esc(r.date.split('-').reverse().join('-')) : 'Today\'s bills') + ' · ' + esc(LOC_SHORT[B.loc] || locLabel(B.loc))) + '</h3>' +
     '<input class="i" type="date" id="b_day" style="max-width:150px" value="' + esc(r.q ? '' : (r.date || today())) + '" title="Show bills of another day">' +
-    (B.loc ? '<button class="btn sm ghost" id="b_ho" title="Morning and night store checklist">✅ Tasks</button><button class="btn sm ghost" id="b_pvo" title="Cash paid out of the drawer – issue a voucher the person signs">🧾 Pay out</button><button class="btn sm ghost" id="b_dcl" title="Count cash, card and UPI at the end of the day">Close the day</button>' : '') +
+    (B.loc ? ((B.boot && (B.boot.pvSign || []).length) ? '<button class="btn sm gold" id="b_pvs" title="Accounting vouchers for cash you paid out – sign them">✍️ ' + B.boot.pvSign.length + ' voucher' + (B.boot.pvSign.length > 1 ? 's' : '') + ' to sign</button>' : '') + '<button class="btn sm ghost" id="b_ho" title="Morning and night store checklist">✅ Tasks</button><button class="btn sm ghost" id="b_pvo" title="Cash paid out of the drawer – issue a voucher the person signs">🧾 Pay out</button><button class="btn sm ghost" id="b_dcl" title="Count cash, card and UPI at the end of the day">Close the day</button>' : '') +
     '<input class="i" id="b_find" style="max-width:220px" placeholder="Find bill no. / mobile" value="' + esc(r.q || '') + '"></div>' +
     (s ? '<div class="bigp"><div><span>' + s.bills + ' bill' + (s.bills === 1 ? '' : 's') + '</span><b>₹' + money(s.total) + '</b></div><div><span>Cash</span><b>₹' + money(s.cash) + '</b></div><div><span>UPI</span><b>₹' + money(s.upi) + '</b></div><div><span>Card</span><b>₹' + money(s.card) + '</b></div></div>' +
       (s.short ? '<div class="tiny" style="color:var(--bad)">Short payments: ₹' + money(s.short) + ' on ' + s.shortBills + ' bill' + (s.shortBills === 1 ? '' : 's') + ' (Cash / UPI / Card show what was actually received)</div>' : '') +
@@ -3208,6 +3210,7 @@ function drawToday() {
   $$('.li', box).forEach(li => li.onclick = () => openBill(li.dataset.no));
   if ($('#b_dcl')) $('#b_dcl').onclick = () => dayCloseSheet(B.loc, ($('#b_day') && $('#b_day').value) || today());
   if ($('#b_pvo')) $('#b_pvo').onclick = () => pvForm(B.loc, today(), null, null);
+  if ($('#b_pvs')) $('#b_pvs').onclick = () => pvToSignSheet();
   if ($('#b_ho')) $('#b_ho').onclick = () => hoSheet(B.loc, hoDay());
   $('#b_day').onchange = async e => { const v = e.target.value || today(); const res = await run('Loading…', () => call('listBills', { date: v, loc: B.loc })).catch(() => null); if (res) { B.today = res; drawToday(); } };
   const f = $('#b_find');
@@ -4279,10 +4282,10 @@ function pvOn(R) { return (R.vouchers || []).length > 0 || (R.pvFrom && R.date >
 function pvTot(R) { return Math.round((R.vouchers || []).reduce((a, v) => a + v.amount, 0) * 100) / 100; }
 function pvDayBox(R) {
   const vs = R.vouchers || [], miss = vs.filter(v => !v.signed).length;
-  return '<div class="card" style="padding:10px 12px;margin:4px 0 0">' + (vs.length ? vs.map(v => '<div class="row" data-pvno="' + esc(v.no) + '" style="cursor:pointer;padding:5px 0;border-bottom:1px solid var(--line,#eee);flex-wrap:nowrap"><div class="grow small"><b>' + esc(v.no.split('/').pop()) + '</b> · ' + esc(v.to) + ' · ' + esc(v.cat) +
-      '<div class="tiny mute">' + esc(v.purpose) + '</div><div class="tiny">' + (v.acct ? '🧾 <a href="#" data-acct="' + esc(v.acct) + '">' + esc(v.acct) + '</a>' : '<span style="color:var(--bad)">accounting voucher no. missing</span>') + '</div></div><b class="nowrap">' + pvRs(v.amount) + '</b><span class="pill ' + (v.signed ? 'p-ok' : 'p-warn') + '" style="margin-left:6px">' + (v.signed ? 'signed ✓' : 'sign!') + '</span></div>').join('')
+  return '<div class="card" style="padding:10px 12px;margin:4px 0 0">' + (vs.length ? vs.map(v => '<div class="row" data-pvno="' + esc(v.no) + '" style="cursor:pointer;padding:5px 0;border-bottom:1px solid var(--line,#eee);flex-wrap:nowrap"><div class="grow small"><b>' + esc(v.cv ? v.acct : v.no.split('/').pop()) + '</b> · ' + esc(v.to) + ' · ' + esc(v.cat) +
+      '<div class="tiny mute">' + esc(v.purpose) + '</div><div class="tiny">' + (v.cv ? '<span class="mute">' + esc(v.stage) + '</span>' : v.acct ? '🧾 <a href="#" data-acct="' + esc(v.acct) + '">' + esc(v.acct) + '</a>' : '<span style="color:var(--bad)">accounting voucher no. missing</span>') + '</div></div><b class="nowrap">' + pvRs(v.amount) + '</b><span class="pill ' + (v.signed ? 'p-ok' : 'p-warn') + '" style="margin-left:6px">' + (v.cv ? (v.memo ? 'memo ✓' : 'memo!') : v.signed ? 'signed ✓' : 'sign!') + '</span></div>').join('')
     : '<div class="tiny mute">No cash paid out today. Every payout needs a voucher – tap below when you pay someone.</div>') +
-    (miss ? '<div class="tiny" style="color:var(--bad);margin-top:6px">⚠ ' + miss + ' voucher' + (miss > 1 ? 's' : '') + ' without the signed copy – tap it and upload the photo or let the person sign on the screen.</div>' : '') +
+    (miss ? '<div class="tiny" style="color:var(--bad);margin-top:6px">⚠ ' + miss + ' voucher' + (miss > 1 ? 's' : '') + ' without the bill memo scan / signed copy – tap it and upload it.</div>' : '') +
     (R.acctErr ? '<div class="tiny" style="color:var(--warn);margin-top:6px">Staff Rota vouchers could not be checked: ' + esc(R.acctErr) + '</div>' : '') +
     '<div class="tiny mute" style="margin-top:6px">Vouchers Veer marks “paid from ' + esc(pvLoc(R.loc)) + '” in the Staff Rota app appear here by themselves.</div>' +
     '<button class="btn ghost sm" id="dc_pv" style="margin-top:8px">🧾 New payout voucher</button></div>';
@@ -4331,8 +4334,9 @@ function pvForm(loc, date, people, done) {
     '<div><label class="f">Paid to (person taking the cash)</label><input class="i" id="pv_t" list="pv_tl" placeholder="Name" autocomplete="off"><datalist id="pv_tl">' + (people || []).map(p => '<option value="' + esc(p) + '">').join('') + '</datalist></div>' +
     '<div><label class="f">Their mobile (optional)</label><input class="i" id="pv_p" inputmode="tel" placeholder="10 digits"></div></div>' +
     '<label class="f">Details</label><input class="i" id="pv_u" placeholder="e.g. porter for Nutcraft delivery, 6 teas for staff, floor cleaning">' +
-    '<label class="f">Accounting voucher no. (from the Staff Rota app – travel TV/…, expenses EV/…)</label><div class="row" style="gap:6px;flex-wrap:nowrap"><input class="i grow" id="pv_v" placeholder="e.g. TV/26-27/0002 or EV/26-27/0001" autocapitalize="characters"><button class="btn ghost sm" id="pv_vc">Check</button></div><div class="tiny" id="pv_vi"></div>' +
-    '<div class="tiny mute" style="margin-top:6px">After saving, the person signs the voucher – on paper (then upload a photo) or on this screen. It goes into tonight’s day close as “cash paid out”.</div>' +
+    '<details style="margin-top:8px"' + ((date || today()) >= CV_FROM0 ? '' : ' open') + '><summary class="tiny" style="cursor:pointer">Paying a Staff Rota voucher (travel TV/… or expense EV/…)? Tap here</summary><label class="f">Staff Rota voucher no. (travel TV/…, expenses EV/…)</label><div class="row" style="gap:6px;flex-wrap:nowrap"><input class="i grow" id="pv_v" placeholder="e.g. TV/26-27/0002 or EV/26-27/0001" autocapitalize="characters"><button class="btn ghost sm" id="pv_vc">Check</button></div><div class="tiny" id="pv_vi"></div></details>' +
+    ((date || today()) >= CV_FROM0 ? '<div class="okbox tiny" style="margin-top:8px">When you save, the app gives the <b>accounting voucher no.</b> (CV-…). <b>Write that number on the bill / memo</b>, then scan the memo and upload it. Next day accounts make the voucher with the same number and you sign it in the app.</div>'
+      : '<div class="tiny mute" style="margin-top:6px">After saving, the person signs the voucher – on paper (then upload a photo) or on this screen. It goes into tonight’s day close as “cash paid out”.</div>') +
     '<button class="btn gold block" id="pv_s" style="margin-top:12px">Save voucher</button>');
   let acct = null;
   const chk = async () => {
@@ -4357,7 +4361,7 @@ function pvForm(loc, date, people, done) {
     const r = await run('Saving the voucher…', () => call('pvCreate', { loc: loc, date: date || today(), amount: $('#pv_a', m).value.trim(), cat: $('#pv_c', m).value, to: $('#pv_t', m).value.trim(), phone: $('#pv_p', m).value.trim(), purpose: $('#pv_u', m).value.trim(), acct: acct ? acct.no : '' })).catch(() => null);
     if (!r) return;
     if (acct) { const p = await rotaCall('voucherStorePay', { no: acct.no, pv: r.voucher.no, store: loc, paidOn: r.voucher.date, amount: r.voucher.amount }).catch(e => { toast('Saved, but ' + acct.no + ' could not be marked paid in the Staff Rota app: ' + e.message, true); return null; }); if (p) toast(acct.no + ' marked paid from ' + pvLoc(loc)); }
-    m.close(); toast('Voucher ' + r.voucher.no + ' saved – now get it signed');
+    m.close(); toast(r.voucher.cv ? 'Accounting voucher no. ' + r.voucher.acct + ' – write it on the bill memo, then upload the scan' : 'Voucher ' + r.voucher.no + ' saved – now get it signed');
     if (done) done(r.voucher);
     pvView(r.voucher, { onChange: done });
   };
@@ -4371,7 +4375,112 @@ function pvCard(v) {
       .map(x => '<tr><td style="padding:3px 6px 3px 0;color:#666;white-space:nowrap;vertical-align:top">' + x[0] + '</td><td style="padding:3px 0">' + x[1] + '</td></tr>').join('') + '</table>' +
     '<div style="margin-top:28px;display:flex;gap:16px;font-size:12px;color:#444"><div style="flex:1;border-top:1px solid #333;padding-top:4px">Received the above amount in cash<br><b>Signature of ' + esc(v.to) + '</b></div><div style="flex:1;border-top:1px solid #333;padding-top:4px">Paid by<br><b>' + esc(v.by) + '</b></div></div></div>';
 }
-function pvView(v, opts) {
+/* ───── v18.59 (owner 24 Nov 2026): store payout → accounting voucher no. CV-… at entry → staff write it on the bill memo and upload the scan →
+   next day accounts (Veer) make the accounting voucher with the same no. → the staff who paid signs it in the app → Completed ───── */
+const CV_FROM0 = '2026-11-24';
+const CV_LEDGER0 = { 'Porter / delivery': 'Porter & Delivery Charges', 'Tea / snacks / water': 'Staff Welfare Expenses', 'Cleaning / housekeeping': 'Cleaning Expenses', 'Staff advance': 'Staff Advance', 'Staff travel / fuel': 'Travelling & Conveyance', 'Repairs / maintenance': 'Repairs & Maintenance', 'Stationery / printing': 'Printing & Stationery', 'Packing material': 'Packaging Material', 'Event expense': 'Event Expenses', 'Other': 'Sundry Expenses' };
+const cvT = x => x ? new Date(x).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+const cvSame = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+function pvView(v, opts) { return v && v.cv ? cvView(v, opts) : pvViewOld(v, opts); }
+function cvSteps(v) {
+  const st = [['Cash paid out – number given', true, pvD(v.date) + ' ' + v.time + ' · ' + v.by],
+    ['Bill memo scanned and uploaded', v.memo, v.memo ? v.memoBy + ' · ' + cvT(v.memoAt) : 'write ' + v.acct + ' on the bill / memo, then upload the scan'],
+    ['Accounting voucher made (accounts)', !!v.avAt, v.avAt ? v.avBy + ' · ' + cvT(v.avAt) + ' · Dr ' + v.ledger : 'Veer – next day, with the store’s day close'],
+    ['Voucher signed by ' + v.by, v.avSigned, v.avSigned ? v.avSignedBy + ' · ' + cvT(v.avSignedAt) : v.avAt ? 'waiting for ' + v.by + ' to sign' : '']];
+  return st.map((s, i) => '<div class="row" style="gap:8px;flex-wrap:nowrap;padding:4px 0"><span class="pill ' + (s[1] ? 'p-ok' : 'p-warn') + '" style="min-width:26px;text-align:center">' + (s[1] ? '✓' : i + 1) + '</span><div class="grow small"><b>' + esc(s[0]) + '</b><div class="tiny mute">' + esc(s[2] || '') + '</div></div></div>').join('');
+}
+function cvCard(v) {
+  const L = v.ledger || CV_LEDGER0[v.cat] || 'Sundry Expenses';
+  const row = x => '<tr><td style="padding:3px 6px 3px 0;color:#666;white-space:nowrap;vertical-align:top">' + x[0] + '</td><td style="padding:3px 0">' + x[1] + '</td></tr>';
+  return '<div style="border:1.5px solid #1F2A44;border-radius:10px;padding:14px 14px 10px;background:#fff;color:#1d2433">' +
+    '<div style="text-align:center;font-weight:800;color:#1F2A44;font-size:16px">NUTZY FOODS PRIVATE LIMITED</div><div style="text-align:center;font-size:11px;color:#555">' + esc(v.loc === 'Event' ? 'Event stall' : v.loc) + '</div>' +
+    '<div style="text-align:center;font-weight:700;letter-spacing:.14em;border:1px solid #1F2A44;margin:8px 0;padding:3px;font-size:13px">CASH PAYMENT VOUCHER</div>' +
+    '<table style="width:100%;font-size:13px;border-collapse:collapse">' + [['Voucher no.', '<b>' + esc(v.acct) + '</b>'], ['Date', esc(pvD(v.date))], ['Debit', '<b>' + esc(L) + ' A/c</b>'], ['Credit', 'Cash – ' + esc(v.loc === 'Event' ? 'Event Stall' : v.loc) + ' A/c'],
+      ['Paid to', '<b>' + esc(v.to) + '</b>' + (v.phone ? ' · ' + esc(v.phone) : '')], ['Particulars', esc(v.cat) + ' – ' + esc(v.purpose)], ['Amount', '<b style="font-size:18px">' + pvRs(v.amount) + '</b>'], ['In words', esc(v.words)], ['Ref.', 'Store payout ' + esc(v.no) + ' · bill memo scan attached']].map(row).join('') + '</table>' +
+    '<div style="margin-top:28px;display:flex;gap:16px;font-size:12px;color:#444"><div style="flex:1;border-top:1px solid #333;padding-top:4px">Prepared by (accounts)<br><b>' + esc(v.avBy || '') + '</b>' + (v.avAt ? '<br>' + esc(cvT(v.avAt)) : '') + '</div><div style="flex:1;border-top:1px solid #333;padding-top:4px">Paid by – signature<br><b>' + esc(v.by) + '</b></div></div></div>';
+}
+function cvPrint(v) {
+  const w = window.open('', '_blank'); if (!w) { toast('Allow pop-ups to print', true); return; }
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(v.acct) + '</title><style>body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:16px}@page{size:A5;margin:10mm}.c{max-width:520px;margin:0 auto}@media print{button{display:none}}</style></head><body><div class="c">' +
+    cvCard(v) + '<button onclick="print()" style="display:block;margin:16px auto;padding:10px 18px">Print</button></div></body></html>');
+  w.document.close(); setTimeout(() => { try { w.focus(); w.print(); } catch (e) { } }, 400);
+}
+async function cvShowFile(v, which, el) {
+  const r = await run('Loading…', () => call('pvFile', { no: v.no, which: which })).catch(() => null); if (!r) return;
+  const url = 'data:' + r.mime + ';base64,' + r.b64;
+  el.innerHTML = /pdf/.test(r.mime) ? '<a class="btn ghost" download="' + esc(r.name) + '" href="' + url + '">⬇ Download (PDF)</a>' : '<img src="' + url + '" style="max-width:100%;border:1px solid #ddd;border-radius:8px">';
+}
+function cvView(v, opts) {
+  opts = opts || {};
+  const m = modal('🧾 ' + v.acct, '<div id="cv_b"></div>', { onClose: () => { if (opts.changed && opts.onChange) opts.onChange(v); } });
+  const draw = () => {
+    const mine = cvSame(S.user && S.user.name, v.by), acc = can('accounts'), own = isOwnerUi(), cx = v.status === 'Cancelled';
+    $('#cv_b', m).innerHTML = (cx ? '<div class="warnbox bad" style="margin-bottom:8px">Cancelled by ' + esc(v.cxBy) + ' – ' + esc(v.cxReason) + '</div>' : v.stage === 'Completed' ? '<div class="okbox" style="margin-bottom:8px">✓ Completed – voucher signed by ' + esc(v.by) + '</div>' : '') +
+      '<div style="text-align:center;border:2px dashed #1F2A44;border-radius:12px;padding:10px;margin-bottom:10px;background:#fff;color:#1d2433"><div class="tiny" style="color:#666">Accounting voucher no. – write it on the bill / memo</div><div style="font-size:26px;font-weight:800;letter-spacing:.03em;color:#1F2A44">' + esc(v.acct) + '</div>' +
+      '<div class="small"><b>' + pvRs(v.amount) + '</b> · ' + esc(v.to) + ' · ' + esc(v.cat) + '</div><div class="tiny" style="color:#666">' + esc(v.purpose) + '<br>' + esc(pvLoc(v.loc)) + ' · ' + esc(pvD(v.date)) + ' ' + esc(v.time) + ' · paid by ' + esc(v.by) + ' · ' + esc(v.no) + '</div></div>' +
+      '<div class="card" style="padding:8px 12px;margin:0">' + cvSteps(v) + '</div>' +
+      (!cx ? '<div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">' +
+        (!v.avAt || acc || own ? '<label class="btn ' + (v.memo ? 'ghost' : 'gold') + '" style="cursor:pointer">📷 ' + (v.memo ? 'Replace bill memo scan' : 'Upload scan of the bill memo') + '<input type="file" id="cv_mu" accept="image/*,application/pdf" style="display:none"></label>' : '') +
+        (v.memo ? '<button class="btn ghost" id="cv_mv">👁 Bill memo</button>' : '') +
+        (acc && v.memo && !v.avSigned ? '<button class="btn ' + (v.avAt ? 'ghost' : 'gold') + '" id="cv_mk">📒 ' + (v.avAt ? 'Change debit ledger' : 'Make accounting voucher') + '</button>' : '') +
+        (v.avAt ? '<button class="btn ghost" id="cv_av">👁 Accounting voucher</button><button class="btn ghost" id="cv_pr">🖨 Print voucher</button>' : '') +
+        (v.avAt && !v.avSigned && (mine || own) ? '<button class="btn gold" id="cv_sg">✍️ Sign the voucher</button><label class="btn ghost" style="cursor:pointer">📷 Upload signed voucher<input type="file" id="cv_su" accept="image/*,application/pdf" style="display:none"></label>' : '') +
+        (v.avSigned ? '<button class="btn ghost" id="cv_sv">👁 Signed voucher</button>' : '') +
+        (opts.canCancel && (!v.avSigned || own) ? '<button class="btn ghost" id="cv_cx" style="color:var(--bad)">Cancel</button>' : '') + '</div>' : '') +
+      (!cx && v.avAt && !v.avSigned && !mine && !own ? '<div class="tiny mute" style="margin-top:6px">Only ' + esc(v.by) + ' (who paid the cash) can sign this voucher.</div>' : '') +
+      (!cx && v.memo && !v.avAt && !acc ? '<div class="tiny mute" style="margin-top:6px">Accounts (Veer) will make the accounting voucher next day. Then ' + esc(v.by) + ' signs it here.</div>' : '') +
+      '<div id="cv_img" style="margin-top:10px"></div>';
+    const got = (r, msg) => { v = r.voucher; opts.changed = true; draw(); toast(msg); };
+    const up = (id, action, msg) => { const el = $(id, m); if (el) el.onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      const b = await fileToBase64(f).catch(err => { toast(err.message, true); return null; }); if (!b) return;
+      const r = await run('Uploading…', () => call(action, { no: v.no, b64: b.base64, mime: b.mime, kind: 'photo' })).catch(() => null); if (r) got(r, msg); }; };
+    up('#cv_mu', 'pvMemo', 'Bill memo scan saved ✓'); up('#cv_su', 'pvAvSign', 'Signed voucher saved – completed ✓');
+    if ($('#cv_mv', m)) $('#cv_mv', m).onclick = () => cvShowFile(v, 'memo', $('#cv_img', m));
+    if ($('#cv_sv', m)) $('#cv_sv', m).onclick = () => cvShowFile(v, 'av', $('#cv_img', m));
+    if ($('#cv_av', m)) $('#cv_av', m).onclick = () => { $('#cv_img', m).innerHTML = cvCard(v); };
+    if ($('#cv_pr', m)) $('#cv_pr', m).onclick = () => cvPrint(v);
+    if ($('#cv_sg', m)) $('#cv_sg', m).onclick = () => pvSignPad(v, r => got(r, 'Voucher signed – completed ✓'), { av: true });
+    if ($('#cv_mk', m)) $('#cv_mk', m).onclick = () => {
+      const L0 = v.ledger || CV_LEDGER0[v.cat] || 'Sundry Expenses', ls = Object.keys(CV_LEDGER0).map(k => CV_LEDGER0[k]);
+      const k = modal('📒 Accounting voucher ' + v.acct, '<div class="small" style="margin-bottom:8px">Check the bill memo first (it must show <b>' + esc(v.acct) + '</b> and <b>' + pvRs(v.amount) + '</b>).</div>' +
+        '<label class="f">Debit ledger (Tally)</label><input class="i" id="cv_l" list="cv_ll" value="' + esc(L0) + '"><datalist id="cv_ll">' + ls.map(x => '<option value="' + esc(x) + '">').join('') + '</datalist>' +
+        '<div class="tiny mute" style="margin:6px 0">Credit: Cash – ' + esc(v.loc) + ' A/c · same number ' + esc(v.acct) + '</div><div id="cv_mm"></div>' +
+        '<button class="btn gold block" id="cv_ok" style="margin-top:10px">Make voucher ' + esc(v.acct) + '</button>');
+      cvShowFile(v, 'memo', $('#cv_mm', k));
+      $('#cv_ok', k).onclick = async () => { const r = await run('Making the voucher…', () => call('pvAvMake', { no: v.no, ledger: $('#cv_l', k).value.trim() })).catch(() => null); if (r) { k.close(); got(r, 'Accounting voucher ' + v.acct + ' made – now ' + v.by + ' signs it'); } };
+    };
+    if ($('#cv_cx', m)) $('#cv_cx', m).onclick = async () => {
+      const why = prompt('Why is ' + v.acct + ' cancelled?') || ''; if (!why.trim()) return;
+      const r = await run('Cancelling…', () => call('pvCancel', { no: v.no, reason: why })).catch(() => null); if (r) got(r, 'Cancelled');
+    };
+  };
+  draw();
+}
+async function pvToSignSheet() {
+  const r = await run('Loading…', () => call('pvToSign', {})).catch(() => null); if (!r) return;
+  const m = modal('✍️ Vouchers to sign', r.list.length ? '<div class="small mute" style="margin-bottom:6px">Accounts have made these vouchers for cash you paid out. Open each one, check it and sign.</div>' + r.list.map(v => '<div class="row" data-cvs="' + esc(v.no) + '" style="cursor:pointer;padding:8px 0;border-bottom:1px solid var(--line,#eee)"><div class="grow small"><b>' + esc(v.acct) + '</b> · ' + esc(v.to) + ' · ' + esc(v.cat) + '<div class="tiny mute">' + esc(pvLoc(v.loc)) + ' · ' + esc(pvD(v.date)) + '</div></div><b>' + pvRs(v.amount) + '</b></div>').join('') : '<div class="empty small">Nothing to sign.</div>');
+  $$('[data-cvs]', m).forEach(x => x.onclick = () => { const v = r.list.find(y => y.no === x.dataset.cvs); m.close(); pvView(v, { onChange: () => { if (B.boot) B.boot.pvSign = (B.boot.pvSign || []).filter(y => y.no !== v.no || v.stage !== 'Completed'); } }); });
+}
+async function pvAccountsSheet() {
+  const L = ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120', 'Event'];
+  const ST = [['acc', 'To make (memo uploaded)'], ['sign', 'Waiting for staff signature'], ['memo', 'Bill memo scan pending'], ['done', 'Completed'], ['all', 'All']];
+  const m = modal('📒 Accounts – store payouts', '<div class="row" style="gap:6px;flex-wrap:wrap"><select class="i" id="pa_s" style="max-width:220px">' + ST.map(s => '<option value="' + s[0] + '">' + s[1] + '</option>').join('') + '</select>' +
+    '<select class="i" id="pa_l" style="max-width:170px"><option value="">All stores</option>' + L.map(l => '<option value="' + esc(l) + '">' + esc(pvLoc(l)) + '</option>').join('') + '</select>' +
+    '<input class="i" type="date" id="pa_f" style="max-width:150px"><input class="i" type="date" id="pa_t" style="max-width:150px"></div><div id="pa_x" style="margin-top:10px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
+  $('#pa_f', m).value = CV_FROM0; $('#pa_t', m).value = today();
+  const load = async () => {
+    let r; try { r = await call('pvAccounts', { stage: $('#pa_s', m).value, loc: $('#pa_l', m).value, from: $('#pa_f', m).value, to: $('#pa_t', m).value }); } catch (e) { $('#pa_x', m).innerHTML = '<div class="warnbox bad">' + esc(e.message) + '</div>'; return; }
+    const c = r.counts, g = {}; r.list.forEach(v => { const k = v.date + '|' + v.loc; (g[k] = g[k] || []).push(v); });
+    $('#pa_x', m).innerHTML = '<div class="tiny" style="margin-bottom:8px">' + [['To make', 'With accounts'], ['To sign (staff)', 'Voucher signature pending'], ['Memo pending', 'Bill memo scan pending'], ['Completed', 'Completed']].map(x => esc(x[0]) + ' <b>' + (c[x[1]] || 0) + '</b>').join(' · ') + '</div>' +
+      (r.list.length ? Object.keys(g).map(k => { const vs = g[k], v0 = vs[0]; return '<div class="card" style="padding:8px 12px;margin:0 0 8px"><div class="small"><b>' + esc(pvD(v0.date)) + ' · ' + esc(pvLoc(v0.loc)) + '</b> <span class="pill ' + (/Checked|Closed/.test(v0.dayClose) ? 'p-ok' : 'p-warn') + '">day close: ' + esc(v0.dayClose) + '</span> <span class="tiny mute">' + pvRs(vs.reduce((a, v) => a + v.amount, 0)) + '</span></div>' +
+        vs.map(v => '<div class="row" data-pa="' + esc(v.no) + '" style="cursor:pointer;padding:6px 0;border-top:1px solid var(--line,#eee);flex-wrap:nowrap"><div class="grow small"><b>' + esc(v.acct) + '</b> · ' + esc(v.to) + ' · ' + esc(v.cat) + '<div class="tiny mute">' + esc(v.purpose) + ' · paid by ' + esc(v.by) + '</div></div><b class="nowrap">' + pvRs(v.amount) + '</b><span class="pill ' + (v.stage === 'Completed' ? 'p-ok' : 'p-warn') + '" style="margin-left:6px">' + esc(v.stage) + '</span></div>').join('') + '</div>'; }).join('')
+        : '<div class="empty small">Nothing here.</div>');
+    $$('[data-pa]', m).forEach(x => x.onclick = () => pvView(r.list.find(v => v.no === x.dataset.pa), { onChange: load }));
+  };
+  ['pa_s', 'pa_l', 'pa_f', 'pa_t'].forEach(id => $('#' + id, m).onchange = load); load();
+}
+function pvViewOld(v, opts) {
   opts = opts || {};
   const m = modal('🧾 ' + v.no, '<div id="pv_b"></div>', { onClose: () => { if (opts.changed && opts.onChange) opts.onChange(v); } });
   const draw = () => {
@@ -4421,8 +4530,9 @@ function pvPrint(v) {
     pvCard(v) + '<div class="cp">' + pvCard(Object.assign({}, v, { no: v.no + ' (store copy)' })) + '</div><button onclick="print()" style="display:block;margin:16px auto;padding:10px 18px">Print</button></div></body></html>');
   w.document.close(); setTimeout(() => { try { w.focus(); w.print(); } catch (e) { } }, 400);
 }
-function pvSignPad(v, done) {
-  const m = modal('✍️ Signature – ' + v.to, '<div class="small" style="margin-bottom:6px">' + esc(v.to) + ' received <b>' + pvRs(v.amount) + '</b> in cash (' + esc(v.cat) + '). Ask them to sign in the box with a finger.</div>' +
+function pvSignPad(v, done, o) {
+  o = o || {};
+  const m = modal(o.av ? '✍️ Sign voucher ' + v.acct : '✍️ Signature – ' + v.to, (o.av ? '<div class="small" style="margin-bottom:6px">' + esc(v.by) + ', you paid <b>' + pvRs(v.amount) + '</b> to ' + esc(v.to) + ' (' + esc(v.cat) + '). Sign accounting voucher <b>' + esc(v.acct) + '</b> in the box with a finger.</div>' : '<div class="small" style="margin-bottom:6px">' + esc(v.to) + ' received <b>' + pvRs(v.amount) + '</b> in cash (' + esc(v.cat) + '). Ask them to sign in the box with a finger.</div>') +
     '<canvas id="pv_cv" style="width:100%;height:220px;border:1.5px dashed #1F2A44;border-radius:10px;background:#fff;touch-action:none"></canvas>' +
     '<div class="row" style="margin-top:10px"><button class="btn ghost" id="pv_cl">Clear</button><div class="grow"></div><button class="btn gold" id="pv_ok">Save signature</button></div>', { sticky: true });
   const cv = $('#pv_cv', m), ctx = cv.getContext('2d'), dpr = window.devicePixelRatio || 1;
@@ -4437,24 +4547,25 @@ function pvSignPad(v, done) {
   $('#pv_ok', m).onclick = async () => {
     if (ink < 60) { toast('Please sign in the box first', true); return; }
     // the saved copy is the whole voucher with the signature on it
-    const W = 900, H = 760, o = document.createElement('canvas'); o.width = W; o.height = H; const g = o.getContext('2d');
+    const W = 900, H = o.av ? 940 : 760, oc = document.createElement('canvas'); oc.width = W; oc.height = H; const g = oc.getContext('2d');
     g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.fillStyle = '#1F2A44'; g.textAlign = 'center';
     g.font = 'bold 40px Arial'; g.fillText('NUTVIQUE', W / 2, 60); g.font = '22px Arial'; g.fillText('NUTZY FOODS PRIVATE LIMITED', W / 2, 92); g.font = 'bold 26px Arial'; g.fillText('CASH PAYMENT VOUCHER', W / 2, 136);
     g.textAlign = 'left'; g.fillStyle = '#111';
-    const rows = [['Voucher no.', v.no], ['Date', pvD(v.date) + ' ' + v.time], ['Store', v.loc], ['Paid to', v.to + (v.phone ? '  ·  ' + v.phone : '')], ['For', v.cat + ' – ' + v.purpose], ['Amount', pvRs(v.amount)], ['In words', v.words], ['Paid by', v.by]];
+    const rows = o.av ? [['Voucher no.', v.acct], ['Date', pvD(v.date)], ['Store', v.loc], ['Debit', (v.ledger || CV_LEDGER0[v.cat] || '') + ' A/c'], ['Credit', 'Cash – ' + v.loc + ' A/c'], ['Paid to', v.to + (v.phone ? '  ·  ' + v.phone : '')], ['For', v.cat + ' – ' + v.purpose], ['Amount', pvRs(v.amount)], ['In words', v.words], ['Prepared by', v.avBy || ''], ['Paid by', v.by]]
+      : [['Voucher no.', v.no], ['Date', pvD(v.date) + ' ' + v.time], ['Store', v.loc], ['Paid to', v.to + (v.phone ? '  ·  ' + v.phone : '')], ['For', v.cat + ' – ' + v.purpose], ['Amount', pvRs(v.amount)], ['In words', v.words], ['Paid by', v.by]];
     let y = 186; rows.forEach(r => { g.font = '22px Arial'; g.fillStyle = '#666'; g.fillText(r[0], 40, y); g.fillStyle = '#111'; g.font = (r[0] === 'Amount' ? 'bold 30px' : '24px') + ' Arial'; const t = String(r[1]); g.fillText(t.length > 52 ? t.slice(0, 52) + '…' : t, 210, y); y += 40; });
     g.drawImage(cv, 40, y, 520, 520 * cv.height / cv.width);
     y += 520 * cv.height / cv.width + 10; g.strokeStyle = '#333'; g.beginPath(); g.moveTo(40, y); g.lineTo(560, y); g.stroke();
-    g.font = '20px Arial'; g.fillStyle = '#444'; g.fillText('Received the above amount in cash – signature of ' + v.to, 40, y + 28);
+    g.font = '20px Arial'; g.fillStyle = '#444'; g.fillText(o.av ? 'Paid by – signature of ' + v.by : 'Received the above amount in cash – signature of ' + v.to, 40, y + 28);
     g.fillText('Signed on screen ' + new Date().toLocaleString('en-IN'), 40, y + 56);
-    const b64 = o.toDataURL('image/png').split(',')[1];
-    const r = await run('Saving the signature…', () => call('pvAttach', { no: v.no, b64: b64, mime: 'image/png', kind: 'screen' })).catch(() => null);
+    const b64 = oc.toDataURL('image/png').split(',')[1];
+    const r = await run('Saving the signature…', () => call(o.av ? 'pvAvSign' : 'pvAttach', { no: v.no, b64: b64, mime: 'image/png', kind: 'screen' })).catch(() => null);
     if (r) { m.close(); done(r); }
   };
 }
 async function pvListSheet() {
   const L = ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120', 'Event'];
-  const m = modal('🧾 Payout vouchers', '<div class="row" style="gap:6px;flex-wrap:wrap"><select class="i" id="pl_st" style="max-width:170px"><option value="live">All (not cancelled)</option><option value="pending">Signature pending</option><option value="cancelled">Cancelled</option><option value="all">Everything</option></select>' +
+  const m = modal('🧾 Payout vouchers', '<div class="row" style="gap:6px;flex-wrap:wrap"><select class="i" id="pl_st" style="max-width:170px"><option value="live">All (not cancelled)</option><option value="pending">Not finished (signature / memo / voucher)</option><option value="cancelled">Cancelled</option><option value="all">Everything</option></select>' +
     '<input class="i" type="date" id="pl_f" style="max-width:150px"><input class="i" type="date" id="pl_t" max="' + today() + '" style="max-width:150px"><select class="i" id="pl_l" style="max-width:170px"><option value="">All stores</option>' +
     L.map(l => '<option value="' + esc(l) + '">' + esc(pvLoc(l)) + '</option>').join('') + '</select></div><div id="pl_x" style="margin-top:10px"><div class="empty"><span class="spin dk"></span></div></div>', { wide: true });
   const d = new Date(); $('#pl_f', m).value = today().slice(0, 8) + '01'; $('#pl_t', m).value = today();
@@ -4464,7 +4575,7 @@ async function pvListSheet() {
     R = r; const t = r.totals;
     $('#pl_x', m).innerHTML = '<div class="bigp"><div><span>Paid out</span><b>' + pvRs(t.all) + '</b><span>' + t.count + ' voucher' + (t.count === 1 ? '' : 's') + '</span></div><div><span>Signed</span><b>' + pvRs(t.signed) + '</b><span>&nbsp;</span></div><div><span>Signature pending</span><b style="color:' + (t.pending ? 'var(--bad)' : 'inherit') + '">' + pvRs(t.pending) + '</b><span>' + (t.pendingAll ? t.pendingAll + ' in all, any date' : '&nbsp;') + '</span></div></div>' +
       (r.byCat.length ? '<div class="tiny mute" style="margin:6px 0">By head: ' + r.byCat.map(c => esc(c.cat) + ' ' + pvRs(c.amount)).join(' · ') + (r.byLoc.length > 1 ? '<br>By store: ' + r.byLoc.map(c => esc(pvLoc(c.loc)) + ' ' + pvRs(c.amount)).join(' · ') : '') + '</div>' : '') +
-      (r.list.length ? '<div class="tscroll"><table class="t"><tr><th>Voucher</th><th>Date</th><th>Store</th><th>Paid to</th><th>For</th><th class="n">Amount</th><th>Signed</th><th>Acct. voucher</th></tr>' + r.list.map(v => '<tr data-pv="' + esc(v.no) + '" style="cursor:pointer' + (v.status === 'Cancelled' ? ';opacity:.5;text-decoration:line-through' : '') + '"><td class="nowrap">' + esc(v.no) + '</td><td class="nowrap">' + esc(pvD(v.date)) + '</td><td>' + esc(pvLoc(v.loc)) + '</td><td>' + esc(v.to) + '</td><td class="small">' + esc(v.cat) + '<div class="tiny mute">' + esc(v.purpose) + '</div></td><td class="n">' + pvRs(v.amount) + '</td><td>' + (v.status === 'Cancelled' ? 'cancelled' : v.signed ? '✓' : '<span style="color:var(--bad)">pending</span>') + '</td><td class="nowrap">' + (v.acct ? '<a href="#" data-acct="' + esc(v.acct) + '">' + esc(v.acct) + '</a>' : '<span class="tiny mute">–</span>') + '</td></tr>').join('') + '</table></div>' : '<div class="empty small">No vouchers.</div>') +
+      (r.list.length ? '<div class="tscroll"><table class="t"><tr><th>Voucher</th><th>Date</th><th>Store</th><th>Paid to</th><th>For</th><th class="n">Amount</th><th>Signed</th><th>Acct. voucher</th></tr>' + r.list.map(v => '<tr data-pv="' + esc(v.no) + '" style="cursor:pointer' + (v.status === 'Cancelled' ? ';opacity:.5;text-decoration:line-through' : '') + '"><td class="nowrap">' + esc(v.no) + '</td><td class="nowrap">' + esc(pvD(v.date)) + '</td><td>' + esc(pvLoc(v.loc)) + '</td><td>' + esc(v.to) + '</td><td class="small">' + esc(v.cat) + '<div class="tiny mute">' + esc(v.purpose) + '</div></td><td class="n">' + pvRs(v.amount) + '</td><td>' + (v.status === 'Cancelled' ? 'cancelled' : v.cv ? '<span class="tiny" style="color:' + (v.stage === 'Completed' ? 'var(--ok)' : 'var(--bad)') + '">' + esc(v.stage) + '</span>' : v.signed ? '✓' : '<span style="color:var(--bad)">pending</span>') + '</td><td class="nowrap">' + (v.cv ? '<b>' + esc(v.acct) + '</b>' : v.acct ? '<a href="#" data-acct="' + esc(v.acct) + '">' + esc(v.acct) + '</a>' : '<span class="tiny mute">–</span>') + '</td></tr>').join('') + '</table></div>' : '<div class="empty small">No vouchers.</div>') +
       '<div class="row" style="margin-top:10px;gap:8px"><button class="btn ghost sm" id="pl_new">+ New voucher</button><button class="btn ghost sm" id="pl_csv">⬇ Download (Excel / CSV)</button></div>';
     $$('[data-acct]', m).forEach(a => a.onclick = e => { e.preventDefault(); e.stopPropagation(); acctView(a.dataset.acct); });
     $$('[data-pv]', m).forEach(tr => tr.onclick = () => { const v = R.list.find(x => x.no === tr.dataset.pv); pvView(v, { canCancel: R.canCancel && v.status !== 'Cancelled', canReplace: R.canCancel, onChange: () => load() }); });
@@ -5107,7 +5218,7 @@ async function saveContact(name, phone, where) {
 </script>
 
 <div id="nv_upd" style="display:none;position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1f6f43;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:center">A new version of the app is ready – tap here to update</div>
-<script>window.NV_BUILD = 'cbfbc149e3';
+<script>window.NV_BUILD = 'cedd907419';
 if ('serviceWorker' in navigator) {
   var nvHad = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then(function (r) { setInterval(function () { r.update().catch(function () { }); }, 15 * 60 * 1000); }).catch(function () { });
