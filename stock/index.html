@@ -104,7 +104,9 @@ function call(action, data) {
 const cost = p => Number(p && (p.avg || p.cost)) || 0;
 const qty = (sku, loc) => { const s = S.stock[sku]; return s && s.q ? Number(s.q[loc]) || 0 : 0; };
 const csOf = (loc, sku) => (S.cs[loc] || {})[sku];
-const countedSince = (loc, sku) => { const c = csOf(loc, sku); return !!(c && c.lastDate && c.lastDate >= BENCH); };
+// last date the item was counted at a location: the ledger only notes counts that changed the stock, so the saved count sheets are checked too
+const lastCount = (loc, sku) => { const c = csOf(loc, sku) || {}; const h = ((S.hist || {})[loc] || {})[sku] || ''; return (c.lastDate || '') > h ? c.lastDate : h; };
+const countedSince = (loc, sku) => lastCount(loc, sku) >= BENCH;
 
 // ───────── sign-in (owner only) ─────────
 function signOut(expired) {
@@ -144,12 +146,14 @@ async function boot() {
 async function loadAll(quiet) {
   const done = quiet ? () => { } : busy('Loading stock from the billing system…');
   try {
-    const [b, sb, ...cs] = await Promise.all([call('boot'), call('stockBoot')].concat(ALL_LOCS.map(l => call('countSheet', { location: l }).catch(() => null))));
+    const [b, sb, ...cs] = await Promise.all([call('boot'), call('stockBoot')].concat(ALL_LOCS.map(l => call('countSheet', { location: l }).catch(() => null)), ALL_LOCS.map(l => call('countHistory', { location: l }).catch(() => []))));
     S.products = {}; S.plist = b.products || [];
     S.plist.forEach(p => S.products[p.sku] = p);
     S.stock = b.stock || {}; S.categories = b.categories || []; S.settings = b.settings || {};
     S.sb = sb;
     ALL_LOCS.forEach((l, i) => { const m = {}; ((cs[i] || {}).items || []).forEach(x => m[x.sku] = x); S.cs[l] = m; });
+    const byName = {}; S.plist.forEach(p => byName[p.name] = p.sku); S.hist = {};
+    ALL_LOCS.forEach((l, i) => { const h = S.hist[l] = {}; (cs[ALL_LOCS.length + i] || []).forEach(c => (c.lines || []).forEach(x => { const k = byName[x.name]; if (k && (!h[k] || c.date > h[k])) h[k] = c.date; })); });
     S.loadedAt = new Date();
   } finally { done(); }
 }
@@ -215,7 +219,7 @@ function vHome(el) {
   h += '<div class="card"><h3>Not counted since the benchmark (still on old app figures)</h3><div class="tw" style="max-height:340px"><table><thead><tr><th>Store</th><th>Product</th><th class="n">App stock</th><th class="n">Value at cost</th><th>Last counted</th><th></th></tr></thead><tbody>';
   STORES.forEach(l => sums[l].notCounted.forEach(p => {
     const c = csOf(l, p.sku);
-    h += '<tr><td>' + SHORT[l] + '</td><td>' + esc(nm(p.name)) + '</td><td class="n">' + qf(qty(p.sku, l), p.unit) + '</td><td class="n">' + inr(qty(p.sku, l) * cost(p)) + '</td><td>' + (c && c.lastDate ? c.lastDate : '<span class="mut">never</span>') + '</td><td><a href="#" data-rc="' + esc(l) + '|' + p.sku + '">Count</a></td></tr>';
+    h += '<tr><td>' + SHORT[l] + '</td><td>' + esc(nm(p.name)) + '</td><td class="n">' + qf(qty(p.sku, l), p.unit) + '</td><td class="n">' + inr(qty(p.sku, l) * cost(p)) + '</td><td>' + (lastCount(l, p.sku) || '<span class="mut">never</span>') + '</td><td><a href="#" data-rc="' + esc(l) + '|' + p.sku + '">Count</a></td></tr>';
   }));
   if (!nc) h += '<tr><td colspan="6" class="mut">Everything with stock has been counted since 24 Nov.</td></tr>';
   h += '</tbody></table></div></div>';
@@ -279,11 +283,11 @@ function modal(html) {
 async function itemDetail(sku) {
   const p = S.products[sku];
   const md = modal('<h3 style="margin-top:0">' + esc(nm(p.name)) + '</h3><div class="mut small">' + sku + ' · ' + p.unit + ' · cost ' + inr(cost(p)) + ' · selling ' + inr(p.sell) + '</div><div id="idb" style="margin-top:12px"></div>');
-  let h = '<table><thead><tr><th>Location</th><th>Last count</th><th class="n">Counted then</th><th class="n">Sold since</th><th class="n">Other moves since</th><th class="n">App stock now</th><th></th></tr></thead><tbody>';
+  let h = '<table><thead><tr><th>Location</th><th>Last count</th><th class="n">Stock after last count change</th><th class="n">Sold since</th><th class="n">Other moves since</th><th class="n">App stock now</th><th></th></tr></thead><tbody>';
   ALL_LOCS.forEach(l => {
     const c = csOf(l, sku) || {}; const now = qty(sku, l);
-    if (!c.lastDate && Math.abs(now) < 0.0005) return;
-    h += '<tr><td>' + SHORT[l] + '</td><td>' + (c.lastDate ? c.lastDate + (c.lastDate >= BENCH ? ' <span class="pill grn">benchmark</span>' : ' <span class="pill yel">old</span>') : '<span class="mut">never</span>') + '</td><td class="n">' + qf(c.last, p.unit) + '</td><td class="n">' + qf(c.sold, p.unit) + '</td><td class="n">' + qs(c.adj, p.unit) + '</td><td class="n"><b>' + qf(now, p.unit) + '</b></td><td><button class="btn ghost" data-l="' + esc(l) + '" style="padding:5px 10px">Recount</button></td></tr>';
+    if (!lastCount(l, sku) && Math.abs(now) < 0.0005) return;
+    h += '<tr><td>' + SHORT[l] + '</td><td>' + (lastCount(l, sku) ? lastCount(l, sku) + (countedSince(l, sku) ? ' <span class="pill grn">benchmark</span>' : ' <span class="pill yel">old</span>') : '<span class="mut">never</span>') + '</td><td class="n">' + qf(c.last, p.unit) + '</td><td class="n">' + qf(c.sold, p.unit) + '</td><td class="n">' + qs(c.adj, p.unit) + '</td><td class="n"><b>' + qf(now, p.unit) + '</b></td><td><button class="btn ghost" data-l="' + esc(l) + '" style="padding:5px 10px">Recount</button></td></tr>';
   });
   h += '</tbody></table><h4>Movements since the benchmark (24 Nov)</h4><div id="imv" class="mut">Loading…</div>';
   md.el.querySelector('#idb').innerHTML = h;
@@ -333,13 +337,13 @@ function vCount(el) {
     const rows = Object.values(m).filter(c => {
       if (q && (c.name + ' ' + c.sku).toLowerCase().indexOf(q) < 0) return false;
       if (entered[loc + '|' + c.sku] != null) return true;
-      if (show === 'nc') return c.sys > 0.0005 && !(c.lastDate >= BENCH);
+      if (show === 'nc') return c.sys > 0.0005 && !countedSince(loc, c.sku);
       if (show === 'stock') return Math.abs(c.sys) > 0.0005;
       const p = S.products[c.sku]; return p && p.status !== 'Discontinued';
     });
     $('#cb').innerHTML = rows.map(c => {
       const p = S.products[c.sku] || { unit: c.unit }, k = loc + '|' + c.sku, v = entered[k];
-      return '<tr data-k="' + esc(k) + '"><td>' + esc(nm(c.name)) + '<div class="small mut">' + c.sku + '</div></td><td>' + c.unit + '</td><td>' + (c.lastDate ? c.lastDate : '<span class="mut">never</span>') + '</td><td class="n">' + qf(c.sys, '') + '</td>' +
+      return '<tr data-k="' + esc(k) + '"><td>' + esc(nm(c.name)) + '<div class="small mut">' + c.sku + '</div></td><td>' + c.unit + '</td><td>' + (lastCount(loc, c.sku) || '<span class="mut">never</span>') + '</td><td class="n">' + qf(c.sys, '') + '</td>' +
         '<td><input type="number" min="0" step="' + (c.unit === 'kg' ? '0.001' : '1') + '" value="' + (v != null ? v.counted : '') + '" data-in></td><td class="n" data-d></td><td class="n" data-v></td><td><input data-rm value="' + esc(v ? v.remark : '') + '"></td></tr>';
     }).join('') || '<tr><td colspan="8" class="mut">Nothing to show.</td></tr>';
     $('#cinfo').textContent = rows.length + ' items';
