@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nutvique Stock Control</title>
+<meta name="robots" content="noindex">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="NV Stock">
+<meta name="theme-color" content="#1F2A44">
+<style>
+:root{--navy:#1F2A44;--cream:#F7F1DE;--gold:#C9A227;--bg:#F4F5F7;--card:#fff;--ink:#1d2230;--mut:#6b7280;--line:#e3e6ea;--red:#c0392b;--redbg:#fde2e1;--grn:#1f7a46;--grnbg:#e2f4e5;--yel:#fff4cc}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+header{position:sticky;top:0;z-index:20;background:var(--navy);color:var(--cream);padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top));display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header .brand{font-weight:800;letter-spacing:.5px}
+header .brand small{display:block;font-weight:500;font-size:11px;color:var(--gold);letter-spacing:0}
+header .sp{flex:1}
+header button{background:transparent;color:var(--cream);border:1px solid rgba(247,241,222,.35);border-radius:8px;padding:6px 10px;cursor:pointer;font:inherit}
+nav{position:sticky;top:52px;z-index:19;background:#fff;border-bottom:1px solid var(--line);display:flex;overflow-x:auto;gap:2px;padding:0 8px}
+nav button{border:0;background:none;padding:11px 12px;font:600 13px system-ui;color:var(--mut);cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent}
+nav button.on{color:var(--navy);border-bottom-color:var(--gold)}
+main{max-width:1280px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.card h3{margin:0 0 10px;font-size:15px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.kpi .l{color:var(--mut);font-size:12px}.kpi .v{font-size:22px;font-weight:800;margin-top:2px}.kpi .s{font-size:12px;color:var(--mut);margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:#f8f9fb;font-size:12px;color:#444;position:sticky;top:0;z-index:1}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.click{cursor:pointer}tr.click:hover td{background:#fafbfd}
+.tw{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:10px;background:#fff}
+.neg{color:var(--red);font-weight:700}.pos{color:var(--grn);font-weight:700}.mut{color:var(--mut)}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:#eef0f3;color:#333}
+.pill.red{background:var(--redbg);color:var(--red)}.pill.grn{background:var(--grnbg);color:var(--grn)}.pill.yel{background:var(--yel);color:#7a5b00}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:10px}
+label.f{display:flex;flex-direction:column;font-size:12px;color:var(--mut);gap:3px}
+input,select,textarea{font:inherit;padding:8px 10px;border:1px solid #cfd4da;border-radius:8px;background:#fff;color:var(--ink);min-width:0}
+input[type=number]{width:110px}
+textarea{width:100%;min-height:60px}
+.btn{background:var(--navy);color:#fff;border:0;border-radius:9px;padding:9px 14px;font:600 14px system-ui;cursor:pointer}
+.btn.gold{background:var(--gold);color:#1d1d1d}.btn.ghost{background:#fff;color:var(--navy);border:1px solid var(--navy)}.btn.red{background:var(--red)}
+.btn:disabled{opacity:.5;cursor:default}
+.note{background:#f0f4ff;border:1px solid #d6e0ff;border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:12px}
+.warn{background:var(--yel);border:1px solid #f1d98a;border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:12px}
+.err{background:var(--redbg);border:1px solid #f3b8b3;border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:12px}
+.modal{position:fixed;inset:0;background:rgba(10,15,30,.45);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:4vh 10px;overflow:auto}
+.modal .box{background:#fff;border-radius:14px;max-width:980px;width:100%;padding:18px;position:relative}
+.modal .x{position:absolute;right:12px;top:10px;border:0;background:none;font-size:22px;cursor:pointer}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;background:#1d2230;color:#fff;padding:10px 16px;border-radius:10px;z-index:99;max-width:90vw;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.toast.err{background:var(--red)}
+.busy{position:fixed;inset:0;background:rgba(255,255,255,.6);z-index:98;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--navy);flex-direction:column;gap:10px}
+.spin{width:34px;height:34px;border:4px solid #d6dbe3;border-top-color:var(--navy);border-radius:50%;animation:s 1s linear infinite}@keyframes s{to{transform:rotate(360deg)}}
+.login{max-width:380px;margin:12vh auto;background:#fff;border-radius:14px;padding:22px;border:1px solid var(--line)}
+.login h2{margin:0 0 4px}.login p{color:var(--mut);margin:0 0 14px}
+.login input{width:100%;margin-bottom:10px}
+.lines td input{width:100%}
+.small{font-size:12px}
+.tabs2{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.tabs2 button{border:1px solid var(--line);background:#fff;border-radius:99px;padding:6px 12px;cursor:pointer;font:600 12px system-ui}
+.tabs2 button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+@media(max-width:640px){main{padding:10px}.kpi .v{font-size:19px}th,td{padding:6px 5px}nav{top:56px}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+'use strict';
+const API = 'https://script.google.com/macros/s/AKfycbzzWrQoosUFIlSWu4-jvlaG7j2CYpWTcgw6wByaY2aQD6vZ5tWIOJ36wyk1XMT8sM3RHQ/exec';
+const BENCH = '2026-11-24';                 // owner, 25 Nov 2026: the 24 Nov count is the benchmark
+const STORES = ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120'];
+const ALL_LOCS = STORES.concat(['Event']);
+const SHORT = { 'Gulshan One29 Mall': 'Gulshan', 'City Galleria – Gaur City-2': 'Galleria', 'Central Market – Sector 120': 'Central', 'Event': 'Event' };
+const S = { token: '', user: null, view: 'home', products: {}, plist: [], stock: {}, cs: {}, sb: null, invoices: null, loadedAt: null };
+
+// ───────── helpers ─────────
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const r3 = x => Math.round((Number(x) || 0) * 1000) / 1000;
+const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const inr = x => (x < 0 ? '−' : '') + '₹' + Math.round(Math.abs(Number(x) || 0)).toLocaleString('en-IN');
+const qf = (x, u) => { x = Number(x) || 0; if (!x) return '–'; return (u === 'kg' ? x.toLocaleString('en-IN', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : x.toLocaleString('en-IN', { maximumFractionDigits: 3 })) + (u ? ' ' + u : ''); };
+const qs = (x, u) => { x = Number(x) || 0; if (Math.abs(x) < 0.0005) return '0'; return (x > 0 ? '+' : '−') + qf(Math.abs(x), u); };
+const nm = s => String(s || '').replace(/^Nutvique\s+/i, '');
+const ls = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) { } } };
+const store = { get(k) { try { return JSON.parse(ls.get('nvstock_' + k)); } catch (e) { return null; } }, set(k, v) { ls.set('nvstock_' + k, v == null ? null : JSON.stringify(v)); } };
+function toast(m, err) { const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), err ? 7000 : 3500); }
+function busy(m) { const b = document.createElement('div'); b.className = 'busy'; b.innerHTML = '<div class="spin"></div><div>' + esc(m || 'Working…') + '</div>'; document.body.appendChild(b); return () => b.remove(); }
+function call(action, data) {
+  const body = JSON.stringify({ token: S.token || '', action: action, data: data || {} });
+  const post = () => fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body }).then(r => r.json());
+  return post().catch(() => new Promise(r => setTimeout(r, 1500)).then(post))
+    .catch(() => { throw new Error('No internet connection – try again.'); })
+    .then(j => {
+      if (!j || !j.ok) { const m = (j && j.e) || 'Server error'; if (/Signed out/.test(m)) { signOut(true); } throw new Error(m); }
+      return j.r;
+    });
+}
+const cost = p => Number(p && (p.avg || p.cost)) || 0;
+const qty = (sku, loc) => { const s = S.stock[sku]; return s && s.q ? Number(s.q[loc]) || 0 : 0; };
+const csOf = (loc, sku) => (S.cs[loc] || {})[sku];
+const countedSince = (loc, sku) => { const c = csOf(loc, sku); return !!(c && c.lastDate && c.lastDate >= BENCH); };
+
+// ───────── sign-in (owner only) ─────────
+function signOut(expired) {
+  S.token = ''; S.user = null; ls.set('nvstock_token', null); S.skipShared = true;
+  renderLogin(expired ? 'Signed out – please sign in again.' : '');
+}
+function renderLogin(msg) {
+  $('#app').innerHTML = '<div class="login"><h2>Nutvique Stock Control</h2><p>Owner only. Same name and PIN as the Nutvique billing app.</p>' +
+    (msg ? '<div class="err">' + esc(msg) + '</div>' : '') +
+    '<input id="ln" placeholder="Name" value="Owner" autocomplete="username"><input id="lp" type="password" inputmode="numeric" placeholder="PIN" autocomplete="current-password">' +
+    '<button class="btn" id="lb" style="width:100%">Sign in</button></div>';
+  $('#lb').onclick = async () => {
+    const done = busy('Signing in…');
+    try {
+      S.token = '';
+      const r = await call('login', { name: $('#ln').value.trim(), pin: $('#lp').value.trim() });
+      if (!r.user || r.user.role !== 'Owner') { done(); call('logout', {}).catch(() => { }); return renderLogin('This app is for the owner only. Staff use the Nutvique billing app.'); }
+      S.token = r.token; ls.set('nvstock_token', r.token); S.user = r.user; done(); start();
+    } catch (e) { done(); renderLogin(e.message); }
+  };
+  $('#lp').onkeydown = e => { if (e.key === 'Enter') $('#lb').click(); };
+}
+async function boot() {
+  const t = ls.get('nvstock_token') || (S.skipShared ? '' : ls.get('nvinv_token'));   // the billing app on this phone/laptop shares its sign-in
+  if (!t) return renderLogin('');
+  S.token = t;
+  const done = busy('Opening…');
+  try {
+    const r = await call('me', {});
+    done();
+    if (!r.user || r.user.role !== 'Owner') { S.token = ''; return renderLogin('Signed in as ' + (r.user ? r.user.name : '?') + ' – this app is for the owner only.'); }
+    S.user = r.user; start();
+  } catch (e) { done(); renderLogin(/Signed out/.test(e.message) ? '' : e.message); }
+}
+
+// ───────── data ─────────
+async function loadAll(quiet) {
+  const done = quiet ? () => { } : busy('Loading stock from the billing system…');
+  try {
+    const [b, sb, ...cs] = await Promise.all([call('boot'), call('stockBoot')].concat(ALL_LOCS.map(l => call('countSheet', { location: l }).catch(() => null))));
+    S.products = {}; S.plist = b.products || [];
+    S.plist.forEach(p => S.products[p.sku] = p);
+    S.stock = b.stock || {}; S.categories = b.categories || []; S.settings = b.settings || {};
+    S.sb = sb;
+    ALL_LOCS.forEach((l, i) => { const m = {}; ((cs[i] || {}).items || []).forEach(x => m[x.sku] = x); S.cs[l] = m; });
+    S.loadedAt = new Date();
+  } finally { done(); }
+}
+async function refreshLoc(loc) {
+  const r = await call('countSheet', { location: loc }); const m = {}; (r.items || []).forEach(x => m[x.sku] = x); S.cs[loc] = m;
+  const s = await call('stock'); S.stock = s.stock || S.stock; return m;
+}
+function activeProducts() { return S.plist.filter(p => p.status !== 'Discontinued' || ALL_LOCS.some(l => Math.abs(qty(p.sku, l)) > 0.0005)); }
+function prodOptions() { return activeProducts().filter(p => p.status !== 'Discontinued').sort((a, b) => a.name.localeCompare(b.name)).map(p => '<option value="' + esc(nm(p.name) + ' · ' + p.sku) + '">').join(''); }
+function skuFrom(v) { const m = String(v || '').match(/·\s*([A-Z0-9][A-Z0-9\-]+)\s*$/i); return m && S.products[m[1]] ? m[1] : ''; }
+
+// ───────── shell ─────────
+const VIEWS = [['home', 'Overview'], ['stock', 'Stock'], ['count', 'Recount / correct'], ['in', 'Goods in & invoices'], ['out', 'Write-off'], ['moves', 'Movements'], ['counts', 'Count history'], ['transfers', 'Transfers']];
+async function start() {
+  $('#app').innerHTML = '<header><div class="brand">NUTVIQUE STOCK CONTROL<small>Owner · linked live to the billing app</small></div><div class="sp"></div>' +
+    '<span class="small" id="upd" style="color:#cfd6e4"></span><button id="rf">↻ Refresh</button><button id="so">Sign out</button></header><nav id="nav"></nav><main id="main"></main><datalist id="plist"></datalist>';
+  $('#rf').onclick = async () => { await loadAll(); render(); };
+  $('#so').onclick = () => { call('logout', {}).catch(() => { }); signOut(false); };
+  await loadAll();
+  $('#plist').innerHTML = prodOptions();
+  S.view = location.hash.slice(1) || 'home';
+  render();
+}
+window.onhashchange = () => { const v = location.hash.slice(1); if (S.user && v && v !== S.view) { S.view = v; render(); } };
+function render() {
+  $('#nav').innerHTML = VIEWS.map(v => '<button data-v="' + v[0] + '" class="' + (S.view === v[0] ? 'on' : '') + '">' + v[1] + '</button>').join('');
+  document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { S.view = b.dataset.v; location.hash = S.view; render(); });
+  $('#upd').textContent = S.loadedAt ? 'Updated ' + S.loadedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
+  const f = { home: vHome, stock: vStock, count: vCount, in: vIn, out: vOut, moves: vMoves, counts: vCounts, transfers: vTransfers }[S.view] || vHome;
+  $('#main').innerHTML = ''; f($('#main'));
+  window.scrollTo(0, 0);
+}
+
+// ───────── Overview ─────────
+function storeSummary(loc) {
+  let val = 0, sval = 0, items = 0, counted = 0, notCounted = [], negative = [];
+  activeProducts().forEach(p => {
+    const q = qty(p.sku, loc); if (Math.abs(q) < 0.0005 && !countedSince(loc, p.sku)) return;
+    if (Math.abs(q) >= 0.0005) { items++; val += q * cost(p); sval += q * (Number(p.sell) || 0); }
+    if (countedSince(loc, p.sku)) counted++;
+    else if (q > 0.0005) notCounted.push(p);
+    if (q < -0.0005) negative.push(p);
+  });
+  return { val, sval, items, counted, notCounted, negative };
+}
+function vHome(el) {
+  const sums = {}; ALL_LOCS.forEach(l => sums[l] = storeSummary(l));
+  const tot = ALL_LOCS.reduce((a, l) => ({ val: a.val + sums[l].val, sval: a.sval + sums[l].sval }), { val: 0, sval: 0 });
+  const waiting = (S.sb && S.sb.transfers && S.sb.transfers.waiting) || [];
+  let h = '<div class="note"><b>How this works.</b> This app reads and writes the <b>same stock ledger</b> as the Nutvique billing app. A recount, write-off or invoice saved here changes the stock the billing app shows straight away. Bills and store-to-store transfers stay in the billing app. <b>Benchmark:</b> the 24 Nov 2026 count – every difference is measured from it.</div>';
+  h += '<div class="grid">' +
+    kpi('Stock value at cost (all stores)', inr(tot.val), 'At selling price ' + inr(tot.sval)) +
+    STORES.map(l => kpi(SHORT[l] + ' – stock at cost', inr(sums[l].val), sums[l].items + ' items · ' + sums[l].counted + ' counted since 24 Nov')).join('') + '</div>';
+  // To-do
+  const nc = STORES.reduce((a, l) => a + sums[l].notCounted.length, 0), ng = ALL_LOCS.reduce((a, l) => a + sums[l].negative.length, 0);
+  h += '<div class="card"><h3>To do</h3><table><tbody>' +
+    todo(nc, 'item(s) with stock not counted since the 24 Nov benchmark', 'count', 'Count them') +
+    todo(ng, 'item(s) showing negative stock (sold more than the app has)', 'stock', 'See them') +
+    todo(waiting.length, 'transfer(s) waiting to be checked by the receiving store (billing app)', 'transfers', 'See them') +
+    '<tr><td colspan="3" class="mut small" id="invtodo">Checking invoices…</td></tr>' +
+    '</tbody></table></div>';
+  // Not counted per store
+  h += '<div class="card"><h3>Not counted since the benchmark (still on old app figures)</h3><div class="tw" style="max-height:340px"><table><thead><tr><th>Store</th><th>Product</th><th class="n">App stock</th><th class="n">Value at cost</th><th>Last counted</th><th></th></tr></thead><tbody>';
+  STORES.forEach(l => sums[l].notCounted.forEach(p => {
+    const c = csOf(l, p.sku);
+    h += '<tr><td>' + SHORT[l] + '</td><td>' + esc(nm(p.name)) + '</td><td class="n">' + qf(qty(p.sku, l), p.unit) + '</td><td class="n">' + inr(qty(p.sku, l) * cost(p)) + '</td><td>' + (c && c.lastDate ? c.lastDate : '<span class="mut">never</span>') + '</td><td><a href="#" data-rc="' + esc(l) + '|' + p.sku + '">Count</a></td></tr>';
+  }));
+  if (!nc) h += '<tr><td colspan="6" class="mut">Everything with stock has been counted since 24 Nov.</td></tr>';
+  h += '</tbody></table></div></div>';
+  if (ng) {
+    h += '<div class="card"><h3>Negative stock</h3><table><thead><tr><th>Location</th><th>Product</th><th class="n">App stock</th><th>Likely reason</th></tr></thead><tbody>';
+    ALL_LOCS.forEach(l => sums[l].negative.forEach(p => { h += '<tr><td>' + SHORT[l] + '</td><td>' + esc(nm(p.name)) + '</td><td class="n neg">' + qf(qty(p.sku, l), p.unit) + '</td><td class="mut small">Sold here but never received here (missing transfer or goods-in), or billed under this name by mistake.</td></tr>'; }));
+    h += '</tbody></table></div>';
+  }
+  el.innerHTML = h;
+  el.querySelectorAll('[data-go]').forEach(a => a.onclick = e => { e.preventDefault(); S.view = a.dataset.go; location.hash = S.view; render(); });
+  el.querySelectorAll('[data-rc]').forEach(a => a.onclick = e => { e.preventDefault(); const [l, s] = a.dataset.rc.split('|'); quickCount(l, s); });
+  call('listInvoices').then(li => {
+    S.invoices = li; const aw = li.filter(x => /Awaiting/i.test(x.status)), dr = li.filter(x => x.status === 'Draft');
+    const t = $('#invtodo'); if (!t) return;
+    t.parentNode.outerHTML = todo(aw.length, 'delivery(ies) booked with the invoice still awaited', 'in', 'See them') + todo(dr.length, 'invoice draft(s) not posted yet', 'in', 'Open');
+    el.querySelectorAll('[data-go]').forEach(a => a.onclick = e => { e.preventDefault(); S.view = a.dataset.go; location.hash = S.view; render(); });
+  }).catch(() => { const t = $('#invtodo'); if (t) t.textContent = ''; });
+}
+function kpi(l, v, s) { return '<div class="card kpi"><div class="l">' + esc(l) + '</div><div class="v">' + v + '</div><div class="s">' + esc(s || '') + '</div></div>'; }
+function todo(n, txt, go, btn) { return '<tr><td style="width:60px"><span class="pill ' + (n ? 'yel' : 'grn') + '">' + n + '</span></td><td>' + txt + '</td><td style="width:110px">' + (n ? '<a href="#" data-go="' + go + '">' + btn + ' →</a>' : '<span class="mut">✓</span>') + '</td></tr>'; }
+
+// ───────── Stock ─────────
+function vStock(el) {
+  const f = store.get('sf') || { q: '', cat: '', show: 'stock' };
+  const cats = [...new Set(activeProducts().map(p => p.cat || (p.sku.startsWith('EXT') ? 'Other brands' : 'Other')))].sort();
+  el.innerHTML = '<div class="row"><label class="f">Search<input id="sq" placeholder="Name or SKU" value="' + esc(f.q) + '"></label>' +
+    '<label class="f">Category<select id="sc"><option value="">All</option>' + cats.map(c => '<option' + (c === f.cat ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</select></label>' +
+    '<label class="f">Show<select id="ss">' + [['stock', 'With stock'], ['all', 'All active'], ['nc', 'Not counted since 24 Nov'], ['neg', 'Negative somewhere']].map(o => '<option value="' + o[0] + '"' + (o[0] === f.show ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></label>' +
+    '<div class="sp"></div><span class="mut small" id="scount"></span></div><div class="tw"><table><thead><tr><th>Product</th><th>Unit</th>' + ALL_LOCS.map(l => '<th class="n">' + SHORT[l] + '</th>').join('') + '<th class="n">Total</th><th class="n">Value at cost</th></tr></thead><tbody id="sb"></tbody></table></div>';
+  const draw = () => {
+    const q = $('#sq').value.trim().toLowerCase(), cat = $('#sc').value, show = $('#ss').value;
+    store.set('sf', { q: $('#sq').value, cat: cat, show: show });
+    let rows = activeProducts().filter(p => {
+      const c = p.cat || (p.sku.startsWith('EXT') ? 'Other brands' : 'Other');
+      if (cat && c !== cat) return false;
+      if (q && (p.name + ' ' + p.sku).toLowerCase().indexOf(q) < 0) return false;
+      const t = ALL_LOCS.reduce((a, l) => a + Math.abs(qty(p.sku, l)), 0);
+      if (show === 'stock' && t < 0.0005) return false;
+      if (show === 'nc' && !STORES.some(l => qty(p.sku, l) > 0.0005 && !countedSince(l, p.sku))) return false;
+      if (show === 'neg' && !ALL_LOCS.some(l => qty(p.sku, l) < -0.0005)) return false;
+      return true;
+    }).sort((a, b) => a.name.localeCompare(b.name));
+    let tv = 0;
+    $('#sb').innerHTML = rows.map(p => {
+      const t = ALL_LOCS.reduce((a, l) => a + qty(p.sku, l), 0), v = t * cost(p); tv += v;
+      return '<tr class="click" data-sku="' + p.sku + '"><td>' + esc(nm(p.name)) + (p.status === 'Discontinued' ? ' <span class="pill">discontinued</span>' : '') + '<div class="mut small">' + p.sku + '</div></td><td>' + p.unit + '</td>' +
+        ALL_LOCS.map(l => { const x = qty(p.sku, l); const nc = STORES.indexOf(l) >= 0 && x > 0.0005 && !countedSince(l, p.sku); return '<td class="n' + (x < -0.0005 ? ' neg' : '') + '"' + (nc ? ' style="background:var(--yel)" title="Not counted since 24 Nov"' : '') + '>' + qf(x, '') + '</td>'; }).join('') +
+        '<td class="n"><b>' + qf(t, '') + '</b></td><td class="n">' + inr(v) + '</td></tr>';
+    }).join('') || '<tr><td colspan="9" class="mut">Nothing matches.</td></tr>';
+    $('#scount').textContent = rows.length + ' items · ' + inr(tv) + ' at cost · yellow = not counted since 24 Nov';
+    el.querySelectorAll('tr[data-sku]').forEach(tr => tr.onclick = () => itemDetail(tr.dataset.sku));
+  };
+  ['#sq', '#sc', '#ss'].forEach(s => $(s).oninput = draw);
+  draw();
+}
+function modal(html) {
+  const m = document.createElement('div'); m.className = 'modal'; m.innerHTML = '<div class="box"><button class="x">×</button>' + html + '</div>';
+  document.body.appendChild(m); const close = () => m.remove(); m.querySelector('.x').onclick = close; m.onclick = e => { if (e.target === m) close(); };
+  return { el: m.querySelector('.box'), close };
+}
+async function itemDetail(sku) {
+  const p = S.products[sku];
+  const md = modal('<h3 style="margin-top:0">' + esc(nm(p.name)) + '</h3><div class="mut small">' + sku + ' · ' + p.unit + ' · cost ' + inr(cost(p)) + ' · selling ' + inr(p.sell) + '</div><div id="idb" style="margin-top:12px"></div>');
+  let h = '<table><thead><tr><th>Location</th><th>Last count</th><th class="n">Counted then</th><th class="n">Sold since</th><th class="n">Other moves since</th><th class="n">App stock now</th><th></th></tr></thead><tbody>';
+  ALL_LOCS.forEach(l => {
+    const c = csOf(l, sku) || {}; const now = qty(sku, l);
+    if (!c.lastDate && Math.abs(now) < 0.0005) return;
+    h += '<tr><td>' + SHORT[l] + '</td><td>' + (c.lastDate ? c.lastDate + (c.lastDate >= BENCH ? ' <span class="pill grn">benchmark</span>' : ' <span class="pill yel">old</span>') : '<span class="mut">never</span>') + '</td><td class="n">' + qf(c.last, p.unit) + '</td><td class="n">' + qf(c.sold, p.unit) + '</td><td class="n">' + qs(c.adj, p.unit) + '</td><td class="n"><b>' + qf(now, p.unit) + '</b></td><td><button class="btn ghost" data-l="' + esc(l) + '" style="padding:5px 10px">Recount</button></td></tr>';
+  });
+  h += '</tbody></table><h4>Movements since the benchmark (24 Nov)</h4><div id="imv" class="mut">Loading…</div>';
+  md.el.querySelector('#idb').innerHTML = h;
+  md.el.querySelectorAll('[data-l]').forEach(b => b.onclick = () => { md.close(); quickCount(b.dataset.l, sku); });
+  try {
+    const r = await call('movements', { from: BENCH, to: today(), q: sku, loc: 'All', kind: 'All' });
+    const list = r.list.filter(m => m.sku === sku);
+    md.el.querySelector('#imv').innerHTML = list.length ? '<div class="tw" style="max-height:320px"><table><thead><tr><th>Date</th><th>Location</th><th>Movement</th><th class="n">Qty</th><th>Ref</th><th>Note</th></tr></thead><tbody>' +
+      list.map(m => '<tr><td>' + m.date + '</td><td>' + (SHORT[m.loc] || esc(m.loc)) + '</td><td>' + esc(m.mv) + '</td><td class="n ' + (m.qty < 0 ? 'neg' : 'pos') + '">' + qs(m.qty, '') + '</td><td class="small">' + esc(m.ref) + '</td><td class="small mut">' + esc(m.note || m.party || '') + '</td></tr>').join('') + '</tbody></table></div>' : '<span class="mut">No movements since 24 Nov.</span>';
+  } catch (e) { md.el.querySelector('#imv').textContent = e.message; }
+}
+
+// ───────── Recount / correct ─────────
+async function quickCount(loc, sku) {
+  const p = S.products[sku];
+  const md = modal('<h3 style="margin-top:0">Recount – ' + esc(nm(p.name)) + '</h3><div class="mut small">' + SHORT[loc] + ' · ' + p.unit + '</div><div id="qcb" class="mut" style="margin-top:12px">Reading the latest stock…</div>');
+  let m; try { m = await refreshLoc(loc); } catch (e) { md.el.querySelector('#qcb').textContent = e.message; return; }
+  const c = m[sku] || { sys: 0, last: 0, lastDate: '', sold: 0, adj: 0 };
+  md.el.querySelector('#qcb').innerHTML = '<div class="row"><div>App stock now: <b>' + qf(c.sys, p.unit) + '</b></div></div><div class="row"><label class="f">Physical count (' + p.unit + ')<input id="qv" type="number" step="' + (p.unit === 'kg' ? '0.001' : '1') + '" min="0"></label><label class="f" style="flex:1">Reason / note<input id="qn" placeholder="e.g. recount after investigation"></label></div><div id="qd" style="margin-bottom:10px"></div><button class="btn" id="qs">Save count</button>';
+  const qv = md.el.querySelector('#qv'), qd = md.el.querySelector('#qd');
+  qv.oninput = () => { const d = r3(Number(qv.value) - c.sys); qd.innerHTML = qv.value === '' ? '' : 'Difference: <b class="' + (d < 0 ? 'neg' : d > 0 ? 'pos' : '') + '">' + qs(d, p.unit) + '</b> (' + inr(d * cost(p)) + ' at cost)'; };
+  qv.focus();
+  md.el.querySelector('#qs').onclick = async () => {
+    if (qv.value === '' || Number(qv.value) < 0) return toast('Type the physical count.', true);
+    if (p.unit === 'pcs' && Number(qv.value) !== Math.round(Number(qv.value))) return toast('Pieces must be a whole number.', true);
+    const done = busy('Saving…');
+    try {
+      const fresh = (await refreshLoc(loc))[sku] || c;
+      const r = await call('saveCount', { location: loc, date: today(), note: 'Recount (Stock Control app)', lines: [{ sku: sku, counted: Number(qv.value), sys: fresh.sys, last: fresh.last, lastDate: fresh.lastDate, sold: fresh.sold, adj: fresh.adj, remark: md.el.querySelector('#qn').value.trim() }] });
+      await loadAll(true); done(); md.close(); toast('Saved (' + r.ref + '). The billing app now shows the new stock.'); render();
+    } catch (e) { done(); toast(e.message, true); }
+  };
+}
+function vCount(el) {
+  const st = store.get('cnt') || { loc: STORES[0], show: 'nc', q: '' };
+  el.innerHTML = '<div class="note">Use this after counting again. Type the <b>physical quantity</b> (net, without the jar) for the items you counted – leave the rest blank. Saving books the difference as a stock count, and the billing app follows at once. The app re-reads the stock just before saving, so bills made meanwhile are taken into account.</div>' +
+    '<div class="row"><label class="f">Location<select id="cl">' + ALL_LOCS.map(l => '<option value="' + esc(l) + '"' + (l === st.loc ? ' selected' : '') + '>' + SHORT[l] + '</option>').join('') + '</select></label>' +
+    '<label class="f">Show<select id="cf">' + [['nc', 'Not counted since 24 Nov'], ['stock', 'Everything with stock'], ['all', 'All products']].map(o => '<option value="' + o[0] + '"' + (o[0] === st.show ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></label>' +
+    '<label class="f">Search<input id="cq" placeholder="Name or SKU" value="' + esc(st.q) + '"></label><div class="sp"></div><span class="small mut" id="cinfo"></span></div>' +
+    '<div class="tw"><table class="lines"><thead><tr><th>Product</th><th>Unit</th><th>Last count</th><th class="n">App stock now</th><th style="width:130px">Physical count</th><th class="n">Difference</th><th class="n">₹ at cost</th><th style="width:180px">Remark</th></tr></thead><tbody id="cb"></tbody></table></div>' +
+    '<div class="card" style="margin-top:12px"><div class="row"><label class="f" style="flex:1">Note for this count<input id="cn" placeholder="e.g. Recount after investigation, 25 Nov"></label><button class="btn gold" id="csave">Review & save</button></div><div id="csum" class="small"></div></div>';
+  const entered = {};
+  const draw = () => {
+    const loc = $('#cl').value, show = $('#cf').value, q = $('#cq').value.trim().toLowerCase();
+    store.set('cnt', { loc, show, q: $('#cq').value });
+    const m = S.cs[loc] || {};
+    const rows = Object.values(m).filter(c => {
+      if (q && (c.name + ' ' + c.sku).toLowerCase().indexOf(q) < 0) return false;
+      if (entered[loc + '|' + c.sku] != null) return true;
+      if (show === 'nc') return c.sys > 0.0005 && !(c.lastDate >= BENCH);
+      if (show === 'stock') return Math.abs(c.sys) > 0.0005;
+      const p = S.products[c.sku]; return p && p.status !== 'Discontinued';
+    });
+    $('#cb').innerHTML = rows.map(c => {
+      const p = S.products[c.sku] || { unit: c.unit }, k = loc + '|' + c.sku, v = entered[k];
+      return '<tr data-k="' + esc(k) + '"><td>' + esc(nm(c.name)) + '<div class="small mut">' + c.sku + '</div></td><td>' + c.unit + '</td><td>' + (c.lastDate ? c.lastDate : '<span class="mut">never</span>') + '</td><td class="n">' + qf(c.sys, '') + '</td>' +
+        '<td><input type="number" min="0" step="' + (c.unit === 'kg' ? '0.001' : '1') + '" value="' + (v != null ? v.counted : '') + '" data-in></td><td class="n" data-d></td><td class="n" data-v></td><td><input data-rm value="' + esc(v ? v.remark : '') + '"></td></tr>';
+    }).join('') || '<tr><td colspan="8" class="mut">Nothing to show.</td></tr>';
+    $('#cinfo').textContent = rows.length + ' items';
+    $('#cb').querySelectorAll('tr[data-k]').forEach(tr => {
+      const k = tr.dataset.k, sku = k.split('|')[1], c = (S.cs[loc] || {})[sku], p = S.products[sku] || {};
+      const upd = () => {
+        const iv = tr.querySelector('[data-in]').value, rm = tr.querySelector('[data-rm]').value;
+        if (iv === '') { delete entered[k]; tr.querySelector('[data-d]').textContent = ''; tr.querySelector('[data-v]').textContent = ''; }
+        else { entered[k] = { counted: Number(iv), remark: rm }; const d = r3(Number(iv) - c.sys); const td = tr.querySelector('[data-d]'); td.textContent = qs(d, ''); td.className = 'n ' + (d < 0 ? 'neg' : d > 0 ? 'pos' : ''); tr.querySelector('[data-v]').textContent = inr(d * cost(p)); }
+        summary();
+      };
+      tr.querySelector('[data-in]').oninput = upd; tr.querySelector('[data-rm]').oninput = upd; if (entered[k]) upd();
+    });
+    summary();
+  };
+  const summary = () => {
+    const loc = $('#cl').value; let n = 0, up = 0, dn = 0;
+    Object.keys(entered).filter(k => k.startsWith(loc + '|')).forEach(k => { const sku = k.split('|')[1], c = S.cs[loc][sku], d = entered[k].counted - c.sys, v = d * cost(S.products[sku]); n++; if (v > 0) up += v; else dn += v; });
+    $('#csum').innerHTML = n ? '<b>' + n + '</b> item(s) entered for ' + SHORT[loc] + ' · over ' + inr(up) + ' · short ' + inr(dn) + ' at cost' : '<span class="mut">No counts entered yet.</span>';
+  };
+  ['#cl', '#cf', '#cq'].forEach(s => $(s).oninput = draw);
+  $('#csave').onclick = async () => {
+    const loc = $('#cl').value;
+    const keys = Object.keys(entered).filter(k => k.startsWith(loc + '|'));
+    if (!keys.length) return toast('Type at least one physical count.', true);
+    for (const k of keys) { const sku = k.split('|')[1], u = (S.products[sku] || {}).unit; const v = entered[k].counted; if (v < 0) return toast('Counts cannot be negative.', true); if (u === 'pcs' && v !== Math.round(v)) return toast(nm(S.products[sku].name) + ': pieces must be a whole number.', true); }
+    const done = busy('Reading the latest stock…');
+    let fresh; try { fresh = await refreshLoc(loc); } catch (e) { done(); return toast(e.message, true); }
+    done();
+    const lines = keys.map(k => { const sku = k.split('|')[1], c = fresh[sku] || { sys: 0, last: 0, lastDate: '', sold: 0, adj: 0 }; return { sku, counted: entered[k].counted, sys: c.sys, last: c.last, lastDate: c.lastDate, sold: c.sold, adj: c.adj, remark: entered[k].remark || '' }; });
+    let up = 0, dn = 0;
+    const md = modal('<h3 style="margin-top:0">Save count – ' + SHORT[loc] + '</h3><div class="tw" style="max-height:50vh"><table><thead><tr><th>Product</th><th class="n">App stock</th><th class="n">Counted</th><th class="n">Difference</th><th class="n">₹ at cost</th></tr></thead><tbody>' +
+      lines.map(l => { const p = S.products[l.sku], d = r3(l.counted - l.sys), v = d * cost(p); if (v > 0) up += v; else dn += v; return '<tr><td>' + esc(nm(p.name)) + '</td><td class="n">' + qf(l.sys, p.unit) + '</td><td class="n">' + qf(l.counted, p.unit) + '</td><td class="n ' + (d < 0 ? 'neg' : d > 0 ? 'pos' : '') + '">' + qs(d, p.unit) + '</td><td class="n">' + inr(v) + '</td></tr>'; }).join('') +
+      '</tbody></table></div><p>Over <b>' + inr(up) + '</b> · short <b>' + inr(dn) + '</b> · net <b>' + inr(up + dn) + '</b> at cost.</p><button class="btn gold" id="cgo">Save – update stock everywhere</button>');
+    md.el.querySelector('#cgo').onclick = async () => {
+      const d2 = busy('Saving count…');
+      try {
+        const r = await call('saveCount', { location: loc, date: today(), note: $('#cn').value.trim() || 'Recount (Stock Control app)', lines });
+        keys.forEach(k => delete entered[k]);
+        await loadAll(true); d2(); md.close(); toast('Saved ' + r.counted + ' line(s), ' + r.changed + ' changed (' + r.ref + '). The billing app shows the new stock now.'); render();
+      } catch (e) { d2(); toast(e.message, true); }
+    };
+  };
+  draw();
+}
+
+// ───────── Goods in & invoices ─────────
+function vIn(el) {
+  el.innerHTML = '<div class="note">All goods coming in are booked here – with the supplier invoice. The stock goes into the store you choose and the billing app shows it at once. <b>Selling prices are never changed by an invoice</b>; only a brand-new product takes the price you type for it.</div>' +
+    '<div class="grid"><div class="card"><h3>📄 Upload a supplier invoice</h3><p class="mut small">PDF or photo. It is read automatically and every line is matched to a Nutvique product for you to check.</p><input type="file" id="ifile" accept="application/pdf,image/*"><div style="margin-top:10px"><button class="btn" id="iread">Read invoice</button></div></div>' +
+    '<div class="card"><h3>✍️ Enter goods by hand</h3><p class="mut small">For a delivery without a readable invoice – or when the goods came first and the invoice is awaited.</p><button class="btn ghost" id="iman">Start a blank entry</button></div></div>' +
+    '<div class="card"><h3>Invoices</h3><div class="tabs2" id="itabs"></div><div id="ilist" class="mut">Loading…</div></div>';
+  $('#iman').onclick = () => invoiceEditor({ supplier: '', gstin: '', invoiceNo: '', invoiceDate: today(), receivedAt: STORES[1], notes: '', charges: [], roundOff: 0, taxable: 0, gst: 0, total: 0, lines: [] }, []);
+  $('#iread').onclick = () => {
+    const f = $('#ifile').files[0]; if (!f) return toast('Choose the invoice file first.', true);
+    if (f.size > 15 * 1024 * 1024) return toast('The file is too big (max 15 MB).', true);
+    const rd = new FileReader();
+    rd.onload = async () => {
+      const b64 = String(rd.result).split(',')[1]; const done = busy('Reading the invoice – this can take up to a minute…');
+      try { const r = await call('readInvoice', { base64: b64, mime: f.type || 'application/pdf', fileName: f.name }); done(); invoiceEditor(r.draft, r.warnings || []); }
+      catch (e) { done(); toast(e.message, true); }
+    };
+    rd.readAsDataURL(f);
+  };
+  let tab = 'open';
+  const drawList = () => {
+    const li = S.invoices || [];
+    $('#itabs').innerHTML = [['open', 'Drafts & awaiting'], ['posted', 'Posted']].map(t => '<button data-t="' + t[0] + '" class="' + (tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('');
+    $('#itabs').querySelectorAll('button').forEach(b => b.onclick = () => { tab = b.dataset.t; drawList(); });
+    const rows = li.filter(x => tab === 'open' ? x.status !== 'Posted' : x.status === 'Posted').slice(0, 200);
+    $('#ilist').innerHTML = rows.length ? '<div class="tw" style="max-height:420px"><table><thead><tr><th>Date</th><th>Supplier</th><th>Invoice no.</th><th>Status</th><th class="n">Qty</th><th class="n">Total</th><th></th></tr></thead><tbody>' +
+      rows.map(x => '<tr><td>' + esc(x.date) + '</td><td>' + esc(x.supplier) + '</td><td>' + esc(x.no) + '</td><td><span class="pill ' + (x.status === 'Posted' ? 'grn' : 'yel') + '">' + esc(x.status) + '</span></td><td class="n">' + (x.qty || '') + '</td><td class="n">' + inr(x.total) + '</td><td>' +
+        (x.status === 'Draft' ? '<a href="#" data-open="' + x.id + '">Continue</a>' : '<a href="#" data-view="' + x.id + '">View</a>') + (x.file ? ' · <a href="' + esc(x.file) + '" target="_blank" rel="noopener">File</a>' : '') + '</td></tr>').join('') + '</tbody></table></div>' : '<span class="mut">None.</span>';
+    $('#ilist').querySelectorAll('[data-open]').forEach(a => a.onclick = async e => { e.preventDefault(); const d = busy('Opening…'); try { const r = await call('getInvoice', { id: a.dataset.open }); d(); invoiceEditor(r.draft, r.warnings || []); } catch (er) { d(); toast(er.message, true); } });
+    $('#ilist').querySelectorAll('[data-view]').forEach(a => a.onclick = async e => { e.preventDefault(); const d = busy('Opening…'); try { const r = await call('getInvoice', { id: a.dataset.view }); d(); viewPosted(r.posted); } catch (er) { d(); toast(er.message, true); } });
+  };
+  call('listInvoices').then(li => { S.invoices = li; drawList(); }).catch(e => { $('#ilist').textContent = e.message; });
+}
+function viewPosted(p) {
+  modal('<h3 style="margin-top:0">' + esc(p.supplier) + ' – ' + esc(p.no) + '</h3><div class="mut small">' + esc(p.status) + ' · ' + esc(p.date) + ' · received at ' + esc(SHORT[p.at] || p.at) + ' · stock added: ' + esc(p.stockAdded || 'Yes') + (p.file ? ' · <a href="' + esc(p.file) + '" target="_blank" rel="noopener">invoice file</a>' : '') + '</div>' +
+    '<div class="tw" style="margin-top:12px;max-height:60vh"><table><thead><tr><th>Seller item</th><th>Nutvique product</th><th class="n">Invoice qty</th><th class="n">Booked</th><th class="n">Landed cost</th><th class="n">Selling</th></tr></thead><tbody>' +
+    p.lines.map(l => '<tr><td>' + esc(l.seller) + '</td><td>' + esc(nm(l.name)) + (l.isNew ? ' <span class="pill grn">new</span>' : '') + '</td><td class="n">' + l.qty + ' ' + esc(l.unit) + '</td><td class="n">' + qf(l.booked, l.punit) + '</td><td class="n">' + inr(l.cost) + '</td><td class="n">' + inr(l.sell) + '</td></tr>').join('') +
+    '</tbody></table></div><p>Total ' + inr(p.total) + ' (taxable ' + inr(p.taxable) + ', GST ' + inr(p.gst) + ')</p>' +
+    (/Awaiting/i.test(p.status) ? '<div class="warn">The goods are already in stock. When the real invoice arrives, enter it in the billing app under More → Purchases (edit this entry) so costs are updated.</div>' : ''));
+}
+function invoiceEditor(d, warnings) {
+  d.lines = d.lines || [];
+  const cats = (S.categories || []);
+  const md = modal('<h3 style="margin-top:0">Goods in – check and post</h3><div id="iew"></div>' +
+    '<div class="row"><label class="f">Supplier<input id="e_sup" value="' + esc(d.supplier) + '" style="width:240px"></label><label class="f">GSTIN<input id="e_gst" value="' + esc(d.gstin) + '" style="width:170px"></label>' +
+    '<label class="f">Invoice no.<input id="e_no" value="' + esc(d.invoiceNo) + '" style="width:150px"></label><label class="f">Invoice date<input id="e_dt" type="date" value="' + esc(d.invoiceDate) + '"></label>' +
+    '<label class="f">Goods received at<select id="e_at">' + STORES.map(l => '<option value="' + esc(l) + '"' + ((d.receivedAt || STORES[1]) === l ? ' selected' : '') + '>' + SHORT[l] + '</option>').join('') + '</select></label></div>' +
+    '<div class="row"><label class="f">Taxable ₹<input id="e_tx" type="number" step="0.01" value="' + (d.taxable || '') + '"></label><label class="f">GST ₹<input id="e_gt" type="number" step="0.01" value="' + (d.gst || '') + '"></label><label class="f">Round off ₹<input id="e_ro" type="number" step="0.01" value="' + (d.roundOff || '') + '"></label><label class="f">Invoice total ₹<input id="e_tt" type="number" step="0.01" value="' + (d.total || '') + '"></label>' +
+    (d.file ? '<a href="' + esc(d.file.url) + '" target="_blank" rel="noopener" style="margin-bottom:9px">Open the invoice file ↗</a>' : '') + '</div>' +
+    ((d.charges || []).length ? '<div class="small mut" style="margin-bottom:8px">Other charges on the invoice (spread over the lines as landed cost): ' + d.charges.map(c => esc(c.label) + ' ' + inr(c.amount)).join(' · ') + '</div>' : '') +
+    '<div class="tw" style="max-height:none"><table class="lines"><thead><tr><th style="min-width:180px">Invoice line</th><th class="n">Qty</th><th class="n">Rate ₹</th><th class="n">Amount ₹</th><th style="min-width:260px">Nutvique product</th><th style="width:110px">Qty to book</th><th></th></tr></thead><tbody id="e_lines"></tbody></table></div>' +
+    '<div class="row" style="margin-top:10px"><button class="btn ghost" id="e_add">+ Add a line</button></div>' +
+    '<label class="f">Notes<textarea id="e_nt">' + esc(d.notes || '') + '</textarea></label>' +
+    '<div class="row" style="margin-top:12px"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="e_aw"> Goods arrived – invoice still awaited (book the stock now)</label></div>' +
+    '<div class="row"><button class="btn ghost" id="e_save">Save draft</button><button class="btn gold" id="e_post">Post – add stock</button><span class="small mut">Posting adds the stock to the chosen store and updates costs. Prices stay as they are.</span></div>');
+  const box = md.el;
+  const showW = w => { box.querySelector('#iew').innerHTML = (w || []).length ? '<div class="warn">' + w.map(esc).join('<br>') + '</div>' : ''; };
+  showW(warnings);
+  const lineHtml = (l, i) => {
+    const a = (l.alloc || [])[0] || {}; const p = S.products[a.sku];
+    const multi = (l.alloc || []).length > 1;
+    const cand = (l.candidates || []).filter(s => S.products[s]).map(s => '<option value="' + s + '"' + (s === a.sku ? ' selected' : '') + '>' + esc(nm(S.products[s].name)) + ' (' + S.products[s].unit + ')</option>').join('');
+    const isNew = l.how === 'new' && !a.sku;
+    const ni = l.create || Object.assign({ sell: '', mrp: '', qtyBooked: l.qty, gst: l.gstPct, hsn: l.hsn }, l.newItem || {});
+    return '<tr data-i="' + i + '" style="' + (l.skip ? 'opacity:.45' : '') + '"><td>' + (l.manual ? '<input data-f="desc" value="' + esc(l.desc) + '" placeholder="Item as on the bill">' : esc(l.desc) + '<div class="small mut">HSN ' + esc(l.hsn) + ' · GST ' + (l.gstPct || 0) + '%</div>') + '</td>' +
+      '<td class="n">' + (l.manual ? '<input data-f="qty" type="number" step="0.001" value="' + (l.qty || '') + '"><select data-f="unit"><option' + (l.unit === 'KGS' ? ' selected' : '') + '>KGS</option><option' + (l.unit === 'PCS' ? ' selected' : '') + '>PCS</option></select>' : (l.qty + ' ' + esc(l.unit))) + '</td>' +
+      '<td class="n">' + (l.manual ? '<input data-f="rate" type="number" step="0.01" value="' + (l.rate || '') + '">' : inr(l.rate)) + '</td><td class="n" data-amt>' + inr(l.amount) + '</td>' +
+      '<td>' + (multi ? '<div class="small">Split: ' + l.alloc.map(x => esc(nm((S.products[x.sku] || {}).name || x.sku)) + ' ' + x.qty).join(' + ') + ' <span class="pill">remembered</span></div>' :
+        (isNew ? '<div class="small"><span class="pill yel">new product</span> <a href="#" data-pick>or pick an existing one</a></div>' +
+          '<input data-n="name" value="' + esc(ni.name || '') + '" placeholder="Nutvique name" style="margin-top:4px">' +
+          '<div style="display:flex;gap:4px;margin-top:4px"><select data-n="cat">' + cats.map(c => '<option' + (c === ni.cat ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</select><select data-n="pack"><option' + (ni.pack === 'Loose' ? ' selected' : '') + '>Loose</option><option' + (ni.pack === 'Packed' ? ' selected' : '') + '>Packed</option></select><input data-n="net" placeholder="net g" style="width:70px" value="' + esc(ni.net || '') + '"></div>' +
+          '<div style="display:flex;gap:4px;margin-top:4px"><input data-n="sell" type="number" placeholder="Selling ₹" value="' + esc(ni.sell || '') + '"><input data-n="mrp" type="number" placeholder="MRP ₹" value="' + esc(ni.mrp || '') + '"></div>'
+          : '<select data-f="sku"><option value="">– choose –</option>' + cand + (a.sku && !(l.candidates || []).includes(a.sku) && p ? '<option value="' + a.sku + '" selected>' + esc(nm(p.name)) + ' (' + p.unit + ')</option>' : '') + '</select><input data-f="search" list="plist" placeholder="…or search all products" style="margin-top:4px">' +
+          (l.how === 'check' ? '<div class="small" style="color:#7a5b00">Please check this match</div>' : '') + (p && /KG/i.test(l.unit) && p.unit === 'pcs' ? '<div class="small neg">Invoice is in kg, product counts pieces – type the number of pieces</div>' : '') +
+          '<div class="small mut"><a href="#" data-mknew>make it a new product</a></div>')) + '</td>' +
+      '<td>' + (multi ? '' : '<input data-f="aq" type="number" step="0.001" value="' + (isNew ? (ni.qtyBooked || '') : (a.qty != null ? a.qty : l.qty)) + '">' + (p ? '<div class="small mut">' + p.unit + '</div>' : '')) + '</td>' +
+      '<td><label class="small"><input type="checkbox" data-f="skip"' + (l.skip ? ' checked' : '') + '> skip</label></td></tr>';
+  };
+  const draw = () => {
+    box.querySelector('#e_lines').innerHTML = d.lines.map(lineHtml).join('') || '<tr><td colspan="7" class="mut">No lines yet – add one.</td></tr>';
+    box.querySelectorAll('#e_lines tr[data-i]').forEach(tr => {
+      const l = d.lines[Number(tr.dataset.i)];
+      const q = s => tr.querySelector(s);
+      if (q('[data-f="sku"]')) q('[data-f="sku"]').onchange = e => { l.alloc = e.target.value ? [{ sku: e.target.value, qty: Number(q('[data-f="aq"]').value) || l.qty }] : []; l.how = 'picked'; draw(); };
+      if (q('[data-f="search"]')) q('[data-f="search"]').onchange = e => { const s = skuFrom(e.target.value); if (!s) return toast('Pick a product from the list.', true); l.candidates = [s].concat(l.candidates || []); l.alloc = [{ sku: s, qty: Number(q('[data-f="aq"]').value) || l.qty }]; l.how = 'picked'; draw(); };
+      if (q('[data-f="aq"]')) q('[data-f="aq"]').oninput = e => { if (l.alloc && l.alloc[0]) l.alloc[0].qty = Number(e.target.value); if (l.create) l.create.qtyBooked = Number(e.target.value); };
+      q('[data-f="skip"]').onchange = e => { l.skip = e.target.checked; draw(); };
+      if (q('[data-pick]')) q('[data-pick]').onclick = e => { e.preventDefault(); l.how = 'picked'; l.alloc = []; delete l.create; draw(); };
+      if (q('[data-mknew]')) q('[data-mknew]').onclick = e => { e.preventDefault(); l.how = 'new'; l.alloc = []; draw(); };
+      tr.querySelectorAll('[data-n]').forEach(inp => inp.oninput = () => { l.create = l.create || Object.assign({ qtyBooked: l.qty, gst: l.gstPct, hsn: l.hsn }, l.newItem || {}); l.create[inp.dataset.n] = inp.value; });
+      ['desc', 'qty', 'rate'].forEach(f => { if (q('[data-f="' + f + '"]')) q('[data-f="' + f + '"]').oninput = e => { l[f] = f === 'desc' ? e.target.value : Number(e.target.value); l.amount = Math.round((Number(l.qty) || 0) * (Number(l.rate) || 0) * 100) / 100; q('[data-amt]').textContent = inr(l.amount); if (f === 'qty' && l.alloc && l.alloc[0] && !l.aqTouched) { l.alloc[0].qty = l.qty; } }; });
+      if (q('[data-f="unit"]')) q('[data-f="unit"]').onchange = e => { l.unit = e.target.value; };
+    });
+  };
+  draw();
+  box.querySelector('#e_add').onclick = () => { d.lines.push({ no: d.lines.length + 1, desc: '', hsn: '', qty: 0, unit: 'KGS', rate: 0, amount: 0, gstPct: 5, alloc: [], candidates: [], how: 'picked', manual: true }); draw(); };
+  const collect = () => {
+    d.supplier = box.querySelector('#e_sup').value.trim(); d.gstin = box.querySelector('#e_gst').value.trim().toUpperCase(); d.invoiceNo = box.querySelector('#e_no').value.trim();
+    d.invoiceDate = box.querySelector('#e_dt').value; d.receivedAt = box.querySelector('#e_at').value; d.notes = box.querySelector('#e_nt').value;
+    d.taxable = Number(box.querySelector('#e_tx').value) || 0; d.gst = Number(box.querySelector('#e_gt').value) || 0; d.roundOff = Number(box.querySelector('#e_ro').value) || 0; d.total = Number(box.querySelector('#e_tt').value) || 0;
+    d.lines.forEach((l, i) => { l.no = i + 1; if (l.how === 'new' && !(l.alloc || []).length) { l.create = l.create || Object.assign({ qtyBooked: l.qty, gst: l.gstPct, hsn: l.hsn }, l.newItem || {}); l.create.net = Number(l.create.net) || ''; l.create.netUnit = 'g'; if (l.create.pack !== 'Packed') l.create.pack = 'Loose'; l.create.sell = Number(l.create.sell) || ''; l.create.mrp = Number(l.create.mrp) || l.create.sell; } });
+    return d;
+  };
+  const check = () => {
+    const bad = d.lines.filter(l => !l.skip && !(l.how === 'new' && l.create && l.create.name) && !((l.alloc || []).some(a => a.sku && Number(a.qty) > 0)));
+    if (bad.length) { toast('Line ' + bad[0].no + ': pick the product (or skip the line).', true); return false; }
+    const nw = d.lines.filter(l => !l.skip && l.how === 'new' && !(l.alloc || []).length);
+    for (const l of nw) { if (!/^nutvique\b/i.test(l.create.name || '')) { toast('Line ' + l.no + ': new product names start with "Nutvique".', true); return false; } if (!(Number(l.create.sell) > 0)) { toast('Line ' + l.no + ': type the selling price for the new product.', true); return false; } }
+    return true;
+  };
+  box.querySelector('#e_save').onclick = async () => { collect(); const dn = busy('Saving draft…'); try { const r = await call('saveDraft', d); d.id = r.draft.id; showW(r.warnings); dn(); toast('Draft saved.'); } catch (e) { dn(); toast(e.message, true); } };
+  box.querySelector('#e_post').onclick = async () => {
+    collect(); if (!check()) return;
+    const aw = box.querySelector('#e_aw').checked;
+    if (!aw && !d.invoiceNo) return toast('Type the invoice number (or tick "invoice still awaited").', true);
+    if (!d.supplier) return toast('Type the supplier.', true);
+    if (!confirm('Post this ' + (aw ? 'delivery (invoice awaited)' : 'invoice') + ' and add the stock at ' + SHORT[d.receivedAt] + '?')) return;
+    const dn = busy('Posting…');
+    try {
+      const body = Object.assign({}, d, aw ? { awaiting: true } : {});
+      const r = await call('postInvoice', body);
+      await loadAll(true); S.invoices = null; dn(); md.close(); toast('Posted – stock added at ' + SHORT[d.receivedAt] + (r && r.summary ? ' (' + r.summary.lines + ' line(s))' : '') + '.'); render();
+    } catch (e) { dn(); toast(e.message, true); }
+  };
+}
+
+// ───────── Write-off ─────────
+function vOut(el) {
+  const reasons = (S.sb && S.sb.reasons) || ['Damaged', 'Expired', 'Sample / tasting', 'Own use / gift', 'Return to supplier', 'Other'];
+  const lines = [{ sku: '', qty: '' }];
+  el.innerHTML = '<div class="note">Write off stock that is damaged, expired, used for tasting, gifted or returned. It comes off the store\'s stock at once (also in the billing app).</div><div class="card">' +
+    '<div class="row"><label class="f">Location<select id="ol">' + ALL_LOCS.map(l => '<option value="' + esc(l) + '">' + SHORT[l] + '</option>').join('') + '</select></label><label class="f">Reason<select id="or">' + reasons.map(r => '<option>' + esc(r) + '</option>').join('') + '</select></label><label class="f">Date<input type="date" id="od" value="' + today() + '"></label><label class="f" style="flex:1">Note<input id="on" placeholder="What happened"></label></div>' +
+    '<table class="lines"><thead><tr><th>Product</th><th style="width:140px">Quantity</th><th class="n">In stock</th><th class="n">₹ at cost</th><th></th></tr></thead><tbody id="ob"></tbody></table><div class="row" style="margin-top:10px"><button class="btn ghost" id="oa">+ Add a product</button><div class="sp"></div><button class="btn red" id="os">Write off</button></div></div>';
+  const draw = () => {
+    const loc = $('#ol').value;
+    $('#ob').innerHTML = lines.map((l, i) => { const p = S.products[l.sku]; return '<tr data-i="' + i + '"><td><input list="plist" data-p value="' + (p ? esc(nm(p.name) + ' · ' + p.sku) : '') + '" placeholder="Search product"></td><td><input type="number" step="0.001" min="0" data-q value="' + l.qty + '"> ' + (p ? p.unit : '') + '</td><td class="n">' + (p ? qf(qty(p.sku, loc), p.unit) : '') + '</td><td class="n">' + (p && l.qty ? inr(l.qty * cost(p)) : '') + '</td><td><a href="#" data-x>remove</a></td></tr>'; }).join('');
+    $('#ob').querySelectorAll('tr').forEach(tr => {
+      const l = lines[Number(tr.dataset.i)];
+      tr.querySelector('[data-p]').onchange = e => { l.sku = skuFrom(e.target.value); if (!l.sku) toast('Pick a product from the list.', true); draw(); };
+      tr.querySelector('[data-q]').onchange = e => { l.qty = Number(e.target.value) || ''; draw(); };
+      tr.querySelector('[data-x]').onclick = e => { e.preventDefault(); lines.splice(Number(tr.dataset.i), 1); if (!lines.length) lines.push({ sku: '', qty: '' }); draw(); };
+    });
+  };
+  $('#ol').onchange = draw; $('#oa').onclick = () => { lines.push({ sku: '', qty: '' }); draw(); };
+  $('#os').onclick = async () => {
+    const ok = lines.filter(l => l.sku && Number(l.qty) > 0); if (!ok.length) return toast('Add a product and quantity.', true);
+    const loc = $('#ol').value, reason = $('#or').value, note = $('#on').value.trim();
+    if (reason === 'Other' && !note) return toast('Type what happened in the note.', true);
+    const v = ok.reduce((a, l) => a + l.qty * cost(S.products[l.sku]), 0);
+    if (!confirm('Write off ' + ok.length + ' product(s) at ' + SHORT[loc] + ' (' + inr(v) + ' at cost) as "' + reason + '"?')) return;
+    const dn = busy('Saving…');
+    try { await call('stockOut', { location: loc, reason, note, date: $('#od').value, lines: ok.map(l => ({ sku: l.sku, qty: l.qty })) }); await loadAll(true); dn(); toast('Written off.'); lines.length = 0; lines.push({ sku: '', qty: '' }); render(); }
+    catch (e) { dn(); toast(e.message, true); }
+  };
+  draw();
+}
+
+// ───────── Movements ─────────
+function vMoves(el) {
+  const st = store.get('mv') || { from: BENCH, to: today(), loc: 'All', kind: 'All', q: '' };
+  el.innerHTML = '<div class="row"><label class="f">From<input type="date" id="mf" value="' + st.from + '"></label><label class="f">To<input type="date" id="mt" value="' + today() + '"></label>' +
+    '<label class="f">Location<select id="ml"><option value="All">All</option>' + ALL_LOCS.map(l => '<option value="' + esc(l) + '"' + (st.loc === l ? ' selected' : '') + '>' + SHORT[l] + '</option>').join('') + '</select></label>' +
+    '<label class="f">Kind<select id="mk">' + ['All', 'Stock in', 'Transfers', 'Sales', 'Stock out', 'Events', 'Counts / adjustments', 'Other'].map(k => '<option' + (st.kind === k ? ' selected' : '') + '>' + k + '</option>').join('') + '</select></label>' +
+    '<label class="f">Search<input id="mq" value="' + esc(st.q) + '" placeholder="Product, SKU, ref, party"></label><button class="btn" id="mg">Show</button></div><div id="mb" class="mut">Choose and press Show.</div>';
+  const go = async () => {
+    const d = { from: $('#mf').value, to: $('#mt').value, loc: $('#ml').value, kind: $('#mk').value, q: $('#mq').value.trim() }; store.set('mv', d);
+    $('#mb').textContent = 'Loading…';
+    try {
+      const r = await call('movements', d);
+      $('#mb').innerHTML = '<div class="small mut" style="margin-bottom:6px">' + r.list.length + (r.more ? '+ (first 600 shown – narrow the dates)' : '') + ' movement(s) · ' + Object.keys(r.sum).map(k => k + ' ' + r.sum[k].n).join(' · ') + '</div><div class="tw"><table><thead><tr><th>Date</th><th>Location</th><th>Movement</th><th>Product</th><th class="n">Qty</th><th class="n">Value</th><th>Ref</th><th>Party / note</th></tr></thead><tbody>' +
+        r.list.map(m => '<tr><td>' + m.date + '</td><td>' + (SHORT[m.loc] || esc(m.loc)) + '</td><td>' + esc(m.mv) + '</td><td>' + esc(nm(m.item)) + '</td><td class="n ' + (m.qty < 0 ? 'neg' : 'pos') + '">' + qs(m.qty, m.unit) + '</td><td class="n">' + (m.value != null && m.value !== '' ? inr(m.value) : '') + '</td><td class="small">' + esc(m.ref) + '</td><td class="small mut">' + esc([m.party, m.note].filter(Boolean).join(' · ')) + '</td></tr>').join('') + '</tbody></table></div>';
+    } catch (e) { $('#mb').textContent = e.message; }
+  };
+  $('#mg').onclick = go; go();
+}
+
+// ───────── Count history ─────────
+function vCounts(el) {
+  const loc0 = (store.get('ch') || {}).loc || STORES[0];
+  el.innerHTML = '<div class="row"><label class="f">Location<select id="hl">' + ALL_LOCS.map(l => '<option value="' + esc(l) + '"' + (l === loc0 ? ' selected' : '') + '>' + SHORT[l] + '</option>').join('') + '</select></label></div><div id="hb" class="mut">Loading…</div>';
+  const go = async () => {
+    const loc = $('#hl').value; store.set('ch', { loc }); $('#hb').textContent = 'Loading…';
+    try {
+      const list = await call('countHistory', { location: loc });
+      if (!list.length) { $('#hb').innerHTML = '<span class="mut">No counts saved for this store yet.</span>'; return; }
+      const bySku = {}; S.plist.forEach(p => bySku[p.name] = p);
+      $('#hb').innerHTML = list.map((c, i) => {
+        let up = 0, dn = 0, ch = 0;
+        c.lines.forEach(l => { const p = bySku[l.name]; const v = (l.diff || 0) * cost(p); if (Math.abs(l.diff) > 0.0005) ch++; if (v > 0) up += v; else dn += v; });
+        return '<div class="card"><div class="row" style="margin:0"><div><b>' + c.date + '</b> ' + (c.date === BENCH ? '<span class="pill grn">benchmark</span> ' : '') + '<span class="mut small">' + esc(c.ref) + ' · by ' + esc(c.by) + ' · ' + c.lines.length + ' lines, ' + ch + ' changed</span></div><div class="sp"></div><div class="small">over <b class="pos">' + inr(up) + '</b> · short <b class="neg">' + inr(dn) + '</b> · net <b>' + inr(up + dn) + '</b></div><button class="btn ghost" data-h="' + i + '" style="padding:5px 10px">Lines</button></div><div data-hl="' + i + '"></div></div>';
+      }).join('');
+      $('#hb').querySelectorAll('[data-h]').forEach(b => b.onclick = () => {
+        const c = list[Number(b.dataset.h)], box = $('#hb').querySelector('[data-hl="' + b.dataset.h + '"]');
+        if (box.innerHTML) { box.innerHTML = ''; return; }
+        box.innerHTML = '<div class="tw" style="margin-top:10px;max-height:420px"><table><thead><tr><th>Product</th><th class="n">App stock</th><th class="n">Counted</th><th class="n">Difference</th><th class="n">₹ at cost</th><th>Remark</th></tr></thead><tbody>' +
+          c.lines.slice().sort((a, b2) => (a.diff * cost(bySku[a.name])) - (b2.diff * cost(bySku[b2.name]))).map(l => '<tr><td>' + esc(nm(l.name)) + '</td><td class="n">' + qf(l.sys, l.unit) + '</td><td class="n">' + qf(l.counted, l.unit) + '</td><td class="n ' + (l.diff < 0 ? 'neg' : l.diff > 0 ? 'pos' : '') + '">' + qs(l.diff, l.unit) + '</td><td class="n">' + inr(l.diff * cost(bySku[l.name])) + '</td><td class="small mut">' + esc(l.remark) + '</td></tr>').join('') + '</tbody></table></div>';
+      });
+    } catch (e) { $('#hb').textContent = e.message; }
+  };
+  $('#hl').onchange = go; go();
+}
+
+// ───────── Transfers (view only) ─────────
+async function vTransfers(el) {
+  el.innerHTML = '<div class="note">Store-to-store transfers are made and checked in the <b>billing app</b> (Stock → Transfer) by the staff. They show here so you can follow them.</div><div id="tb" class="mut">Loading…</div>';
+  try {
+    const sb = await call('stockBoot'); S.sb = sb; const t = sb.transfers || {};
+    const tbl = (rows, title) => '<div class="card"><h3>' + title + '</h3>' + (rows.length ? '<div class="tw" style="max-height:480px"><table><thead><tr><th>No.</th><th>Date</th><th>From</th><th>To</th><th>Status</th><th>Items</th><th>Checked by</th></tr></thead><tbody>' +
+      rows.map(x => '<tr><td class="small">' + esc(x.no) + '</td><td>' + esc(x.date) + '</td><td>' + (SHORT[x.from] || esc(x.from)) + '</td><td>' + (SHORT[x.to] || esc(x.to)) + '</td><td><span class="pill ' + (/Approved/.test(x.status) ? 'grn' : 'yel') + '">' + esc(x.status) + '</span></td><td class="small">' + (x.lines || []).map(l => esc(nm(l.name)) + ' ' + l.sent + (l.got != null && l.got !== l.sent ? ' (got ' + l.got + ')' : '') + ' ' + l.unit).join('<br>') + '</td><td class="small">' + esc(x.checkedBy || '') + (x.remarks ? '<div class="mut">' + esc(x.remarks) + '</div>' : '') + '</td></tr>').join('') + '</tbody></table></div>' : '<span class="mut">None.</span>') + '</div>';
+    $('#tb').innerHTML = tbl(t.waiting || [], 'Waiting to be checked by the receiving store') + tbl(t.recent || [], 'Recent transfers');
+  } catch (e) { $('#tb').textContent = e.message; }
+}
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { });
+boot();
+</script>
+</body>
+</html>
