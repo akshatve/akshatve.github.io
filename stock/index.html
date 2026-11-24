@@ -416,8 +416,9 @@ function vIn(el) {
     const rows = li.filter(x => tab === 'open' ? x.status !== 'Posted' : x.status === 'Posted').slice(0, 200);
     $('#ilist').innerHTML = rows.length ? '<div class="tw" style="max-height:420px"><table><thead><tr><th>Date</th><th>Supplier</th><th>Invoice no.</th><th>Status</th><th class="n">Qty</th><th class="n">Total</th><th></th></tr></thead><tbody>' +
       rows.map(x => '<tr><td>' + esc(x.date) + '</td><td>' + esc(x.supplier) + '</td><td>' + esc(x.no) + '</td><td><span class="pill ' + (x.status === 'Posted' ? 'grn' : 'yel') + '">' + esc(x.status) + '</span></td><td class="n">' + (x.qty || '') + '</td><td class="n">' + inr(x.total) + '</td><td>' +
-        (x.status === 'Draft' ? '<a href="#" data-open="' + x.id + '">Continue</a>' : '<a href="#" data-view="' + x.id + '">View</a>') + (x.file ? ' · <a href="' + esc(x.file) + '" target="_blank" rel="noopener">File</a>' : '') + '</td></tr>').join('') + '</tbody></table></div>' : '<span class="mut">None.</span>';
+        (x.status === 'Draft' ? '<a href="#" data-open="' + x.id + '">Continue</a>' : '<a href="#" data-view="' + x.id + '">View</a> · <a href="#" data-edit="' + x.id + '">' + (/Awaiting/i.test(x.status) ? 'Enter real invoice' : 'Edit') + '</a>') + (x.file ? ' · <a href="' + esc(x.file) + '" target="_blank" rel="noopener">File</a>' : '') + '</td></tr>').join('') + '</tbody></table></div>' : '<span class="mut">None.</span>';
     $('#ilist').querySelectorAll('[data-open]').forEach(a => a.onclick = async e => { e.preventDefault(); const d = busy('Opening…'); try { const r = await call('getInvoice', { id: a.dataset.open }); d(); invoiceEditor(r.draft, r.warnings || []); } catch (er) { d(); toast(er.message, true); } });
+    $('#ilist').querySelectorAll('[data-edit]').forEach(a => a.onclick = e => { e.preventDefault(); editPosted(a.dataset.edit); });
     $('#ilist').querySelectorAll('[data-view]').forEach(a => a.onclick = async e => { e.preventDefault(); const d = busy('Opening…'); try { const r = await call('getInvoice', { id: a.dataset.view }); d(); viewPosted(r.posted); } catch (er) { d(); toast(er.message, true); } });
   };
   call('listInvoices').then(li => { S.invoices = li; drawList(); }).catch(e => { $('#ilist').textContent = e.message; });
@@ -427,12 +428,18 @@ function viewPosted(p) {
     '<div class="tw" style="margin-top:12px;max-height:60vh"><table><thead><tr><th>Seller item</th><th>Nutvique product</th><th class="n">Invoice qty</th><th class="n">Booked</th><th class="n">Landed cost</th><th class="n">Selling</th></tr></thead><tbody>' +
     p.lines.map(l => '<tr><td>' + esc(l.seller) + '</td><td>' + esc(nm(l.name)) + (l.isNew ? ' <span class="pill grn">new</span>' : '') + '</td><td class="n">' + l.qty + ' ' + esc(l.unit) + '</td><td class="n">' + qf(l.booked, l.punit) + '</td><td class="n">' + inr(l.cost) + '</td><td class="n">' + inr(l.sell) + '</td></tr>').join('') +
     '</tbody></table></div><p>Total ' + inr(p.total) + ' (taxable ' + inr(p.taxable) + ', GST ' + inr(p.gst) + ')</p>' +
-    (/Awaiting/i.test(p.status) ? '<div class="warn">The goods are already in stock. When the real invoice arrives, enter it in the billing app under More → Purchases (edit this entry) so costs are updated.</div>' : ''));
+    (/Awaiting/i.test(p.status) ? '<div class="warn">The goods are already in stock. When the real invoice arrives, press the button below, type the invoice details and attach the file – only the cost (and any quantity difference) is updated.</div>' : '') +
+    '<button class="btn gold" id="vp_edit">' + (/Awaiting/i.test(p.status) ? 'Enter the real invoice' : 'Correct this invoice') + '</button>');
+  document.querySelector('#vp_edit').onclick = () => { document.querySelector('.modal').remove(); editPosted(p.id); };
+}
+async function editPosted(id) {
+  const dn = busy('Opening…');
+  try { const r = await call('invoiceForEdit', { id: id }); dn(); invoiceEditor(r.draft, r.warnings || []); } catch (e) { dn(); toast(e.message, true); }
 }
 function invoiceEditor(d, warnings) {
   d.lines = d.lines || [];
   const cats = (S.categories || []);
-  const md = modal('<h3 style="margin-top:0">Goods in – check and post</h3><div id="iew"></div>' +
+  const md = modal('<h3 style="margin-top:0">' + (d.revise ? (d.awaiting ? 'Enter the real invoice' : 'Correct a posted invoice') : 'Goods in – check and post') + '</h3>' + (d.revise ? '<div class="note">This delivery is already in stock' + (d.stockAdded ? '' : ' (or was counted)') + '. Saving replaces the invoice lines and moves <b>only the difference</b> in quantity; costs are recalculated. Prices stay as they are.</div>' : '') + '<div id="iew"></div>' +
     '<div class="row"><label class="f">Supplier<input id="e_sup" value="' + esc(d.supplier) + '" style="width:240px"></label><label class="f">GSTIN<input id="e_gst" value="' + esc(d.gstin) + '" style="width:170px"></label>' +
     '<label class="f">Invoice no.<input id="e_no" value="' + esc(d.invoiceNo) + '" style="width:150px"></label><label class="f">Invoice date<input id="e_dt" type="date" value="' + esc(d.invoiceDate) + '"></label>' +
     '<label class="f">Goods received at<select id="e_at">' + STORES.map(l => '<option value="' + esc(l) + '"' + ((d.receivedAt || STORES[1]) === l ? ' selected' : '') + '>' + SHORT[l] + '</option>').join('') + '</select></label></div>' +
@@ -442,8 +449,9 @@ function invoiceEditor(d, warnings) {
     '<div class="tw" style="max-height:none"><table class="lines"><thead><tr><th style="min-width:180px">Invoice line</th><th class="n">Qty</th><th class="n">Rate ₹</th><th class="n">Amount ₹</th><th style="min-width:260px">Nutvique product</th><th style="width:110px">Qty to book</th><th></th></tr></thead><tbody id="e_lines"></tbody></table></div>' +
     '<div class="row" style="margin-top:10px"><button class="btn ghost" id="e_add">+ Add a line</button></div>' +
     '<label class="f">Notes<textarea id="e_nt">' + esc(d.notes || '') + '</textarea></label>' +
-    '<div class="row" style="margin-top:12px"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="e_aw"> Goods arrived – invoice still awaited (book the stock now)</label></div>' +
-    '<div class="row"><button class="btn ghost" id="e_save">Save draft</button><button class="btn gold" id="e_post">Post – add stock</button><span class="small mut">Posting adds the stock to the chosen store and updates costs. Prices stay as they are.</span></div>');
+    '<div class="row" style="margin-top:12px"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="e_aw"' + (d.awaiting ? ' checked' : '') + '> Goods arrived – invoice still awaited (book the stock now)</label></div>' +
+    (d.revise && d.id ? '<div class="row"><label class="f">Attach the invoice file (PDF / photo)<input type="file" id="e_file" accept="application/pdf,image/*"></label><button class="btn ghost" id="e_att">Attach</button></div>' : '') +
+    '<div class="row">' + (d.revise ? '' : '<button class="btn ghost" id="e_save">Save draft</button>') + '<button class="btn gold" id="e_post">' + (d.revise ? 'Save invoice' : 'Post – add stock') + '</button><span class="small mut">Posting adds the stock to the chosen store and updates costs. Prices stay as they are.</span></div>');
   const box = md.el;
   const showW = w => { box.querySelector('#iew').innerHTML = (w || []).length ? '<div class="warn">' + w.map(esc).join('<br>') + '</div>' : ''; };
   showW(warnings);
@@ -499,17 +507,21 @@ function invoiceEditor(d, warnings) {
     for (const l of nw) { if (!/^nutvique\b/i.test(l.create.name || '')) { toast('Line ' + l.no + ': new product names start with "Nutvique".', true); return false; } if (!(Number(l.create.sell) > 0)) { toast('Line ' + l.no + ': type the selling price for the new product.', true); return false; } }
     return true;
   };
-  box.querySelector('#e_save').onclick = async () => { collect(); const dn = busy('Saving draft…'); try { const r = await call('saveDraft', d); d.id = r.draft.id; showW(r.warnings); dn(); toast('Draft saved.'); } catch (e) { dn(); toast(e.message, true); } };
+  if (box.querySelector('#e_att')) box.querySelector('#e_att').onclick = () => {
+    const f = box.querySelector('#e_file').files[0]; if (!f) return toast('Choose the file first.', true);
+    const rd = new FileReader(); rd.onload = async () => { const dn = busy('Attaching…'); try { await call('invAttach', { id: d.id, b64: String(rd.result).split(',')[1], mime: f.type || 'application/pdf' }); dn(); toast('Invoice file attached.'); } catch (e) { dn(); toast(e.message, true); } }; rd.readAsDataURL(f);
+  };
+  if (box.querySelector('#e_save')) box.querySelector('#e_save').onclick = async () => { collect(); const dn = busy('Saving draft…'); try { const r = await call('saveDraft', d); d.id = r.draft.id; showW(r.warnings); dn(); toast('Draft saved.'); } catch (e) { dn(); toast(e.message, true); } };
   box.querySelector('#e_post').onclick = async () => {
     collect(); if (!check()) return;
     const aw = box.querySelector('#e_aw').checked;
     if (!aw && !d.invoiceNo) return toast('Type the invoice number (or tick "invoice still awaited").', true);
     if (!d.supplier) return toast('Type the supplier.', true);
-    if (!confirm('Post this ' + (aw ? 'delivery (invoice awaited)' : 'invoice') + ' and add the stock at ' + SHORT[d.receivedAt] + '?')) return;
+    if (!confirm(d.revise ? 'Save this invoice? Only the difference in quantity moves stock.' : 'Post this ' + (aw ? 'delivery (invoice awaited)' : 'invoice') + ' and add the stock at ' + SHORT[d.receivedAt] + '?')) return;
     const dn = busy('Posting…');
     try {
-      const body = Object.assign({}, d, aw ? { awaiting: true } : {});
-      const r = await call('postInvoice', body);
+      const body = Object.assign({}, d, { awaiting: aw });
+      const r = await call(d.revise ? 'reviseInvoice' : 'postInvoice', body);
       await loadAll(true); S.invoices = null; dn(); md.close(); toast('Posted – stock added at ' + SHORT[d.receivedAt] + (r && r.summary ? ' (' + r.summary.lines + ' line(s))' : '') + '.'); render();
     } catch (e) { dn(); toast(e.message, true); }
   };
