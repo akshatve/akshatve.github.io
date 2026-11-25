@@ -76,6 +76,8 @@ const BENCH = '2026-11-24';                 // owner, 25 Nov 2026: the 24 Nov co
 const STORES = ['Gulshan One29 Mall', 'City Galleria – Gaur City-2', 'Central Market – Sector 120'];
 const ALL_LOCS = STORES.concat(['Event']);
 const SHORT = { 'Gulshan One29 Mall': 'Gulshan', 'City Galleria – Gaur City-2': 'Galleria', 'Central Market – Sector 120': 'Central', 'Event': 'Event' };
+const PHOTOS = new Set(["NV-GFT-3J-GB", "NV-GFT-4J-SWN", "NV-GFT-4J-3D", "NV-GFT-4J-BPK", "NV-GFT-4J-ELP", "NV-GFT-4J-HBF", "NV-GFT-4J-HGT", "NV-GFT-4J-PCK", "NV-GFT-4J-PRL", "NV-GFT-4J-PVL", "NV-GFT-4J-RFL", "NV-GFT-4J-GGM", "NV-GFT-4P-PNK", "NV-GFT-4P-GLD", "NV-GFT-6J-3D", "NV-GFT-6J-HGT", "NV-GFT-6J-PFN", "NV-GFT-6P-PCK", "NV-GFT-8J-HMP", "NV-GFT-8P-GRN", "NV-GFT-BLK", "NV-GFT-PNK", "NV-GFT-WHT", "NV-GFT-BOAT-TRY", "NV-GFT-RND-TRY", "NV-GFT-SLV-TRY", "NV-GFT-GLD-BSK"]);   // img/<SKU>.jpg
+const photo = (sku, px) => PHOTOS.has(sku) ? '<img src="img/' + sku + '.jpg" alt="" loading="lazy" data-zoom="' + sku + '" style="width:' + px + 'px;height:' + px + 'px;object-fit:cover;border-radius:8px;vertical-align:middle;margin-right:8px;cursor:zoom-in;border:1px solid #e3e6ea">' : '';
 const S = { token: '', user: null, view: 'home', products: {}, plist: [], stock: {}, cs: {}, sb: null, invoices: null, loadedAt: null };
 
 // ───────── helpers ─────────
@@ -248,7 +250,7 @@ function vStock(el) {
   el.innerHTML = '<div class="row"><label class="f">Search<input id="sq" placeholder="Name or SKU" value="' + esc(f.q) + '"></label>' +
     '<label class="f">Category<select id="sc"><option value="">All</option>' + cats.map(c => '<option' + (c === f.cat ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</select></label>' +
     '<label class="f">Show<select id="ss">' + [['stock', 'With stock'], ['all', 'All active'], ['nc', 'Not counted since 24 Nov'], ['neg', 'Negative somewhere']].map(o => '<option value="' + o[0] + '"' + (o[0] === f.show ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></label>' +
-    '<div class="sp"></div><span class="mut small" id="scount"></span></div><div class="tw"><table><thead><tr><th>Product</th><th>Unit</th>' + ALL_LOCS.map(l => '<th class="n">' + SHORT[l] + '</th>').join('') + '<th class="n">Total</th><th class="n">Value at cost</th></tr></thead><tbody id="sb"></tbody></table></div>';
+    '<div class="sp"></div><button class="btn ghost" id="sgal">🎁 Gift box photos</button><span class="mut small" id="scount"></span></div><div class="tw"><table><thead><tr><th>Product</th><th>Unit</th>' + ALL_LOCS.map(l => '<th class="n">' + SHORT[l] + '</th>').join('') + '<th class="n">Total</th><th class="n">Value at cost</th></tr></thead><tbody id="sb"></tbody></table></div>';
   const draw = () => {
     const q = $('#sq').value.trim().toLowerCase(), cat = $('#sc').value, show = $('#ss').value;
     store.set('sf', { q: $('#sq').value, cat: cat, show: show });
@@ -265,7 +267,7 @@ function vStock(el) {
     let tv = 0;
     $('#sb').innerHTML = rows.map(p => {
       const t = ALL_LOCS.reduce((a, l) => a + qty(p.sku, l), 0), v = t * cost(p); tv += v;
-      return '<tr class="click" data-sku="' + p.sku + '"><td>' + esc(nm(p.name)) + (p.status === 'Discontinued' ? ' <span class="pill">discontinued</span>' : '') + '<div class="mut small">' + p.sku + '</div></td><td>' + p.unit + '</td>' +
+      return '<tr class="click" data-sku="' + p.sku + '"><td style="display:flex;align-items:center">' + photo(p.sku, 44) + '<div>' + esc(nm(p.name)) + (p.status === 'Discontinued' ? ' <span class="pill">discontinued</span>' : '') + '<div class="mut small">' + p.sku + '</div></div></td><td>' + p.unit + '</td>' +
         ALL_LOCS.map(l => { const x = qty(p.sku, l); const nc = STORES.indexOf(l) >= 0 && x > 0.0005 && !countedSince(l, p.sku); return '<td class="n' + (x < -0.0005 ? ' neg' : '') + '"' + (nc ? ' style="background:var(--yel)" title="Not counted since 24 Nov"' : '') + '>' + qf(x, '') + '</td>'; }).join('') +
         '<td class="n"><b>' + qf(t, '') + '</b></td><td class="n">' + inr(v) + '</td></tr>';
     }).join('') || '<tr><td colspan="9" class="mut">Nothing matches.</td></tr>';
@@ -273,7 +275,13 @@ function vStock(el) {
     el.querySelectorAll('tr[data-sku]').forEach(tr => tr.onclick = () => itemDetail(tr.dataset.sku));
   };
   ['#sq', '#sc', '#ss'].forEach(s => $(s).oninput = draw);
+  $('#sgal').onclick = giftGallery;
   draw();
+}
+function giftGallery() {
+  const list = [...PHOTOS].map(s => S.products[s]).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
+  const md = modal('<h3 style="margin-top:0">Gift boxes, trays & baskets</h3><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px">' + list.map(p => '<div class="card" style="padding:8px;margin:0;cursor:pointer" data-sku="' + p.sku + '"><img src="img/' + p.sku + '.jpg" alt="" loading="lazy" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px"><div style="font-weight:600;margin-top:6px">' + esc(nm(p.name)) + '</div><div class="small mut">' + inr(p.sell) + ' · ' + STORES.map(l => SHORT[l] + ' ' + (qty(p.sku, l) || 0)).join(' · ') + '</div></div>').join('') + '</div>');
+  md.el.querySelectorAll('[data-sku]').forEach(c => c.onclick = () => { md.close(); itemDetail(c.dataset.sku); });
 }
 function modal(html) {
   const m = document.createElement('div'); m.className = 'modal'; m.innerHTML = '<div class="box"><button class="x">×</button>' + html + '</div>';
@@ -282,7 +290,7 @@ function modal(html) {
 }
 async function itemDetail(sku) {
   const p = S.products[sku];
-  const md = modal('<h3 style="margin-top:0">' + esc(nm(p.name)) + '</h3><div class="mut small">' + sku + ' · ' + p.unit + ' · cost ' + inr(cost(p)) + ' · selling ' + inr(p.sell) + '</div><div id="idb" style="margin-top:12px"></div>');
+  const md = modal((PHOTOS.has(sku) ? '<img src="img/' + sku + '.jpg" alt="" style="float:right;width:180px;max-width:40%;border-radius:10px;margin:0 30px 10px 12px">' : '') + '<h3 style="margin-top:0">' + esc(nm(p.name)) + '</h3><div class="mut small">' + sku + ' · ' + p.unit + ' · cost ' + inr(cost(p)) + ' · selling ' + inr(p.sell) + '</div><div id="idb" style="margin-top:12px"></div>');
   let h = '<table><thead><tr><th>Location</th><th>Last count</th><th class="n">Stock after last count change</th><th class="n">Sold since</th><th class="n">Other moves since</th><th class="n">App stock now</th><th></th></tr></thead><tbody>';
   ALL_LOCS.forEach(l => {
     const c = csOf(l, sku) || {}; const now = qty(sku, l);

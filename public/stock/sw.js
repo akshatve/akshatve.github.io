@@ -1,5 +1,5 @@
 // Nutvique Stock Control – always loads the newest app when online, the phone's copy when offline. Data is never cached.
-const CACHE = 'nvstock-v1795549548';
+const CACHE = 'nvstock-v1795624129';
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', 'index.html', 'manifest.webmanifest', 'icon-192.png']).catch(() => {}))); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {
